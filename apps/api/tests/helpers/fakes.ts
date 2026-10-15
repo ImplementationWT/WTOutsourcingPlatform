@@ -379,3 +379,9 @@ export function createFakes(store: AdminStore) {
   };
   return { atlas, mongo, github, probe, server, resolver, vault, clock, deps };
 }
+
+/** Logger de los tests: silencioso salvo con DEBUG_STAGES=1 (muestra fallos de etapa, sin valores). */
+const debug = (level: string) => (obj: object, msg?: string) => {
+  if (process.env.DEBUG_STAGES) process.stderr.write(`[${level}] ${msg ?? ""} ${JSON.stringify(obj, (k, v) => (k === "err" ? String(v?.stack ?? v) : v))}\n`);
+};
+export const silent = { info() {}, warn: debug("warn"), error: debug("error") };

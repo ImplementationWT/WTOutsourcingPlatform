@@ -5,9 +5,8 @@ import { clearRegisteredSecrets } from "../src/lib/redact.js";
 import type { AdminStore } from "../src/store/admin-store.js";
 import { STAGES } from "../src/store/models.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
-import { createFakes } from "./helpers/fakes.js";
+import { createFakes, silent } from "./helpers/fakes.js";
 
-const silent = { info() {}, warn() {}, error() {} };
 
 beforeAll(startDb);
 afterAll(stopDb);

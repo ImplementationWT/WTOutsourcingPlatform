@@ -4,9 +4,8 @@ import { FatalError } from "../src/lib/errors.js";
 import { clearRegisteredSecrets } from "../src/lib/redact.js";
 import type { AdminStore } from "../src/store/admin-store.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
-import { createFakes, TEST_CONFIG } from "./helpers/fakes.js";
+import { createFakes, TEST_CONFIG, silent } from "./helpers/fakes.js";
 
-const silent = { info() {}, warn() {}, error() {} };
 
 beforeAll(startDb);
 afterAll(stopDb);
@@ -234,7 +233,8 @@ describe("reintentos sin duplicar", () => {
       const job = await createClient(store);
 
       const failed = await engine.run(job._id, "admin");
-      expect(failed?.stages.find((s) => s.status === "failed")?.name).toBe(stage);
+      const failedStage = failed?.stages.find((s) => s.status === "failed");
+      expect([failedStage?.name, failedStage?.name === stage ? null : failedStage?.error]).toEqual([stage, null]);
 
       await store.prepareRetry(job._id);
       expect((await engine.run(job._id, "admin"))?.status).toBe("succeeded");

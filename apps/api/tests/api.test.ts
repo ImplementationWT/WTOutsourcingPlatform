@@ -164,6 +164,8 @@ describe("despliegue en el panel", () => {
     await app.inject({ method: "POST", url: "/api/clients", headers, payload: newClient });
     await app.engine.idle();
     const detail = (await app.inject({ method: "GET", url: "/api/clients/acme-crm", headers })).json();
+    // Si el trabajo no terminó, el motivo (etapa y error) aparece en el fallo.
+    expect(detail.job.stages.filter((s: { status: string }) => s.status !== "succeeded")).toEqual([]);
     expect(detail.client.deployment).toMatchObject({
       appUrl: "https://acme-crm.apps.example.test",
       host: "acme-crm.apps.example.test",

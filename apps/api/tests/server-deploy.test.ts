@@ -5,9 +5,8 @@ import { clearRegisteredSecrets } from "../src/lib/redact.js";
 import type { AdminStore } from "../src/store/admin-store.js";
 import { STAGES } from "../src/store/models.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
-import { createFakes } from "./helpers/fakes.js";
+import { createFakes, silent } from "./helpers/fakes.js";
 
-const silent = { info() {}, warn() {}, error() {} };
 
 beforeAll(startDb);
 afterAll(stopDb);
@@ -196,7 +195,9 @@ describe("deploy y health_check", () => {
   it("registra la imagen desplegada (digest) y que HTTPS se verificó", async () => {
     const { store, engine } = await setup();
     const job = await createClient(store);
-    await engine.run(job._id, "admin");
+    const result = await engine.run(job._id, "admin");
+    // Si el trabajo no terminó, el motivo (etapa y error) aparece en el fallo.
+    expect(result?.stages.filter((s) => s.status !== "succeeded").map((s) => [s.name, s.error])).toEqual([]);
     const client = await store.getClient("acme-crm");
     expect(client?.deployment?.image).toMatch(/@sha256:[a-f0-9]{64}$/);
     expect(client?.deployment?.deployedAt).toBeInstanceOf(Date);
