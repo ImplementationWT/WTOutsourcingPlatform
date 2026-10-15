@@ -1,0 +1,71 @@
+import type { Project } from "@/types/project";
+
+// Datos de ejemplo hasta tener backend.
+export const mockProjects: Project[] = [
+  {
+    id: "atlas-crm",
+    name: "Atlas CRM",
+    description: "CRM interno para el equipo comercial.",
+    url: "https://crm.atlas.dev",
+    environment: "production",
+    status: "online",
+    createdAt: "2026-02-11",
+    accounts: [
+      { provider: "github", label: "forge-org/atlas-crm", status: "connected" },
+      { provider: "domain", label: "crm.atlas.dev", status: "connected" },
+      { provider: "mongodb", label: "atlas-prod-cluster", status: "connected" },
+      { provider: "claude", label: "Atlas workspace", status: "connected" },
+      { provider: "vercel", label: "atlas-crm", status: "connected" },
+    ],
+    metrics: { uptime: 99.98, requestsPerDay: 184_200, avgResponseMs: 142, monthlyCost: 312 },
+  },
+  {
+    id: "nova-shop",
+    name: "Nova Shop",
+    description: "E-commerce con pagos y catálogo dinámico.",
+    url: "https://novashop.pe",
+    environment: "production",
+    status: "degraded",
+    createdAt: "2025-11-03",
+    accounts: [
+      { provider: "github", label: "forge-org/nova-shop", status: "connected" },
+      { provider: "domain", label: "novashop.pe", status: "expiring" },
+      { provider: "mongodb", label: "nova-cluster-0", status: "connected" },
+      { provider: "stripe", label: "Nova Shop LLC", status: "connected" },
+      { provider: "aws", label: "nova-s3-assets", status: "connected" },
+    ],
+    metrics: { uptime: 98.7, requestsPerDay: 96_400, avgResponseMs: 388, monthlyCost: 541 },
+  },
+  {
+    id: "lumen-ai",
+    name: "Lumen AI",
+    description: "Asistente de soporte con IA para clientes.",
+    url: "https://lumen.forge.app",
+    environment: "production",
+    status: "online",
+    createdAt: "2026-05-20",
+    accounts: [
+      { provider: "github", label: "forge-org/lumen-ai", status: "connected" },
+      { provider: "domain", label: "lumen.forge.app", status: "connected" },
+      { provider: "claude", label: "Lumen production", status: "connected" },
+      { provider: "mongodb", label: "lumen-vectors", status: "connected" },
+    ],
+    metrics: { uptime: 99.91, requestsPerDay: 58_900, avgResponseMs: 610, monthlyCost: 874 },
+  },
+  {
+    id: "pulse-analytics",
+    name: "Pulse Analytics",
+    description: "Panel de analítica para clientes externos.",
+    url: "https://staging.pulse.dev",
+    environment: "staging",
+    status: "offline",
+    createdAt: "2026-08-02",
+    accounts: [
+      { provider: "github", label: "forge-org/pulse", status: "connected" },
+      { provider: "domain", label: "staging.pulse.dev", status: "connected" },
+      { provider: "mongodb", label: "pulse-staging", status: "error" },
+      { provider: "vercel", label: "pulse-staging", status: "connected" },
+    ],
+    metrics: { uptime: 91.4, requestsPerDay: 3_150, avgResponseMs: 0, monthlyCost: 48 },
+  },
+];

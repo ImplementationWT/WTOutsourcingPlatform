@@ -1,0 +1,22 @@
+import { z } from "zod";
+import { SLUG_PATTERN } from "../config";
+
+export const newProjectSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(3, "El nombre debe tener al menos 3 caracteres")
+    .max(60, "Máximo 60 caracteres"),
+  slug: z
+    .string()
+    .min(3, "El identificador debe tener al menos 3 caracteres")
+    .max(30, "Máximo 30 caracteres")
+    .regex(SLUG_PATTERN, "Solo minúsculas, números y guiones (sin guiones al inicio o al final)"),
+  description: z
+    .string()
+    .trim()
+    .min(10, "Describe el proyecto en al menos 10 caracteres")
+    .max(280, "Máximo 280 caracteres"),
+});
+
+export type NewProjectValues = z.infer<typeof newProjectSchema>;
