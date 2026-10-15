@@ -61,6 +61,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      # Carga dist/ con Node (no con vitest): detecta imports que solo fallan al arrancar.
+      - run: pnpm check:dist
 
   server-scripts:
     name: Scripts del VPS (shellcheck + pruebas en contenedor)

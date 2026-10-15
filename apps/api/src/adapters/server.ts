@@ -1,8 +1,11 @@
-import { Client, utils } from "ssh2";
+// ssh2 es CommonJS: en Node (ESM) solo expone el export por defecto.
+import ssh2 from "ssh2";
 import { z } from "zod";
 import type { Slug } from "../domain/naming.js";
 import { FatalError, TransientError } from "../lib/errors.js";
 import { redactString, registerSecret } from "../lib/redact.js";
+
+const { Client, utils } = ssh2;
 
 /** Respuesta de install-client (última línea de stdout). */
 const installResultSchema = z.object({

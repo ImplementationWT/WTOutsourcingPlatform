@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { Server, utils } from "ssh2";
+import ssh2 from "ssh2";
 import { createServerAdapter, generateClientKeyPair } from "../src/adapters/server.js";
 import { parseSlug } from "../src/domain/naming.js";
 import { FatalError } from "../src/lib/errors.js";
 import { redactString } from "../src/lib/redact.js";
 
+const { Server, utils } = ssh2;
 const hostKey = utils.generateKeyPairSync("ed25519");
 const otherHostKey = utils.generateKeyPairSync("ed25519");
 const provisioner = utils.generateKeyPairSync("ed25519");

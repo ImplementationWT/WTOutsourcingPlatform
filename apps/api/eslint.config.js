@@ -14,5 +14,10 @@ export default tseslint.config(
       // Evita volcar secretos por consola: se usa el logger (que redacta).
       "no-console": "error"
     }
+  },
+  {
+    // Scripts de CI en JavaScript: Node y salida por consola.
+    files: ["scripts/**/*.mjs"],
+    languageOptions: { globals: globals.node }
   }
 );

@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "hash-password": "tsx src/scripts/hash-password.ts"
+    "hash-password": "tsx src/scripts/hash-password.ts",
+    "check:dist": "node scripts/check-dist.mjs"
   },
   "keywords": [],
   "author": "",

@@ -36,6 +36,9 @@ umask 077
 # rsync conserva el uid del runner, que en el VPS puede ser un usuario real: todo pasa a root
 # y el directorio queda cerrado para el resto de usuarios.
 chmod 700 "$APP_DIR"
+# La configuración anterior se guarda: si hay que volver a la imagen anterior, vuelve con la suya
+# (una versión nueva puede renombrar variables que la anterior necesita).
+[ ! -f "$APP_DIR/api.env" ] || cp -p "$APP_DIR/api.env" "$APP_DIR/api.env.prev"
 mv "$INCOMING/api.env" "$APP_DIR/api.env"
 chown root:root "$APP_DIR/api.env"
 mv "$INCOMING/github-app.pem" "$APP_DIR/github-app.pem"
@@ -64,7 +67,8 @@ if ! health; then
   docker logs --tail 80 "$CONTAINER" || true
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
   if [ -n "$PREVIOUS" ] && docker image inspect "$IMAGE:$PREVIOUS" >/dev/null 2>&1; then
-    echo "Restaurando $IMAGE:$PREVIOUS…"
+    echo "Restaurando $IMAGE:$PREVIOUS con su configuración…"
+    [ ! -f "$APP_DIR/api.env.prev" ] || mv -f "$APP_DIR/api.env.prev" "$APP_DIR/api.env"
     start "$PREVIOUS"
     health || echo "::error::La versión anterior tampoco responde."
   fi
@@ -72,6 +76,7 @@ if ! health; then
 fi
 
 # API sana: se publica el frontend de este release.
+rm -f "$APP_DIR/api.env.prev"
 ln -sfn "$WEB_DIR/releases/$RELEASE" "$WEB_DIR/current.tmp"
 mv -T "$WEB_DIR/current.tmp" "$WEB_DIR/current"
 
