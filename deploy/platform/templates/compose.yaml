@@ -1,0 +1,52 @@
+# Generado por /opt/platform/bin/deploy-client para @@SLUG@@. No editar a mano:
+# se reescribe en cada despliegue (contrato del template §5 y §6).
+name: app-@@SLUG@@
+
+services:
+  app:
+    image: @@IMAGE@@
+    # La imagen ya se descargó por digest con las credenciales temporales del despliegue.
+    pull_policy: never
+    restart: unless-stopped
+    env_file:
+      # raw: los valores se copian tal cual (sin interpretar $ ni comillas).
+      - path: @@ENV_FILE@@
+        format: raw
+    # Fijadas por la plataforma; el JSON del despliegue no puede enviarlas.
+    environment:
+      NODE_ENV: production
+      TRUST_PROXY_HOPS: "1"
+      PORT: "@@INTERNAL_PORT@@"
+      HOST: 0.0.0.0
+    user: node
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: "@@CPUS@@"
+    mem_limit: @@MEMORY@@
+    pids_limit: 256
+    # Solo en loopback: nginx lo publica en https://@@HOST@@.
+    ports:
+      - "127.0.0.1:@@PORT@@:@@INTERNAL_PORT@@"
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:@@INTERNAL_PORT@@/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  app:
+    name: @@NETWORK@@
+    external: true

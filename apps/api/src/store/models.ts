@@ -2,6 +2,8 @@ export const STAGES = [
   { name: "github_repository", label: "Repositorio en GitHub" },
   { name: "mongodb_database", label: "Base de datos en MongoDB Atlas" },
   { name: "github_secrets", label: "Secrets del entorno production" },
+  { name: "dns_https", label: "DNS del subdominio" },
+  { name: "server_prepare", label: "Preparación del servidor (HTTPS y nginx)" },
   { name: "deploy", label: "Primer despliegue" },
   { name: "health_check", label: "Verificación de salud" }
 ] as const;
@@ -67,6 +69,23 @@ export interface InitialAdminInfo {
   reused?: boolean;
 }
 
+export interface DeploymentInfo {
+  host: string;
+  dnsVerifiedAt?: Date;
+  port?: number;
+  certificate?: "issued" | "existing";
+  preparedAt?: Date;
+  /** Imagen por digest del último despliegue correcto y cuándo se hizo (según el servidor). */
+  image?: string;
+  deployedAt?: Date;
+  lastRunUrl?: string;
+  httpsVerifiedAt?: Date;
+  /** false si se verificó con la CA de staging (ACME_CA): HTTPS funciona pero no es de confianza. */
+  httpsTrusted?: boolean;
+  redeployRequestedAt?: Date;
+  redeployRequestedBy?: string;
+}
+
 export interface ClientDoc {
   _id: string; // slug
   name: string;
@@ -76,13 +95,21 @@ export interface ClientDoc {
   /** Versión real del template del repo (package.json → template.version) y lo que expone /api/meta. */
   template?: { name: string; version: string; verifiedAt: Date; schemaVersion?: number; schemaCheckedAt?: Date };
   initialAdmin?: InitialAdminInfo;
+  /** Despliegue en el VPS: solo referencias (nunca claves, tokens ni variables de entorno). */
+  deployment?: DeploymentInfo;
   latestJobId: string;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export type ResourceKind = "github_repository" | "mongodb_user" | "mongodb_database" | "github_environment" | "deploy";
+export type ResourceKind =
+  | "github_repository"
+  | "mongodb_user"
+  | "mongodb_database"
+  | "github_environment"
+  | "server_client"
+  | "deploy";
 
 /**
  * Referencias a recursos externos. Solo nombres e identificadores: nunca

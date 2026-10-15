@@ -2,10 +2,10 @@ import { Writable } from "node:stream";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { hashPassword } from "../src/auth/password.js";
-import { clearRegisteredSecrets, registerSecret } from "../src/lib/redact.js";
+import { clearRegisteredSecrets } from "../src/lib/redact.js";
 import type { AdminStore } from "../src/store/admin-store.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
-import { createFakes, TEST_CONFIG } from "./helpers/fakes.js";
+import { createFakes } from "./helpers/fakes.js";
 
 const ADMIN_PASSWORD = "correct horse battery staple";
 let passwordHash: string;
@@ -17,7 +17,6 @@ beforeAll(async () => {
 afterAll(stopDb);
 beforeEach(() => {
   clearRegisteredSecrets();
-  registerSecret(TEST_CONFIG.deploy!.privateKey);
 });
 
 let apps: Awaited<ReturnType<typeof buildApp>>[] = [];
@@ -158,6 +157,53 @@ describe("creación de clientes", () => {
   });
 });
 
+describe("despliegue en el panel", () => {
+  it("el detalle muestra URL, HTTPS, digest abreviado y fecha; nunca claves ni variables", async () => {
+    const { app, github } = await setup();
+    const headers = await login(app);
+    await app.inject({ method: "POST", url: "/api/clients", headers, payload: newClient });
+    await app.engine.idle();
+    const detail = (await app.inject({ method: "GET", url: "/api/clients/acme-crm", headers })).json();
+    expect(detail.client.deployment).toMatchObject({
+      appUrl: "https://acme-crm.apps.example.test",
+      host: "acme-crm.apps.example.test",
+      certificate: "issued",
+      https: { trusted: true },
+      image: { digest: "sha256:aaaaaaaaaaaa" }
+    });
+    const body = JSON.stringify(detail);
+    expect(body).not.toContain(github.env("acme-crm-app").secrets.get("DEPLOY_SSH_KEY")!.split("\n")[1]);
+    for (const name of ["SESSION_SECRET", "MONGODB_URI", "INITIAL_ADMIN_PASSWORD"]) {
+      expect(body).not.toContain(github.env("acme-crm-app").secrets.get(name)!);
+    }
+  });
+
+  it("estado en vivo del servidor sin variables de entorno", async () => {
+    const { app } = await setup();
+    const headers = await login(app);
+    await app.inject({ method: "POST", url: "/api/clients", headers, payload: newClient });
+    await app.engine.idle();
+    const status = (await app.inject({ method: "GET", url: "/api/clients/acme-crm/server-status", headers })).json();
+    expect(status).toMatchObject({ host: "acme-crm.apps.example.test", nginx: true, image: { digest: "sha256:aaaaaaaaaaaa" } });
+    expect(Object.keys(status).sort()).toEqual(["certificate", "container", "host", "image", "nginx", "port"]);
+  });
+
+  it("Redesplegar exige sesión, lanza el workflow y queda auditado", async () => {
+    const { app, store, github } = await setup();
+    const headers = await login(app);
+    expect((await app.inject({ method: "POST", url: "/api/clients/acme-crm/redeploy" })).statusCode).toBe(401);
+    await app.inject({ method: "POST", url: "/api/clients", headers, payload: newClient });
+    await app.engine.idle();
+    const before = github.count("dispatchWorkflow");
+    const response = await app.inject({ method: "POST", url: "/api/clients/acme-crm/redeploy", headers });
+    expect(response.statusCode).toBe(202);
+    expect(github.count("dispatchWorkflow")).toBe(before + 1);
+    const audit = await store.auditLog.findOne({ action: "client.redeploy_requested" });
+    expect(audit).toMatchObject({ actor: "admin", clientId: "acme-crm", target: "acme-org/acme-crm-app" });
+    expect((await store.getClient("acme-crm"))?.deployment?.redeployRequestedBy).toBe("admin");
+  });
+});
+
 describe("redacción de secretos", () => {
   it("ninguna salida (logs, eventos, API, base administrativa) contiene contraseñas, URI ni claves", async () => {
     const { app, store, logs, atlas, github } = await setup();
@@ -197,7 +243,11 @@ describe("redacción de secretos", () => {
     }
     expect(outputs).not.toMatch(/mongodb(\+srv)?:\/\/(?!\[REDACTED\])/);
     expect(outputs).not.toContain("ghs_aaaa");
-    expect(outputs).not.toContain("ZmFrZS10ZXN0LWtleQ");
+    // Ni la clave privada SSH del cliente (DEPLOY_SSH_KEY).
+    const deployKey = github.env("acme-crm-app").secrets.get("DEPLOY_SSH_KEY")!;
+    expect(deployKey).toContain("OPENSSH PRIVATE KEY");
+    expect(outputs).not.toContain(deployKey.split("\n")[1]);
+    expect(outputs).not.toContain("PRIVATE KEY");
     expect(outputs).not.toContain(ADMIN_PASSWORD);
     // Sí se ven las referencias.
     expect(outputs).toContain("client_acme_crm");

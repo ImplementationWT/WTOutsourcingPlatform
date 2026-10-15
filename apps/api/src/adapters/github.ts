@@ -65,6 +65,8 @@ export interface GithubAdapter {
   dispatchWorkflow(repo: string, file: string, ref: string): Promise<void>;
   listDispatchRuns(repo: string, file: string, ref: string): Promise<WorkflowRun[]>;
   getRun(repo: string, runId: number): Promise<WorkflowRun>;
+  /** "Job › paso" del primer paso fallido de un run, o null. */
+  getRunFailure(repo: string, runId: number): Promise<string | null>;
   listProjectRepos(): Promise<ProjectRepo[]>;
 }
 
@@ -276,6 +278,15 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
       call("consultar la ejecución del workflow", async () =>
         toRun((await octokit.rest.actions.getWorkflowRun({ owner, repo, run_id: runId })).data)
       ),
+
+    getRunFailure: (repo, runId) =>
+      call("consultar los jobs del workflow", async () => {
+        const { data } = await octokit.rest.actions.listJobsForWorkflowRun({ owner, repo, run_id: runId, filter: "latest" });
+        const job = data.jobs.find((j) => j.conclusion === "failure");
+        if (!job) return null;
+        const step = job.steps?.find((st) => st.conclusion === "failure");
+        return step ? `${job.name} › ${step.name}` : job.name;
+      }),
 
     listProjectRepos: () =>
       call("listar los repositorios", async () => {

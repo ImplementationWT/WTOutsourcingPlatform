@@ -22,6 +22,22 @@ export function useClient(slug: string) {
   });
 }
 
+/** Configuración de la plataforma que manda el backend (despliegue activo y dominio de las apps). */
+export function usePlatform() {
+  return useQuery({
+    queryKey: ["platform"],
+    queryFn: () => apiFetch<{ deployEnabled: boolean; appBaseDomain: string }>("/api/platform"),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Lanza de nuevo el workflow Deploy del repo del cliente (queda auditado). */
+export function redeployClient(slug: string) {
+  return apiFetch<{ requestedAt: string; actionsUrl: string }>(`/api/clients/${encodeURIComponent(slug)}/redeploy`, {
+    method: "POST",
+  });
+}
+
 /** Revelación única de la contraseña inicial: el servidor la borra al entregarla. */
 export function revealInitialPassword(slug: string) {
   return apiFetch<RevealedCredentials>(`/api/clients/${encodeURIComponent(slug)}/initial-password/reveal`, {

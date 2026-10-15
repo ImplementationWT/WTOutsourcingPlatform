@@ -89,6 +89,19 @@ export interface ClientDetail {
     /** Versión real del template del repo y schemaVersion de /api/meta (tras el health check). */
     template: { name: string; version: string; schemaVersion: number | null } | null;
     initialAdmin: InitialAdminStatus;
+    /** Despliegue en el VPS: solo referencias (nunca claves, tokens ni variables). */
+    deployment: {
+      appUrl: string;
+      host: string | null;
+      dnsVerifiedAt: string | null;
+      certificate: "issued" | "existing" | null;
+      https: { verifiedAt: string; trusted: boolean } | null;
+      image: { digest: string | null; deployedAt: string | null } | null;
+      lastRunUrl: string | null;
+      redeployRequestedAt: string | null;
+      redeployRequestedBy: string | null;
+    };
+    deployEnabled: boolean;
     createdAt: string;
   };
   resources: {

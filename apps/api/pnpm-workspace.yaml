@@ -2,3 +2,6 @@ allowBuilds:
   esbuild: true
   # Su postinstall solo predescarga mongod; los tests lo descargan al arrancar.
   mongodb-memory-server: false
+  # Compilados nativos opcionales de ssh2: sin ellos usa el crypto de Node.
+  cpu-features: false
+  ssh2: false

@@ -1,10 +1,12 @@
+import { promises as dns } from "node:dns";
 import { MongoClient } from "mongodb";
 import { createAtlasAdapter } from "./adapters/atlas.js";
 import { createGithubAdapter } from "./adapters/github.js";
 import { createHttpProbe } from "./adapters/http-probe.js";
 import { createMongoBootstrapAdapter } from "./adapters/mongo-bootstrap.js";
+import { createServerAdapter } from "./adapters/server.js";
 import { buildApp } from "./app.js";
-import { loadDeployConfig, loadEnv, loadInitialPasswordKey } from "./config/env.js";
+import { appBaseDomain, loadEnv, loadInitialPasswordKey, loadServerConfig } from "./config/env.js";
 import { DEFAULT_TIMING } from "./jobs/types.js";
 import { registerSecret } from "./lib/redact.js";
 import { AdminStore } from "./store/admin-store.js";
@@ -14,17 +16,10 @@ const env = loadEnv();
 for (const secret of [env.ATLAS_CLIENT_SECRET, env.ADMIN_MONGODB_URI, env.SESSION_SECRET, env.PANEL_ADMIN_PASSWORD_HASH]) {
   registerSecret(secret);
 }
-const deploy = loadDeployConfig(env);
+const server = loadServerConfig(env);
 // Antes de conectar: una clave mal configurada detiene el arranque con un mensaje claro.
 const initialPasswordKey = loadInitialPasswordKey(env);
-if (deploy) {
-  registerSecret(deploy.privateKey);
-}
-if (env.DEPLOY_ENABLED && !deploy) {
-  throw new Error(
-    "DEPLOY_ENABLED=true requiere DEPLOY_SSH_HOST, DEPLOY_SSH_USER, DEPLOY_SSH_PRIVATE_KEY_PATH y DEPLOY_SSH_KNOWN_HOSTS_PATH."
-  );
-}
+if (server) registerSecret(server.provisionerKey);
 
 const adminClient = new MongoClient(env.ADMIN_MONGODB_URI, { appName: "provisioning-platform" });
 await adminClient.connect();
@@ -58,11 +53,18 @@ const app = await buildApp({
       targetOwner: env.GITHUB_TARGET_OWNER
     }),
     mongo: createMongoBootstrapAdapter(),
-    probe: createHttpProbe(),
+    probe: createHttpProbe({ allowUntrustedCertificates: Boolean(server?.acmeCa) }),
+    server: server
+      ? createServerAdapter({ host: server.host, port: server.port, hostKeys: server.hostKeys, provisionerKey: server.provisionerKey })
+      : {
+          installClient: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
+          clientStatus: () => Promise.reject(new Error("Servidor de despliegue no configurado."))
+        },
+    resolver: { resolve4: (host) => dns.resolve4(host) },
     vault,
     timing: DEFAULT_TIMING,
     config: {
-      appsDomain: env.APPS_DOMAIN,
+      appsDomain: appBaseDomain(env),
       atlas: { clusterName: env.ATLAS_CLUSTER_NAME, srvHost: env.ATLAS_CLUSTER_SRV_HOST },
       template: {
         name: "node-typescript",
@@ -75,7 +77,13 @@ const app = await buildApp({
       },
       initialAdmin: { mode: env.INITIAL_ADMIN_MODE, revealTtlMs: 30 * 60_000 },
       deployEnabled: env.DEPLOY_ENABLED,
-      deploy
+      server: server && {
+        host: server.host,
+        knownHosts: server.knownHosts,
+        publicIp: server.publicIp,
+        ghcrOrg: server.ghcrOrg,
+        acmeCa: server.acmeCa
+      }
     }
   }
 });

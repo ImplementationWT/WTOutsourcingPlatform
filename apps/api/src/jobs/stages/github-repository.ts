@@ -18,10 +18,11 @@ function parseTemplate(raw: string) {
 }
 
 /**
- * Primera versión del contrato que esta plataforma sabe aprovisionar: frontend,
- * SESSION_SECRET, INITIAL_ADMIN_PASSWORD y la forma nueva de /api/meta (contrato §1).
+ * Primera versión del contrato que esta plataforma sabe aprovisionar: el protocolo
+ * de despliegue de 1.3.0 (nginx, JSON por stdin, DEPLOY_SSH_KEY/DEPLOY_HOST/
+ * DEPLOY_KNOWN_HOSTS/APP_HOSTNAME). Los repos anteriores usan el protocolo viejo.
  */
-export const MIN_SUPPORTED_TEMPLATE_VERSION = "1.1.0";
+export const MIN_SUPPORTED_TEMPLATE_VERSION = "1.3.0";
 
 /** Compara x.y.z numéricamente (negativo si a < b). */
 export function compareVersions(a: string, b: string) {

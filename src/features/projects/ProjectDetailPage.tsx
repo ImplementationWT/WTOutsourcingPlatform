@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useClient } from "./api";
+import DeploymentCard from "./DeploymentCard";
 import InitialCredentialsCard from "./InitialCredentialsCard";
 import JobStages from "./JobStages";
 import { Code } from "./new-project/parts";
@@ -161,8 +162,8 @@ export default function ProjectDetailPage() {
                     <span className="text-muted-foreground">
                       {data.client.status === "failed"
                         ? "No listo (el aprovisionamiento falló)"
-                        : data.client.status === "ready"
-                          ? "Repo y base conectados · despliegue en una próxima fase"
+                        : data.client.status === "ready" && !data.client.deployEnabled
+                          ? "Repo y base conectados · el despliegue no está habilitado"
                           : "Pendiente"}
                     </span>
                   )}
@@ -192,7 +193,10 @@ export default function ProjectDetailPage() {
             </Card>
           </div>
 
-          <InitialCredentialsCard slug={data.client.id} />
+          <div className="grid gap-6 lg:grid-cols-2">
+            <DeploymentCard client={data.client} />
+            <InitialCredentialsCard slug={data.client.id} />
+          </div>
         </>
       )}
     </section>

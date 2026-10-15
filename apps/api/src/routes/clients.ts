@@ -1,13 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { GithubAdapter } from "../adapters/github.js";
+import type { Deps } from "../jobs/types.js";
 import { requireAdmin } from "../auth/session.js";
 import { deriveNames, parseSlug, slugSchema } from "../domain/naming.js";
 import { type JobEngine, toPublicJob } from "../jobs/engine.js";
 import { INITIAL_ADMIN_USERNAME } from "../jobs/stages/github-secrets.js";
 import { redact } from "../lib/redact.js";
 import { ActiveJobExistsError, type AdminStore, DuplicateClientError } from "../store/admin-store.js";
-import type { InitialPasswordVault } from "../store/initial-password-vault.js";
 import type { ClientDoc } from "../store/models.js";
 
 /**
@@ -56,17 +56,34 @@ export function initialAdminStatus(client: ClientDoc, pendingUntil: Date | null,
   };
 }
 
+/** Digest abreviado de una imagen ghcr.io/<org>/<repo>@sha256:… para mostrar en el panel. */
+export function shortDigest(image: string | undefined) {
+  const digest = image?.match(/@sha256:([a-f0-9]{64})$/)?.[1];
+  return digest ? `sha256:${digest.slice(0, 12)}` : null;
+}
+
+/** Despliegue del cliente para el panel: solo referencias, nunca claves, tokens ni variables. */
+function deploymentView(client: ClientDoc, baseUrl: string) {
+  const d = client.deployment;
+  return {
+    appUrl: baseUrl,
+    host: d?.host ?? null,
+    dnsVerifiedAt: d?.dnsVerifiedAt ?? null,
+    certificate: d?.certificate ?? null,
+    https: d?.httpsVerifiedAt ? { verifiedAt: d.httpsVerifiedAt, trusted: d.httpsTrusted !== false } : null,
+    image: d?.image ? { digest: shortDigest(d.image), deployedAt: d.deployedAt ?? null } : null,
+    lastRunUrl: d?.lastRunUrl ?? null,
+    redeployRequestedAt: d?.redeployRequestedAt ?? null,
+    redeployRequestedBy: d?.redeployRequestedBy ?? null
+  };
+}
+
 export async function registerClientRoutes(
   app: FastifyInstance,
-  {
-    store,
-    engine,
-    github,
-    vault,
-    appsDomain
-  }: { store: AdminStore; engine: JobEngine; github: GithubAdapter; vault: InitialPasswordVault; appsDomain: string }
+  { store, engine, deps }: { store: AdminStore; engine: JobEngine; deps: Deps & { github: GithubAdapter } }
 ) {
-  const namesFor = (slug: string) => deriveNames(parseSlug(slug), { targetOwner: github.owner, appsDomain });
+  const { github, vault, server, config } = deps;
+    const namesFor = (slug: string) => deriveNames(parseSlug(slug), { targetOwner: github.owner, appsDomain: config.appsDomain });
 
   app.post("/api/clients", { preHandler: requireAdmin }, async (request, reply) => {
     const parsed = createClientSchema.safeParse(request.body);
@@ -115,6 +132,8 @@ export async function registerClientRoutes(
           ? { name: client.template.name, version: client.template.version, schemaVersion: client.template.schemaVersion ?? null }
           : null,
         initialAdmin: initialAdminStatus(client, pendingUntil, vault.now()),
+        deployment: deploymentView(client, names.baseUrl),
+        deployEnabled: config.deployEnabled,
         createdAt: client.createdAt
       },
       resources: {
@@ -169,6 +188,54 @@ export async function registerClientRoutes(
       .header("Cache-Control", "no-store")
       .type("application/json; charset=utf-8")
       .send(JSON.stringify({ username: INITIAL_ADMIN_USERNAME, password, mustChangeOnFirstLogin: true }));
+  });
+
+  /** Configuración visible para el panel (sin secretos): evita duplicarla en el frontend. */
+  app.get("/api/platform", { preHandler: requireAdmin }, async () => ({
+    deployEnabled: config.deployEnabled,
+    appBaseDomain: config.appsDomain
+  }));
+
+  /** Estado en vivo en el servidor (consulta predefinida client-status). Sin variables de entorno. */
+  app.get("/api/clients/:slug/server-status", { preHandler: requireAdmin }, async (request, reply) => {
+    const params = slugParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
+    const client = await store.getClient(params.data.slug);
+    if (!client) return reply.code(404).send({ error: "Cliente no encontrado." });
+    if (!config.deployEnabled || !config.server) return reply.code(409).send({ error: "El despliegue no está habilitado." });
+    try {
+      const status = await server.clientStatus(parseSlug(client._id));
+      return {
+        host: status.host,
+        port: status.port,
+        nginx: status.nginx,
+        certificate: status.certificate,
+        image: status.deployment ? { digest: shortDigest(status.deployment.image), deployedAt: status.deployment.deployedAt } : null,
+        container: status.container
+      };
+    } catch (error) {
+      request.log.warn({ err: error, slug: client._id }, "client-status failed");
+      return reply.code(502).send({ error: "No se pudo consultar el servidor." });
+    }
+  });
+
+  /** Redesplegar: lanza el workflow Deploy del repo del cliente (workflow_dispatch) y lo audita. */
+  app.post("/api/clients/:slug/redeploy", { preHandler: requireAdmin }, async (request, reply) => {
+    const params = slugParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
+    const client = await store.getClient(params.data.slug);
+    if (!client) return reply.code(404).send({ error: "Cliente no encontrado." });
+    if (!config.deployEnabled) return reply.code(409).send({ error: "El despliegue no está habilitado." });
+    if (!client.deployment?.preparedAt) {
+      return reply.code(409).send({ error: "El servidor aún no está preparado para este cliente; termina primero el aprovisionamiento." });
+    }
+    const names = namesFor(client._id);
+    const actor = request.user!.username;
+    await github.dispatchWorkflow(names.repository, config.template.deployWorkflow, config.template.ref);
+    const at = new Date();
+    await store.setClientFields(client._id, { "deployment.redeployRequestedAt": at, "deployment.redeployRequestedBy": actor });
+    await store.audit({ actor, action: "client.redeploy_requested", clientId: client._id, target: names.repositoryFullName });
+    return reply.code(202).send({ requestedAt: at, actionsUrl: `https://github.com/${names.repositoryFullName}/actions` });
   });
 
   app.get("/api/jobs/:id", { preHandler: requireAdmin }, async (request, reply) => {

@@ -25,6 +25,7 @@ export function deriveNames(slug: Slug, opts: { targetOwner: string; appsDomain:
   const repository = `${slug}-app`;
   const host = `${slug}.${opts.appsDomain}`;
   return {
+    slug,
     clientId: slug as string,
     repository,
     repositoryFullName: `${opts.targetOwner}/${repository}`,

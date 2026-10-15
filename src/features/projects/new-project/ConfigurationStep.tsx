@@ -10,11 +10,15 @@ import {
   Workflow,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { DEPLOY_DOMAIN, DEPLOY_ENABLED, deriveResources, STACK } from "../config";
+import { usePlatform } from "../api";
+import { DEPLOY_DOMAIN, deriveResources, STACK } from "../config";
 import { Code, InfoRow, Pill } from "./parts";
 
 export default function ConfigurationStep({ slug }: { slug: string }) {
-  const resources = deriveResources(slug);
+  const platform = usePlatform().data;
+  const DEPLOY_ENABLED = platform?.deployEnabled ?? false;
+  const domain = platform?.appBaseDomain ?? DEPLOY_DOMAIN;
+  const resources = deriveResources(slug, domain);
 
   return (
     <div className="space-y-6">
@@ -89,7 +93,7 @@ export default function ConfigurationStep({ slug }: { slug: string }) {
             <div className="flex items-center overflow-hidden rounded-lg border border-white/10 bg-white/[0.03] font-mono text-sm">
               <span className="truncate px-3 py-2.5 text-foreground">{slug || "mi-proyecto"}</span>
               <span className="border-l border-white/10 bg-white/[0.03] px-3 py-2.5 text-muted-foreground">
-                .{DEPLOY_DOMAIN}
+                .{domain}
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -103,7 +107,7 @@ export default function ConfigurationStep({ slug }: { slug: string }) {
               title="Certificado TLS automático"
               pill={DEPLOY_ENABLED ? <Pill tone="emerald">Activado</Pill> : <Pill>Próximamente</Pill>}
             >
-              HTTPS administrado por Caddy.
+              HTTPS con nginx y un certificado de Let&apos;s Encrypt (Certbot) por subdominio, renovado automáticamente.
             </InfoRow>
             <InfoRow
               icon={Rocket}

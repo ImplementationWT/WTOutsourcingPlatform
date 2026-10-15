@@ -4,8 +4,6 @@ import { registerSecret } from "../../lib/redact.js";
 import type { Stage, StageContext } from "../types.js";
 import { ensureCredential } from "./credentials.js";
 
-export const DEPLOY_SECRET_NAMES = ["DEPLOY_SSH_HOST", "DEPLOY_SSH_USER", "DEPLOY_SSH_PRIVATE_KEY", "DEPLOY_SSH_KNOWN_HOSTS"] as const;
-
 /** Usuario que crea la migración 1 del template (contrato §8). */
 export const INITIAL_ADMIN_USERNAME = "admin";
 
@@ -90,7 +88,7 @@ export const githubSecretsStage: Stage = {
         id: "initial_admin",
         label: config.initialAdmin.mode === "random" ? "INITIAL_ADMIN_PASSWORD aleatoria" : "INITIAL_ADMIN_PASSWORD (modo default: no se escribe)"
       },
-      { id: "variables", label: "Variables APP_BASE_URL y APP_DISPLAY_NAME" }
+      { id: "variables", label: "Variable APP_DISPLAY_NAME" }
     ]);
 
     try {
@@ -150,31 +148,17 @@ export const githubSecretsStage: Stage = {
 
       await writeInitialAdminPassword(ctx, present, written);
 
-      const deploy = config.deploy;
-      if (deploy) {
-        const values: Record<(typeof DEPLOY_SECRET_NAMES)[number], string> = {
-          DEPLOY_SSH_HOST: deploy.host,
-          DEPLOY_SSH_USER: deploy.user,
-          DEPLOY_SSH_PRIVATE_KEY: deploy.privateKey,
-          DEPLOY_SSH_KNOWN_HOSTS: deploy.knownHosts
-        };
-        for (const name of DEPLOY_SECRET_NAMES) {
-          if (present.has(name)) continue;
-          await github.putEnvironmentSecret(names.repository, environment, name, values[name]);
-          written.push(name);
-        }
-        if (deploy.port) await github.setEnvironmentVariable(names.repository, environment, "DEPLOY_SSH_PORT", String(deploy.port));
-      }
-
+      // Contrato 1.3.0 (§3): DEPLOY_SSH_KEY, DEPLOY_HOST, DEPLOY_KNOWN_HOSTS y APP_HOSTNAME los
+      // escribe server_prepare. Los nombres anteriores (DEPLOY_SSH_*, APP_BASE_URL) ya no se escriben;
+      // en repos antiguos se dejan como están.
       await ctx.step("variables", "running");
-      await github.setEnvironmentVariable(names.repository, environment, "APP_BASE_URL", names.baseUrl);
       await github.setEnvironmentVariable(names.repository, environment, "APP_DISPLAY_NAME", client.name);
-      await ctx.step("variables", "done", `APP_BASE_URL ${names.baseUrl} · APP_DISPLAY_NAME "${client.name}".`);
+      await ctx.step("variables", "done", `APP_DISPLAY_NAME "${client.name}".`);
 
       if (written.length) {
         await ctx.audit("github.environment_secrets.written", names.repositoryFullName, { environment, names: written });
       }
-      const variables = ["APP_BASE_URL", "APP_DISPLAY_NAME", ...(deploy?.port ? ["DEPLOY_SSH_PORT"] : [])];
+      const variables = ["APP_DISPLAY_NAME"];
       await store.updateResourceRef("github_environment", names.repositoryFullName, client._id, {
         repository: names.repositoryFullName,
         environment,

@@ -1,0 +1,28 @@
+# /opt/platform/etc/platform.conf — configuración de los scripts de despliegue.
+# Formato CLAVE=valor (sin comillas). Se lee línea a línea; no se ejecuta.
+
+# Owner de GHCR en minúsculas (imágenes ghcr.io/<GHCR_ORG>/<slug>-app@sha256:…).
+GHCR_ORG=
+# Dominio de las apps: https://<slug>.<APP_BASE_DOMAIN>
+APP_BASE_DOMAIN=
+# Correo de la cuenta ACME de Let's Encrypt (avisos de caducidad).
+ACME_EMAIL=
+# Solo para pruebas: CA de staging, p. ej. https://acme-staging-v02.api.letsencrypt.org/directory
+ACME_CA=
+
+# Rutas propias de la plataforma (valores por defecto).
+NGINX_APPS_DIR=/etc/nginx/platform-apps
+NGINX_CONF=/etc/nginx/nginx.conf
+CERTBOT_WEBROOT=/var/www/certbot
+CUSTOMER_APPS_DIR=/srv/customer-apps
+
+# Puertos de loopback asignados a los clientes.
+PORT_RANGE_START=20000
+PORT_RANGE_END=29999
+
+# Límites por contenedor.
+APP_CPUS=0.5
+APP_MEMORY=512m
+
+# Espera máxima a que el contenedor quede sano (segundos).
+DEPLOY_WAIT_SECONDS=180

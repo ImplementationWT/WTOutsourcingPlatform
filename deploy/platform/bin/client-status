@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# client-status <slug>  (root, vía sudo desde provisioner-dispatch)
+#
+# Consulta de solo lectura para el panel: puerto, certificado, último despliegue y
+# estado del contenedor. Nunca incluye variables de entorno, claves ni tokens.
+set -euo pipefail
+
+# shellcheck source=../lib/common.sh
+source /opt/platform/lib/common.sh
+
+[[ $# -eq 1 ]] || die "uso: client-status <slug>"
+slug=$1
+require_slug "$slug"
+load_config
+
+host=$(client_host "$slug")
+dir=$(client_dir "$slug")
+port=$(port_of "$slug")
+cert="$LETSENCRYPT_LIVE/$host/fullchain.pem"
+
+not_after=""
+if [[ -s $cert ]]; then
+  not_after=$(openssl x509 -enddate -noout -in "$cert" | cut -d= -f2)
+  not_after=$(date -u -d "$not_after" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf '%s' "$not_after")
+fi
+
+image="" deployed_at=""
+if [[ -s "$dir/state.json" ]]; then
+  image=$(jq -r '.image // ""' "$dir/state.json")
+  deployed_at=$(jq -r '.deployedAt // ""' "$dir/state.json")
+fi
+
+state="" health=""
+container=$(docker ps --all --quiet --filter "label=com.docker.compose.project=app-$slug" --filter "label=com.docker.compose.service=app" 2>/dev/null | head -n 1)
+if [[ -n $container ]]; then
+  state=$(docker inspect --format '{{.State.Status}}' "$container")
+  health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$container")
+fi
+
+jq -cn \
+  --arg slug "$slug" --arg host "$host" --arg port "$port" \
+  --arg notAfter "$not_after" --arg image "$image" --arg deployedAt "$deployed_at" \
+  --arg state "$state" --arg health "$health" \
+  --arg nginx "$([[ -f "$NGINX_APPS_DIR/$slug.conf" ]] && echo true || echo false)" \
+  '{
+    slug: $slug,
+    host: $host,
+    port: (if $port == "" then null else ($port | tonumber) end),
+    nginx: ($nginx == "true"),
+    certificate: (if $notAfter == "" then null else { notAfter: $notAfter } end),
+    deployment: (if $image == "" then null else { image: $image, deployedAt: $deployedAt } end),
+    container: (if $state == "" then null else { state: $state, health: (if $health == "" then null else $health end) } end)
+  }'

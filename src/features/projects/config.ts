@@ -1,16 +1,15 @@
 // Configuración global de la plataforma. Los recursos de cada proyecto se
 // derivan de su identificador (slug) y no se editan por proyecto.
 export const GITHUB_ORG = "forge-org";
+/** Valor por defecto mientras carga /api/platform (que manda el backend). */
 export const DEPLOY_DOMAIN = "apps.whatever.tech";
-/** Fase 2 (despliegue). Debe coincidir con DEPLOY_ENABLED del backend. */
-export const DEPLOY_ENABLED = false;
 
 export const STACK = {
-  runtime: "Node.js 22 LTS + TypeScript",
+  runtime: "Node.js 24 + TypeScript",
   ci: "GitHub Actions",
-  versioning: "Semantic Versioning (tags vX.Y.Z)",
+  versioning: "Versión del template en package.json (template.version)",
   environment: "VPS corporativo",
-  environmentDetail: "Docker Compose + SSH restringido + Caddy",
+  environmentDetail: "Docker Compose + SSH con comando forzado + nginx y Certbot",
   healthPath: "/health/ready",
   metaPath: "/api/meta",
 };
@@ -32,13 +31,13 @@ export function slugify(value: string): string {
  * validado (nunca los toma del navegador); aquí solo se muestran.
  * MONGODB_DB debe cumplir ^client_[a-z0-9_]+$, por eso los guiones pasan a "_".
  */
-export function deriveResources(slug: string) {
+export function deriveResources(slug: string, domain = DEPLOY_DOMAIN) {
   const base = slug || "mi-proyecto";
   const token = base.replace(/-/g, "_");
   return {
     repository: `${base}-app`,
     database: `client_${token}`,
     dbUser: `app_${token}`,
-    subdomain: `${base}.${DEPLOY_DOMAIN}`,
+    subdomain: `${base}.${domain}`,
   };
 }

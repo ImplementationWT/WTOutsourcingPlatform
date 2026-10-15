@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# provisioner-dispatch  (comando forzado de la clave del usuario provisioner)
+#
+# El orquestador solo puede pedir, por SSH_ORIGINAL_COMMAND, exactamente:
+#   install-client <slug>   (la clave pública del cliente llega por stdin)
+#   client-status <slug>
+# Cualquier otra cosa se rechaza. El slug se valida aquí y otra vez en el script.
+set -euo pipefail
+
+readonly ALLOWED_RE='^(install-client|client-status) ([a-z0-9]+(-[a-z0-9]+)*)$'
+
+command=${SSH_ORIGINAL_COMMAND:-}
+if [[ ${#command} -gt 64 || ! $command =~ $ALLOWED_RE ]]; then
+  printf 'REJECTED command not allowed\n' >&2
+  exit 126
+fi
+action=${BASH_REMATCH[1]}
+slug=${BASH_REMATCH[2]}
+((${#slug} <= 30)) || {
+  printf 'REJECTED command not allowed\n' >&2
+  exit 126
+}
+
+exec sudo -n "/opt/platform/bin/$action" "$slug"

@@ -27,6 +27,7 @@ start() {
     --env-file "$APP_DIR/api.env" \
     -v "$APP_DIR/github-app.pem:/run/secrets/github-app.pem:ro" \
     -v "$APP_DIR/initial-password.key:/run/secrets/initial-password.key:ro" \
+    -v "$APP_DIR/provisioner_ed25519:/run/secrets/provisioner_ed25519:ro" \
     --log-opt max-size=10m --log-opt max-file=5 \
     "$IMAGE:$1" >/dev/null
 }
@@ -41,9 +42,13 @@ mv "$INCOMING/github-app.pem" "$APP_DIR/github-app.pem"
 # Clave de la revelación única de contraseñas iniciales: se genera una vez en el servidor,
 # nunca sale de él y se conserva entre despliegues.
 [ -s "$APP_DIR/initial-password.key" ] || openssl rand -base64 32 > "$APP_DIR/initial-password.key"
+# Clave SSH del orquestador (usuario provisioner del VPS): también se genera aquí una vez. Su
+# parte pública se instala con: bootstrap-vps.sh --provisioner-pubkey $APP_DIR/provisioner_ed25519.pub
+[ -s "$APP_DIR/provisioner_ed25519" ] ||
+  ssh-keygen -q -t ed25519 -N "" -C "launchpad-provisioner" -f "$APP_DIR/provisioner_ed25519"
 # El contenedor corre como el usuario "node" (uid 1000) de la imagen, no como root.
-chown 1000:1000 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key"
-chmod 400 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key"
+chown 1000:1000 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key" "$APP_DIR/provisioner_ed25519"
+chmod 400 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key" "$APP_DIR/provisioner_ed25519"
 
 echo "Cargando imagen $IMAGE:$RELEASE…"
 gunzip -c "$INCOMING/api-image.tar.gz" | docker load

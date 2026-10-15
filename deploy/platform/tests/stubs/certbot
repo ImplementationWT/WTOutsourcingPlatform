@@ -1,0 +1,15 @@
+#!/bin/bash
+# certbot simulado: registra la llamada y deja un certificado autofirmado donde
+# lo dejaría certbot (/etc/letsencrypt/live/<host>/).
+set -euo pipefail
+printf '%s\n' "$*" >>/var/log/certbot-stub.calls
+host=""
+while (($#)); do
+  [[ $1 == -d ]] && host=$2
+  shift
+done
+[[ -n $host ]] || exit 2
+[[ ! -f /tmp/certbot-fail ]] || exit 1
+mkdir -p "/etc/letsencrypt/live/$host"
+openssl req -x509 -newkey rsa:2048 -nodes -days 30 -subj "/CN=$host" \
+  -keyout "/etc/letsencrypt/live/$host/privkey.pem" -out "/etc/letsencrypt/live/$host/fullchain.pem" 2>/dev/null

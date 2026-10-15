@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# install-client <slug>  (root, vía sudo desde provisioner-dispatch)
+#
+# Prepara el servidor para un cliente. Idempotente: reintentarlo reutiliza el
+# puerto, no reemite el certificado y reemplaza la clave del cliente.
+#   1. Comprueba que nginx incluye /etc/nginx/platform-apps/*.conf.
+#   2. Asigna (o reutiliza) un puerto de loopback del registro.
+#   3. Crea /srv/customer-apps/<slug> y la red Docker app-<slug>.
+#   4. Si no existe, emite el certificado de <slug>.<APP_BASE_DOMAIN> (webroot).
+#   5. Escribe el server de nginx desde la plantilla del contrato (nginx -t o se restaura).
+#   6. Instala la clave pública (stdin) en ~deploy/.ssh/authorized_keys con comando forzado.
+#      Con stdin vacío conserva la clave ya instalada.
+# Salida: una última línea JSON {"status":"ok",...}; si falla, código ≠ 0 y el motivo en stderr.
+set -euo pipefail
+
+# shellcheck source=../lib/common.sh
+source /opt/platform/lib/common.sh
+
+[[ $# -eq 1 ]] || die "uso: install-client <slug>"
+slug=$1
+require_slug "$slug"
+load_config
+
+host=$(client_host "$slug")
+dir=$(client_dir "$slug")
+network=$(client_network "$slug")
+conf="$NGINX_APPS_DIR/$slug.conf"
+
+# La clave pública llega por stdin (una línea); nunca por argumentos.
+# Vacío = conservar la clave ya instalada (el repo ya tiene su DEPLOY_SSH_KEY).
+pubkey_raw=$(head -c 1024)
+pubkey=""
+if [[ -n ${pubkey_raw//[[:space:]]/} ]]; then
+  pubkey=$(normalize_pubkey "$pubkey_raw") || die "la clave pública debe ser una línea ssh-ed25519"
+fi
+
+# 1. La config actual de nginx debe ser válida y el include estar activo
+#    (si no, nginx ignoraría la config del cliente).
+nginx -t >/dev/null 2>&1 || die "la configuración actual de nginx no es válida (nginx -t); corrígela antes de instalar clientes"
+if ! nginx_include_active; then
+  die "nginx no incluye $NGINX_APPS_DIR. Añade dentro del bloque http de $NGINX_CONF la línea: $(nginx_include_line)  (o ejecuta bootstrap-vps.sh --wire-nginx)"
+fi
+
+deploy_home=$(getent passwd deploy | cut -d: -f6)
+[[ -n $deploy_home ]] || die "no existe el usuario deploy (ejecuta bootstrap-vps.sh)"
+keys="$deploy_home/.ssh/authorized_keys"
+# Conservar la clave solo tiene sentido si existe: se comprueba antes de emitir certificados.
+if [[ -z $pubkey ]] && ! awk -v marker="$KEY_MARKER_PREFIX$slug" '$NF == marker { found = 1 } END { exit !found }' "$keys" 2>/dev/null; then
+  die "no hay ninguna clave instalada para $slug: borra DEPLOY_SSH_KEY del entorno production del repo y reintenta"
+fi
+
+# 2. Puerto (registro con flock).
+port=$(assign_port "$slug")
+
+# 3. Carpeta y red propias.
+install -d -m 700 -o root -g root "$dir"
+if ! docker network inspect "$network" >/dev/null 2>&1; then
+  docker network create --driver bridge --label "platform.client=$slug" "$network" >/dev/null
+fi
+
+# 4. Certificado: nunca se reemite si ya existe (límites de Let's Encrypt).
+certificate=existing
+if [[ ! -s "$LETSENCRYPT_LIVE/$host/fullchain.pem" ]]; then
+  [[ -n $ACME_EMAIL ]] || die "ACME_EMAIL no está configurado en $PLATFORM_CONF"
+  install -d -m 755 "$CERTBOT_WEBROOT"
+  # El server temporal solo responde al desafío ACME; el resto, 404.
+  nginx_apply "$conf" "$(render_template "$PLATFORM_DIR/templates/nginx-acme.conf" "HOST=$host" "WEBROOT=$CERTBOT_WEBROOT")"
+  certbot_args=(certonly --webroot -w "$CERTBOT_WEBROOT" -d "$host" --non-interactive --agree-tos -m "$ACME_EMAIL" --keep-until-expiring)
+  [[ -z $ACME_CA ]] || certbot_args+=(--server "$ACME_CA")
+  if ! certbot "${certbot_args[@]}" >&2; then
+    die "certbot no pudo emitir el certificado de $host. Comprueba que el DNS resuelve a este servidor y que el puerto 80 es accesible."
+  fi
+  [[ -s "$LETSENCRYPT_LIVE/$host/fullchain.pem" ]] || die "certbot terminó sin dejar el certificado en $LETSENCRYPT_LIVE/$host"
+  certificate=issued
+fi
+
+# 5. Config final (host y puerto calculados aquí, nunca recibidos).
+nginx_apply "$conf" "$(render_template "$PLATFORM_DIR/templates/nginx-app.conf" \
+  "HOST=$host" "PORT=$port" "WEBROOT=$CERTBOT_WEBROOT" "LIVE=$LETSENCRYPT_LIVE")"
+
+# 6. Clave del cliente: una por slug; si ya había una, se reemplaza.
+install -d -m 700 -o deploy -g deploy "$deploy_home/.ssh"
+exec {keys_lock}>"$deploy_home/.ssh/.authorized_keys.lock"
+flock -w 60 "$keys_lock" || die "no se pudo bloquear authorized_keys"
+touch "$keys"
+if [[ -z $pubkey ]]; then
+  key_status=kept
+  awk -v marker="$KEY_MARKER_PREFIX$slug" '$NF == marker { found = 1 } END { exit !found }' "$keys" ||
+    die "no hay ninguna clave instalada para $slug: borra DEPLOY_SSH_KEY del entorno production del repo y reintenta"
+else
+  key_status=installed
+  tmp=$(mktemp "$deploy_home/.ssh/.authorized_keys.XXXXXX")
+  awk -v marker="$KEY_MARKER_PREFIX$slug" '$NF != marker' "$keys" >"$tmp"
+  printf '%s\n' "$(authorized_key_line "$slug" "$pubkey")" >>"$tmp"
+  chown deploy:deploy "$tmp"
+  chmod 600 "$tmp"
+  mv -f "$tmp" "$keys"
+fi
+flock -u "$keys_lock"
+
+jq -cn --arg slug "$slug" --arg host "$host" --argjson port "$port" --arg certificate "$certificate" --arg key "$key_status" \
+  '{status: "ok", slug: $slug, host: $host, port: $port, certificate: $certificate, key: $key}'

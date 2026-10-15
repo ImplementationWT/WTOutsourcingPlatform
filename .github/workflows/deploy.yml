@@ -76,8 +76,14 @@ jobs:
           ATLAS_CLUSTER_NAME=${{ vars.ATLAS_CLUSTER_NAME }}
           ATLAS_CLUSTER_SRV_HOST=${{ vars.ATLAS_CLUSTER_SRV_HOST }}
           ADMIN_MONGODB_URI=$ADMIN_MONGODB_URI
-          APPS_DOMAIN=${{ vars.APPS_DOMAIN }}
+          APP_BASE_DOMAIN=${{ vars.APP_BASE_DOMAIN || vars.APPS_DOMAIN }}
           DEPLOY_ENABLED=${{ vars.DEPLOY_ENABLED || 'false' }}
+          DEPLOY_HOST=${{ vars.DEPLOY_HOST }}
+          DEPLOY_HOST_KEY=${{ vars.DEPLOY_HOST_KEY }}
+          GHCR_ORG=${{ vars.GHCR_ORG }}
+          VPS_PUBLIC_IP=${{ vars.VPS_PUBLIC_IP }}
+          ACME_CA=${{ vars.ACME_CA }}
+          PROVISIONER_SSH_KEY_SECRET_REF=/run/secrets/provisioner_ed25519
           TEMPLATE_VERSION=${{ vars.TEMPLATE_VERSION }}
           MIN_SCHEMA_VERSION=${{ vars.MIN_SCHEMA_VERSION }}
           INITIAL_ADMIN_MODE=${{ vars.INITIAL_ADMIN_MODE }}

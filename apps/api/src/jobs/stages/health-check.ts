@@ -18,7 +18,7 @@ export const healthCheckStage: Stage = {
     const minSchema = config.template.minSchemaVersion;
 
     await ctx.plan([
-      { id: "ready", label: "GET /health/ready responde 200 (migraciones terminadas)" },
+      { id: "ready", label: "GET /health/ready por HTTPS responde 200 (certificado válido, migraciones terminadas)" },
       { id: "meta", label: `GET /api/meta: clientId, schemaVersion ≥ ${minSchema} y appName` },
       { id: "frontend", label: "GET / sirve el frontend (HTML)" }
     ]);
@@ -82,7 +82,10 @@ export const healthCheckStage: Stage = {
     await store.setClientFields(client._id, {
       readiness: { ready: true, checkedAt, detail: `/health/ready 200 · /api/meta OK (schema ${schemaVersion}) · frontend OK` },
       "template.schemaVersion": schemaVersion,
-      "template.schemaCheckedAt": checkedAt
+      "template.schemaCheckedAt": checkedAt,
+      // Las peticiones anteriores fueron por HTTPS con el certificado verificado (salvo CA de staging).
+      "deployment.httpsVerifiedAt": checkedAt,
+      "deployment.httpsTrusted": !config.server?.acmeCa
     });
     await ctx.report(`${names.host} listo: migraciones aplicadas, /api/meta correcto y frontend servido.`);
   }

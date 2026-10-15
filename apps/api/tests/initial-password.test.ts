@@ -3,9 +3,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { buildApp } from "../src/app.js";
 import { hashPassword } from "../src/auth/password.js";
 import { FatalError } from "../src/lib/errors.js";
-import { clearRegisteredSecrets, registerSecret } from "../src/lib/redact.js";
+import { clearRegisteredSecrets } from "../src/lib/redact.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
-import { createFakes, TEST_CONFIG } from "./helpers/fakes.js";
+import { createFakes } from "./helpers/fakes.js";
 
 const ADMIN_PASSWORD = "correct horse battery staple";
 let passwordHash: string;
@@ -17,7 +17,6 @@ beforeAll(async () => {
 afterAll(stopDb);
 beforeEach(() => {
   clearRegisteredSecrets();
-  registerSecret(TEST_CONFIG.deploy!.privateKey);
 });
 
 let apps: Awaited<ReturnType<typeof buildApp>>[] = [];

@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { DEPLOY_ENABLED, deriveResources, GITHUB_ORG, STACK } from "../config";
+import { usePlatform } from "../api";
+import { deriveResources, GITHUB_ORG, STACK } from "../config";
 import { Code } from "./parts";
 import type { NewProjectValues } from "./schema";
 
@@ -54,7 +55,9 @@ export default function SummaryStep({
   values: NewProjectValues;
   onEditInfo: () => void;
 }) {
-  const resources = deriveResources(values.slug);
+  const platform = usePlatform().data;
+  const DEPLOY_ENABLED = platform?.deployEnabled ?? false;
+  const resources = deriveResources(values.slug, platform?.appBaseDomain);
 
   return (
     <div className="space-y-6">
@@ -93,7 +96,7 @@ export default function SummaryStep({
         <Row label="URL pública">
           <Code>https://{resources.subdomain}</Code>
         </Row>
-        <Row label="HTTPS">Certificado TLS automático (Caddy){!DEPLOY_ENABLED && " · próximamente"}</Row>
+        <Row label="HTTPS">Certificado de Let&apos;s Encrypt (Certbot) servido por nginx{!DEPLOY_ENABLED && " · próximamente"}</Row>
         <Row label="Verificación">
           <Code>{STACK.healthPath}</Code> y <Code>{STACK.metaPath}</Code> antes de marcarlo como listo
           {!DEPLOY_ENABLED && " · próximamente"}

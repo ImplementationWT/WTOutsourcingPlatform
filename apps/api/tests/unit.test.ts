@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { verifyPassword, hashPassword } from "../src/auth/password.js";
 import { deriveNames, parseSlug } from "../src/domain/naming.js";
-import { envSchema, loadEnv } from "../src/config/env.js";
+import { envSchema, loadEnv, loadServerConfig, parseHostKeys } from "../src/config/env.js";
 import { TransientError } from "../src/lib/errors.js";
 import { clearRegisteredSecrets, redact, redactString, registerSecret, REDACTED } from "../src/lib/redact.js";
 import { backoffDelay, withRetry } from "../src/lib/retry.js";
@@ -137,6 +137,64 @@ describe("configuración del template y de la contraseña inicial", () => {
     expect(envSchema.shape.TEMPLATE_VERSION.safeParse("1.2.0").success).toBe(true);
     expect(envSchema.shape.MIN_SCHEMA_VERSION.safeParse("0").success).toBe(false);
     expect(envSchema.shape.INITIAL_ADMIN_MODE.safeParse("manual").success).toBe(false);
+  });
+});
+
+describe("configuración del VPS", () => {
+  const base = {
+    GITHUB_APP_ID: "1",
+    GITHUB_INSTALLATION_ID: "2",
+    GITHUB_PRIVATE_KEY_PATH: "/tmp/key.pem",
+    GITHUB_TEMPLATE_OWNER: "acme",
+    GITHUB_TEMPLATE_REPO: "node-typescript-template",
+    GITHUB_TARGET_OWNER: "acme",
+    ATLAS_PROJECT_ID: "a".repeat(24),
+    ATLAS_CLIENT_ID: "id",
+    ATLAS_CLIENT_SECRET: "secret",
+    ATLAS_CLUSTER_NAME: "cluster",
+    ATLAS_CLUSTER_SRV_HOST: "cluster.abcde.mongodb.net",
+    ADMIN_MONGODB_URI: "mongodb://localhost",
+    APP_BASE_DOMAIN: "apps.example.test",
+    PANEL_ADMIN_USERNAME: "admin",
+    PANEL_ADMIN_PASSWORD_HASH: "scrypt$x",
+    SESSION_SECRET: "x".repeat(32),
+    INITIAL_ADMIN_MODE: "default"
+  };
+  const hostKey = "203.0.113.10 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl";
+
+  it("DEPLOY_ENABLED=true exige host, huella, clave del provisioner, GHCR_ORG y VPS_PUBLIC_IP (sin mostrar valores)", () => {
+    expect(() => loadEnv({ ...base, DEPLOY_ENABLED: "true" })).toThrow(/DEPLOY_HOST[\s\S]*DEPLOY_HOST_KEY[\s\S]*PROVISIONER_SSH_KEY_SECRET_REF[\s\S]*GHCR_ORG[\s\S]*VPS_PUBLIC_IP/);
+    const env = loadEnv({
+      ...base,
+      DEPLOY_ENABLED: "true",
+      DEPLOY_HOST: "203.0.113.10",
+      DEPLOY_HOST_KEY: hostKey,
+      PROVISIONER_SSH_KEY_SECRET_REF: "/run/secrets/provisioner",
+      GHCR_ORG: "implementationwt",
+      VPS_PUBLIC_IP: "203.0.113.10"
+    });
+    expect(env).toMatchObject({ DEPLOY_SSH_PORT: 22, GHCR_ORG: "implementationwt" });
+  });
+
+  it("valida formatos: GHCR_ORG en minúsculas, IPv4 y ACME_CA https", () => {
+    expect(envSchema.shape.GHCR_ORG.safeParse("ImplementationWT").success).toBe(false);
+    expect(envSchema.shape.VPS_PUBLIC_IP.safeParse("999.1.1.1").success).toBe(false);
+    expect(envSchema.shape.ACME_CA.safeParse("http://staging").success).toBe(false);
+    expect(envSchema.shape.DEPLOY_HOST.safeParse("deploy@vps.example.com").success).toBe(false);
+  });
+
+  it("APPS_DOMAIN sigue valiendo como nombre anterior de APP_BASE_DOMAIN", () => {
+    const rest: Record<string, string | undefined> = { ...base, APP_BASE_DOMAIN: undefined };
+    expect(loadEnv({ ...rest, APPS_DOMAIN: "apps.example.test" }).APPS_DOMAIN).toBe("apps.example.test");
+    expect(() => loadEnv(rest)).toThrow(/APP_BASE_DOMAIN/);
+  });
+
+  it("DEPLOY_HOST_KEY: known_hosts con o sin host; genera DEPLOY_KNOWN_HOSTS con DEPLOY_HOST", () => {
+    const keys = parseHostKeys(hostKey.split(" ").slice(1).join(" "), "vps.example.test");
+    expect(keys[0].line).toBe(`vps.example.test ${hostKey.split(" ").slice(1).join(" ")}`);
+    expect(keys[0].key.length).toBeGreaterThan(30);
+    expect(() => parseHostKeys("no es una clave", "vps")).toThrow(/DEPLOY_HOST_KEY/);
+    expect(loadServerConfig(loadEnv(base))).toBeUndefined();
   });
 });
 

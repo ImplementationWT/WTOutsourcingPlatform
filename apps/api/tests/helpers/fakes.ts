@@ -1,10 +1,11 @@
 import { AtlasUserExistsError, type AtlasAdapter, type AtlasDatabaseUser, type DatabaseUserSpec } from "../../src/adapters/atlas.js";
 import { GithubRepoExistsError, type GithubAdapter, type RepoInfo, type WorkflowRun } from "../../src/adapters/github.js";
 import type { HttpProbe } from "../../src/adapters/http-probe.js";
+import type { InstallResult, ServerAdapter, ServerClientStatus } from "../../src/adapters/server.js";
 import { randomBytes } from "node:crypto";
 import type { BootstrapDocument, BootstrapPhase, MongoBootstrapAdapter } from "../../src/adapters/mongo-bootstrap.js";
-import { TransientError } from "../../src/lib/errors.js";
-import type { Deps, ProvisioningConfig, Timing } from "../../src/jobs/types.js";
+import { FatalError, TransientError } from "../../src/lib/errors.js";
+import type { Deps, DnsResolver, ProvisioningConfig, Timing } from "../../src/jobs/types.js";
 import type { AdminStore } from "../../src/store/admin-store.js";
 import { InitialPasswordVault } from "../../src/store/initial-password-vault.js";
 
@@ -102,9 +103,9 @@ export class FakeGithub extends Faulty implements GithubAdapter {
   readonly runs = new Map<string, WorkflowRun[]>();
   /** Conclusión del próximo run lanzado. */
   nextRunConclusion: "success" | "failure" = "success";
-  templateVersion = "1.1.0";
+  templateVersion = "1.3.0";
   /** Versión actual del package.json de la plantilla (la que copian los repos nuevos). */
-  templateSourceVersion = "1.1.0";
+  templateSourceVersion = "1.3.0";
 
   async getRepository(name: string) {
     this.hit("getRepository", name);
@@ -184,6 +185,10 @@ export class FakeGithub extends Faulty implements GithubAdapter {
     if (!run) throw new Error("run not found");
     return run;
   }
+  async getRunFailure(repo: string, runId: number) {
+    this.hit("getRunFailure", repo, runId);
+    return "deploy › Deploy over SSH";
+  }
   async listProjectRepos() {
     return [...this.repos.values()].map((r, i) => ({
       ...r,
@@ -198,9 +203,65 @@ export class FakeGithub extends Faulty implements GithubAdapter {
 }
 
 /**
- * La "app" desplegada (template 1.1.0): responde ready solo si el secret
- * MONGODB_URI autentica contra Atlas, existe SESSION_SECRET y la base tiene
- * bootstrap (valida la cadena entera). /api/meta lee APP_DISPLAY_NAME del entorno.
+ * VPS simulado: install-client (puerto, certificado, clave con comando forzado) y
+ * client-status. Cuenta emisiones de certificado y guarda una clave por cliente.
+ */
+export class FakeServer extends Faulty implements ServerAdapter {
+  readonly clients = new Map<string, { port: number; publicKey: string; certificates: number }>();
+  private nextPort = 20000;
+  constructor(private readonly github: FakeGithub, private readonly appsDomain: string) {
+    super();
+  }
+  async installClient(slug: string, publicKey?: string): Promise<InstallResult> {
+    this.hit("installClient", slug, publicKey);
+    const existing = this.clients.get(slug);
+    if (!publicKey && !existing) throw new FatalError("server_command_failed", `no hay ninguna clave instalada para ${slug}`);
+    if (publicKey && !/^ssh-ed25519 AAAAC3NzaC1lZDI1NTE5[A-Za-z0-9+/]{48}( |$)/.test(publicKey)) throw new Error("clave inválida");
+    const entry = existing ?? { port: this.nextPort++, publicKey: publicKey!, certificates: 1 };
+    if (publicKey) entry.publicKey = publicKey; // una clave por cliente: se reemplaza
+    this.clients.set(slug, entry);
+    return {
+      status: "ok",
+      slug,
+      host: `${slug}.${this.appsDomain}`,
+      port: entry.port,
+      certificate: existing ? "existing" : "issued",
+      key: publicKey ? "installed" : "kept"
+    };
+  }
+  async clientStatus(slug: string): Promise<ServerClientStatus> {
+    this.hit("clientStatus", slug);
+    const entry = this.clients.get(slug);
+    const deployed = (this.github.runs.get(`${slug}-app`) ?? []).some((r) => r.conclusion === "success");
+    return {
+      slug,
+      host: `${slug}.${this.appsDomain}`,
+      port: entry?.port ?? null,
+      nginx: !!entry,
+      certificate: entry ? { notAfter: "2027-01-13T15:01:54Z" } : null,
+      deployment: deployed ? { image: `ghcr.io/acme-org/${slug}-app@sha256:${"a".repeat(64)}`, deployedAt: "2026-10-15T20:00:00Z" } : null,
+      container: deployed ? { state: "running", health: "healthy" } : null
+    };
+  }
+}
+
+/** DNS simulado: por defecto el comodín resuelve todo al VPS. */
+export class FakeResolver extends Faulty implements DnsResolver {
+  readonly records = new Map<string, string[]>();
+  wildcard: string[] | null = ["203.0.113.10"];
+  async resolve4(host: string) {
+    this.hit("resolve4", host);
+    const found = this.records.get(host) ?? this.wildcard;
+    if (!found) throw Object.assign(new Error(`queryA ENOTFOUND ${host}`), { code: "ENOTFOUND" });
+    return found;
+  }
+}
+
+/**
+ * La "app" desplegada (template 1.3.0): responde ready solo si el servidor la
+ * instaló con la clave de DEPLOY_SSH_KEY, el secret MONGODB_URI autentica contra
+ * Atlas, existe SESSION_SECRET y la base tiene bootstrap (valida la cadena entera).
+ * /api/meta lee APP_DISPLAY_NAME del entorno.
  */
 export class FakeProbe extends Faulty implements HttpProbe {
   /** schemaVersion que registran las migraciones de la app simulada. */
@@ -209,7 +270,12 @@ export class FakeProbe extends Faulty implements HttpProbe {
   frontendContentType = "text/html; charset=utf-8";
   /** Para simular una app que expone otro appName. */
   appNameOverride?: string;
-  constructor(private readonly github: FakeGithub, private readonly mongo: FakeMongo, private readonly appsDomain: string) {
+  constructor(
+    private readonly github: FakeGithub,
+    private readonly mongo: FakeMongo,
+    private readonly appsDomain: string,
+    private readonly server?: FakeServer
+  ) {
     super();
   }
   private app(url: string) {
@@ -221,7 +287,10 @@ export class FakeProbe extends Faulty implements HttpProbe {
     const db = env?.secrets.get("MONGODB_DB");
     const sessionSecret = env?.secrets.get("SESSION_SECRET");
     const deployed = (this.github.runs.get(repo) ?? []).some((r) => r.conclusion === "success");
-    const ok = deployed && !!uri && !!db && (sessionSecret?.length ?? 0) >= 32 && this.mongo.credentialsValid(uri);
+    const installed =
+      !this.server ||
+      (this.server.clients.has(slug) && !!env?.secrets.get("DEPLOY_SSH_KEY") && env?.variables.get("APP_HOSTNAME") === host);
+    const ok = deployed && installed && !!uri && !!db && (sessionSecret?.length ?? 0) >= 32 && this.mongo.credentialsValid(uri);
     return { ok, doc: db ? this.mongo.databases.get(db) : undefined, appName: env?.variables.get("APP_DISPLAY_NAME") ?? "Aplicación" };
   }
   async status(url: string) {
@@ -270,11 +339,11 @@ export const TEST_CONFIG: ProvisioningConfig = {
   },
   initialAdmin: { mode: "random", revealTtlMs: 30 * 60_000 },
   deployEnabled: true,
-  deploy: {
-    host: "deploy.example.test",
-    user: "deployer",
-    privateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\nZmFrZS10ZXN0LWtleQ==\n-----END OPENSSH PRIVATE KEY-----",
-    knownHosts: "deploy.example.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeHostKeyForTests"
+  server: {
+    host: "vps.example.test",
+    knownHosts: "vps.example.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeHostKeyForTests",
+    publicIp: "203.0.113.10",
+    ghcrOrg: "acme-org"
   }
 };
 
@@ -291,7 +360,9 @@ export function createFakes(store: AdminStore) {
   const atlas = new FakeAtlas();
   const mongo = new FakeMongo(atlas);
   const github = new FakeGithub();
-  const probe = new FakeProbe(github, mongo, TEST_CONFIG.appsDomain);
+  const server = new FakeServer(github, TEST_CONFIG.appsDomain);
+  const resolver = new FakeResolver();
+  const probe = new FakeProbe(github, mongo, TEST_CONFIG.appsDomain, server);
   const clock = new FakeClock();
   const vault = new InitialPasswordVault(store.initialPasswords, randomBytes(32), clock.now);
   const deps: Deps = {
@@ -299,10 +370,12 @@ export function createFakes(store: AdminStore) {
     github,
     mongo,
     probe,
+    server,
+    resolver,
     vault,
     config: TEST_CONFIG,
     timing: TEST_TIMING,
     sleep: async () => {}
   };
-  return { atlas, mongo, github, probe, vault, clock, deps };
+  return { atlas, mongo, github, probe, server, resolver, vault, clock, deps };
 }

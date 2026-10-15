@@ -46,20 +46,21 @@ describe("motor de etapas", () => {
     // Estado final en los servicios.
     expect(github.repos.has("acme-crm-app")).toBe(true);
     expect(atlas.users.get("app_acme_crm")?.user.roles).toEqual([{ roleName: "readWrite", databaseName: "client_acme_crm" }]);
-    expect(mongo.databases.get("client_acme_crm")).toEqual({ clientId: "acme-crm", templateVersion: "1.1.0", schemaVersion: 1 });
+    expect(mongo.databases.get("client_acme_crm")).toEqual({ clientId: "acme-crm", templateVersion: "1.3.0", schemaVersion: 1 });
+    // Solo los nombres del contrato 1.3.0 (§3).
     const env = github.env("acme-crm-app");
     expect([...env.secrets.keys()].sort()).toEqual([
-      "DEPLOY_SSH_HOST",
-      "DEPLOY_SSH_KNOWN_HOSTS",
-      "DEPLOY_SSH_PRIVATE_KEY",
-      "DEPLOY_SSH_USER",
+      "DEPLOY_SSH_KEY",
       "INITIAL_ADMIN_PASSWORD",
       "MONGODB_DB",
       "MONGODB_URI",
       "SESSION_SECRET"
     ]);
     expect(env.secrets.get("MONGODB_DB")).toBe("client_acme_crm");
-    expect(env.variables.get("APP_BASE_URL")).toBe("https://acme-crm.apps.example.test");
+    expect([...env.variables.keys()].sort()).toEqual(["APP_DISPLAY_NAME", "APP_HOSTNAME", "DEPLOY_HOST", "DEPLOY_KNOWN_HOSTS"]);
+    expect(env.variables.get("APP_HOSTNAME")).toBe("acme-crm.apps.example.test");
+    expect(env.variables.get("DEPLOY_HOST")).toBe("vps.example.test");
+    expect(env.variables.get("DEPLOY_KNOWN_HOSTS")).toBe("vps.example.test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeHostKeyForTests");
     expect(env.variables.get("APP_DISPLAY_NAME")).toBe("Acme CRM");
     expect(github.count("dispatchWorkflow")).toBe(1);
 
@@ -111,7 +112,8 @@ describe("motor de etapas", () => {
     expect(mongo.credentialsValid(github.env("acme-crm-app").secrets.get("MONGODB_URI")!)).toBe(true);
     // Sin duplicados.
     expect(atlas.users.size).toBe(1);
-    expect(await store.resources.countDocuments({ clientId: "acme-crm" })).toBe(5);
+    // repo, usuario, base, entorno, servidor y despliegue: uno de cada.
+    expect(await store.resources.countDocuments({ clientId: "acme-crm" })).toBe(6);
 
     const actions = (await store.auditLog.find({ clientId: "acme-crm" }).toArray()).map((a) => a.action);
     expect(actions).toContain("atlas.database_user.password_rotated");
@@ -303,12 +305,12 @@ describe("motor de etapas", () => {
     expect(client?.readiness.ready).toBe(false); // la app aún no está desplegada
   });
 
-  it("un trabajo que falló en deploy termina bien al reintentarlo con el despliegue deshabilitado", async () => {
+  it("un trabajo que falló por falta de servidor termina bien al reintentarlo con el despliegue deshabilitado", async () => {
     const { store, deps, github, atlas } = await setup();
-    const job = await createClient(store); // 5 etapas, como el de acme-crm
-    const withDeploy = new JobEngine(store, { ...deps, config: { ...deps.config, deploy: undefined } }, silent);
+    const job = await createClient(store); // todas las etapas, como el de acme-crm
+    const withDeploy = new JobEngine(store, { ...deps, config: { ...deps.config, server: undefined } }, silent);
     const failed = await withDeploy.run(job._id, "admin");
-    expect(failed?.stages[3]).toMatchObject({ name: "deploy", status: "failed", error: { code: "deploy_not_configured" } });
+    expect(failed?.stages[3]).toMatchObject({ name: "dns_https", status: "failed", error: { code: "server_not_configured" } });
 
     const phase1 = new JobEngine(store, { ...deps, config: { ...deps.config, deployEnabled: false } }, silent);
     await store.prepareRetry(job._id, phase1.stageNames);

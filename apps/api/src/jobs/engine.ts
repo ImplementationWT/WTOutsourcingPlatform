@@ -7,10 +7,12 @@ import { withRetry } from "../lib/retry.js";
 import type { AdminStore } from "../store/admin-store.js";
 import type { JobDoc, StageName } from "../store/models.js";
 import { deployStage } from "./stages/deploy.js";
+import { dnsHttpsStage } from "./stages/dns-https.js";
 import { githubRepositoryStage } from "./stages/github-repository.js";
 import { githubSecretsStage } from "./stages/github-secrets.js";
 import { healthCheckStage } from "./stages/health-check.js";
 import { mongodbDatabaseStage } from "./stages/mongodb-database.js";
+import { serverPrepareStage } from "./stages/server-prepare.js";
 import type { Deps, JobMemory, Logger, Stage, StageContext } from "./types.js";
 
 /** Orden fijo de las etapas (coincide con STAGES en models.ts). */
@@ -18,11 +20,13 @@ export const PIPELINE: Stage[] = [
   githubRepositoryStage,
   mongodbDatabaseStage,
   githubSecretsStage,
+  dnsHttpsStage,
+  serverPrepareStage,
   deployStage,
   healthCheckStage
 ];
 
-const DEPLOY_STAGES: StageName[] = ["deploy", "health_check"];
+const DEPLOY_STAGES: StageName[] = ["dns_https", "server_prepare", "deploy", "health_check"];
 
 /** Etapas activas según la configuración (sin despliegue mientras esté deshabilitado). */
 export function activePipeline(config: { deployEnabled: boolean }) {
@@ -252,6 +256,7 @@ export class JobEngine {
       clearInterval(heartbeat);
       memory.credential = undefined;
       memory.initialAdminPassword = undefined;
+      memory.deployKey = undefined;
     }
   }
 }

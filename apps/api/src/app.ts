@@ -38,7 +38,7 @@ export async function buildApp({ store, deps, auth, logLevel, logStream }: AppOp
   app.get("/health", async () => ({ status: "ok", service: "provisioning-api" }));
 
   await registerAuth(app, auth);
-  await registerClientRoutes(app, { store, engine, github: deps.github, vault: deps.vault, appsDomain: deps.config.appsDomain });
+  await registerClientRoutes(app, { store, engine, deps });
 
   app.addHook("onClose", async () => {
     await engine.idle();

@@ -123,34 +123,34 @@ describe("INITIAL_ADMIN_PASSWORD", () => {
 describe("verificación de la versión del template", () => {
   it("sin TEMPLATE_VERSION sigue a la plantilla: una versión nueva no requiere configurar nada", async () => {
     const { store, engine, github } = await setup();
-    github.templateVersion = "1.2.0";
-    github.templateSourceVersion = "1.2.0";
+    github.templateVersion = "1.4.0";
+    github.templateSourceVersion = "1.4.0";
     const job = await createClient(store);
     expect((await engine.run(job._id, "admin"))?.status).toBe("succeeded");
-    expect((await store.getClient("acme-crm"))?.template?.version).toBe("1.2.0");
+    expect((await store.getClient("acme-crm"))?.template?.version).toBe("1.4.0");
   });
 
   it("si el repo generado no coincide con la plantilla, se detiene", async () => {
     const { store, engine, github } = await setup();
-    github.templateSourceVersion = "1.2.0"; // el repo salió en 1.1.0
+    github.templateSourceVersion = "1.4.0"; // el repo salió en 1.3.0
     const job = await createClient(store);
     const result = await engine.run(job._id, "admin");
     expect(result?.stages[0].error?.code).toBe("template_version_mismatch");
   });
 
-  it("rechaza plantillas anteriores al contrato soportado (1.1.0)", async () => {
+  it("rechaza plantillas anteriores al protocolo de despliegue soportado (1.3.0)", async () => {
     const { store, engine, github } = await setup();
-    github.templateVersion = "1.0.0";
-    github.templateSourceVersion = "1.0.0";
+    github.templateVersion = "1.2.0";
+    github.templateSourceVersion = "1.2.0";
     const job = await createClient(store);
     const result = await engine.run(job._id, "admin");
     expect(result?.stages[0].error).toMatchObject({ code: "template_version_unsupported", retryable: false });
   });
 
   it("una versión distinta a TEMPLATE_VERSION (fijada) detiene el trabajo y guarda la versión real", async () => {
-    const { store, engine, github, atlas } = await setup({ template: { ...TEST_CONFIG.template, expectedVersion: "1.1.0" } });
-    github.templateVersion = "1.2.0";
-    github.templateSourceVersion = "1.2.0";
+    const { store, engine, github, atlas } = await setup({ template: { ...TEST_CONFIG.template, expectedVersion: "1.3.0" } });
+    github.templateVersion = "1.4.0";
+    github.templateSourceVersion = "1.4.0";
     const job = await createClient(store);
 
     const result = await engine.run(job._id, "admin");
@@ -160,9 +160,9 @@ describe("verificación de la versión del template", () => {
       status: "failed",
       error: { code: "template_version_mismatch", retryable: false }
     });
-    expect(result?.stages[0].error?.message).toContain("1.2.0");
-    expect(result?.stages[0].error?.message).toContain("1.1.0");
-    expect((await store.getClient("acme-crm"))?.template?.version).toBe("1.2.0");
+    expect(result?.stages[0].error?.message).toContain("1.4.0");
+    expect(result?.stages[0].error?.message).toContain("1.3.0");
+    expect((await store.getClient("acme-crm"))?.template?.version).toBe("1.4.0");
     // No se tocó nada más.
     expect(atlas.count("createDatabaseUser")).toBe(0);
   });
@@ -172,7 +172,7 @@ describe("verificación de la versión del template", () => {
     const job = await createClient(store);
     const result = await engine.run(job._id, "admin");
     expect(result?.stages[0].steps?.find((s) => s.id === "version")).toMatchObject({ status: "done" });
-    expect((await store.getClient("acme-crm"))?.template).toMatchObject({ name: "node-typescript", version: "1.1.0", schemaVersion: 1 });
+    expect((await store.getClient("acme-crm"))?.template).toMatchObject({ name: "node-typescript", version: "1.3.0", schemaVersion: 1 });
   });
 });
 
@@ -220,6 +220,8 @@ describe("reintentos sin duplicar", () => {
     ["github_repository", (f) => f.github.faults.set("readFile", once(() => new FatalError("github_rejected", "x")))],
     ["mongodb_database", (f) => f.mongo.faults.set("bootstrap", once(() => new FatalError("mongodb_error", "x")))],
     ["github_secrets", (f) => f.github.faults.set("setEnvironmentVariable", once(() => new FatalError("github_rejected", "x")))],
+    ["dns_https", (f) => f.resolver.faults.set("resolve4", once(() => Object.assign(new Error("x"), { code: "ENOTFOUND" })))],
+    ["server_prepare", (f) => f.server.faults.set("installClient", once(() => new FatalError("server_command_failed", "x")))],
     ["deploy", (f) => f.github.faults.set("getWorkflow", once(() => new FatalError("github_rejected", "x")))],
     ["health_check", (f) => f.probe.faults.set("json", once(() => new FatalError("meta_mismatch", "x")))]
   ];
@@ -241,11 +243,10 @@ describe("reintentos sin duplicar", () => {
       expect(atlas.count("createDatabaseUser")).toBe(1);
       expect(writes(github, "SESSION_SECRET")).toBe(1);
       expect(writes(github, "INITIAL_ADMIN_PASSWORD")).toBe(1);
-      for (const name of ["DEPLOY_SSH_HOST", "DEPLOY_SSH_USER", "DEPLOY_SSH_PRIVATE_KEY", "DEPLOY_SSH_KNOWN_HOSTS"]) {
-        expect(writes(github, name)).toBe(1);
-      }
+      expect(writes(github, "DEPLOY_SSH_KEY")).toBe(1);
+      expect(fakes.server.clients.size).toBe(1);
       expect(github.count("dispatchWorkflow")).toBe(1);
-      expect(await store.resources.countDocuments({ clientId: "acme-crm" })).toBe(5);
+      expect(await store.resources.countDocuments({ clientId: "acme-crm" })).toBe(6);
     });
   }
 });

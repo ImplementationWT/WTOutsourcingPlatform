@@ -1,6 +1,7 @@
 import { FatalError } from "../../lib/errors.js";
 import { pollUntil } from "../../lib/retry.js";
 import type { Stage, StageContext } from "../types.js";
+import { requireServer } from "./dns-https.js";
 
 const CLOCK_SKEW_MS = 30_000;
 
@@ -27,12 +28,7 @@ export const deployStage: Stage = {
     const { github, config, timing, sleep } = deps;
     const workflow = config.template.deployWorkflow;
 
-    if (!config.deploy) {
-      throw new FatalError(
-        "deploy_not_configured",
-        "DEPLOY_ENABLED=true pero faltan DEPLOY_SSH_HOST, DEPLOY_SSH_USER, DEPLOY_SSH_PRIVATE_KEY_PATH o DEPLOY_SSH_KNOWN_HOSTS_PATH; el workflow Deploy fallaría sin ellos."
-      );
-    }
+    requireServer(ctx);
 
     // La generación desde template tarda: se espera a que el workflow exista y esté activo.
     await ctx.report(`Esperando el workflow ${workflow}…`);
@@ -98,7 +94,22 @@ export const deployStage: Stage = {
     );
     if (!finished) throw new FatalError("deploy_timeout", `El despliegue no terminó a tiempo. Revisa ${started.url}.`);
     if (finished.conclusion !== "success") {
-      throw new FatalError("deploy_failed", `El despliegue terminó con "${finished.conclusion}". Revisa ${finished.url}.`);
+      // El motivo exacto (DEPLOY_FAILED <motivo>) está en el log del run; aquí, el job y el paso que fallaron.
+      const where = await github.getRunFailure(names.repository, runId).catch(() => null);
+      throw new FatalError(
+        "deploy_failed",
+        `El despliegue terminó con "${finished.conclusion}"${where ? ` en ${where}` : ""}. Revisa ${finished.url}.`
+      );
+    }
+    await store.setClientFields(client._id, { "deployment.lastRunUrl": finished.url });
+
+    // El servidor confirma qué imagen (por digest) quedó desplegada y cuándo.
+    const status = await deps.server.clientStatus(names.slug).catch(() => null);
+    if (status?.deployment) {
+      await store.setClientFields(client._id, {
+        "deployment.image": status.deployment.image,
+        "deployment.deployedAt": new Date(status.deployment.deployedAt)
+      });
     }
     await ctx.report(`Despliegue completado (${finished.url}).`);
   }

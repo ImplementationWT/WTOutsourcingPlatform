@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# deploy-client <slug>  (root, vía sudo; comando forzado de la clave del cliente)
+#
+# Protocolo del contrato del template (§5): lee un JSON por stdin
+#   { "image": "ghcr.io/<org>/<slug>-app@sha256:…", "env": {…}, "registryToken": "…" }
+# valida imagen y variables, descarga la imagen con credenciales temporales,
+# escribe el .env (0600), genera el compose y lo arranca esperando a que esté sano.
+# Si no queda sano, vuelve al despliegue anterior.
+#
+# Stdout: una única línea, "DEPLOY_OK" o "DEPLOY_FAILED <motivo>" (sin secretos).
+# El detalle técnico va a /srv/customer-apps/<slug>/deploy.log (solo root).
+set -euo pipefail
+
+# shellcheck source=../lib/common.sh
+source /opt/platform/lib/common.sh
+
+result=""
+docker_config=""
+
+# shellcheck disable=SC2317  # se invoca desde trap
+finish() {
+  [[ -z $docker_config ]] || rm -rf "$docker_config"
+  [[ -n $result ]] || printf 'DEPLOY_FAILED internal error\n'
+}
+trap finish EXIT
+
+fail() {
+  result=failed
+  printf 'DEPLOY_FAILED %s\n' "$1"
+  exit 1
+}
+
+# Los errores de configuración (die) también deben respetar el protocolo.
+# shellcheck disable=SC2317  # reemplaza a die() de common.sh
+die() {
+  printf 'ERROR: %s\n' "$*" >&2
+  fail "server misconfigured"
+}
+
+[[ $# -eq 1 ]] || fail "invalid slug"
+slug=$1
+valid_slug "$slug" || fail "invalid slug"
+load_config
+
+dir=$(client_dir "$slug")
+port=$(port_of "$slug")
+[[ -d $dir && -n $port ]] || fail "client not installed"
+log="$dir/deploy.log"
+umask 077
+
+# Un despliegue por cliente a la vez.
+exec 9>"$dir/.deploy.lock"
+flock -w 900 9 || fail "another deployment in progress"
+
+# ---- entrada -----------------------------------------------------------------------
+payload=$(head -c 65537)
+((${#payload} <= 65536)) || fail "payload too large"
+jq -e 'type == "object"' >/dev/null 2>&1 <<<"$payload" || fail "invalid payload"
+jq -e 'keys - ["image", "env", "registryToken"] | length == 0' >/dev/null <<<"$payload" || fail "invalid payload"
+
+image=$(jq -r 'if (.image | type) == "string" then .image else "" end' <<<"$payload")
+valid_image "$slug" "$image" || fail "invalid image"
+
+jq -e '(.registryToken | type) == "string" and (.registryToken | length) > 0' >/dev/null <<<"$payload" ||
+  fail "missing registryToken"
+jq -e '(.env | type) == "object" and (.env | to_entries | all(.value | type == "string"))' >/dev/null <<<"$payload" ||
+  fail "invalid env"
+
+while IFS= read -r key; do
+  env_key_allowed "$key" || fail "env key not allowed: $key"
+done < <(jq -r '.env | keys[] | select(test("^[A-Z][A-Z0-9_]*$"))' <<<"$payload")
+jq -e '.env | keys | all(test("^[A-Z][A-Z0-9_]*$"))' >/dev/null <<<"$payload" || fail "env key not allowed"
+
+for required in MONGODB_URI MONGODB_DB SESSION_SECRET; do
+  jq -e --arg k "$required" '.env[$k] | type == "string" and length > 0' >/dev/null <<<"$payload" ||
+    fail "missing env $required"
+done
+jq -e '.env.MONGODB_DB | test("^client_[a-z0-9_]+$")' >/dev/null <<<"$payload" || fail "invalid MONGODB_DB"
+jq -e '.env.SESSION_SECRET | length >= 32' >/dev/null <<<"$payload" || fail "invalid SESSION_SECRET"
+# Un valor con saltos de línea rompería el archivo de entorno.
+jq -e '.env | to_entries | all(.value | explode | all(. != 0 and . != 10 and . != 13))' >/dev/null <<<"$payload" ||
+  fail "invalid env value"
+
+# ---- imagen --------------------------------------------------------------------------
+# Credenciales en un directorio temporal que se borra al terminar (finish).
+docker_config=$(mktemp -d)
+jq -j '.registryToken' <<<"$payload" |
+  docker --config "$docker_config" login "$REGISTRY_HOST" --username deploy --password-stdin >>"$log" 2>&1 ||
+  fail "registry login failed"
+if ! docker --config "$docker_config" pull "$image" >>"$log" 2>&1; then
+  docker --config "$docker_config" logout "$REGISTRY_HOST" >/dev/null 2>&1 || true
+  fail "pull failed"
+fi
+docker --config "$docker_config" logout "$REGISTRY_HOST" >/dev/null 2>&1 || true
+rm -rf "$docker_config"
+docker_config=""
+
+# ---- entorno y compose -----------------------------------------------------------------
+env_file="$dir/.env"
+compose="$dir/compose.yaml"
+project="app-$slug"
+
+# Se guarda el despliegue anterior para poder volver a él.
+had_previous=false
+if [[ -f $compose && -f $env_file ]]; then
+  cp -p "$compose" "$dir/compose.prev.yaml"
+  cp -p "$env_file" "$dir/.env.prev"
+  had_previous=true
+fi
+
+tmp=$(mktemp "$dir/.env.XXXXXX")
+jq -r '.env | to_entries[] | "\(.key)=\(.value)"' <<<"$payload" >"$tmp"
+chmod 600 "$tmp"
+mv -f "$tmp" "$env_file"
+
+render_template "$PLATFORM_DIR/templates/compose.yaml" \
+  "SLUG=$slug" "IMAGE=$image" "ENV_FILE=$env_file" "PORT=$port" "INTERNAL_PORT=$APP_INTERNAL_PORT" \
+  "CPUS=$APP_CPUS" "MEMORY=$APP_MEMORY" "NETWORK=$(client_network "$slug")" "HOST=$(client_host "$slug")" >"$compose"
+chmod 600 "$compose"
+
+compose_up() {
+  docker compose --project-name "$project" --file "$compose" up --detach --remove-orphans \
+    --wait --wait-timeout "$DEPLOY_WAIT_SECONDS" >>"$log" 2>&1
+}
+
+if compose_up; then
+  jq -cn --arg image "$image" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{image: $image, deployedAt: $at}' >"$dir/state.json"
+  rm -f "$dir/compose.prev.yaml" "$dir/.env.prev"
+  result=ok
+  printf 'DEPLOY_OK\n'
+  exit 0
+fi
+
+# No quedó sano: se vuelve al digest anterior (si lo había).
+if [[ $had_previous == true ]]; then
+  mv -f "$dir/compose.prev.yaml" "$compose"
+  mv -f "$dir/.env.prev" "$env_file"
+  if compose_up; then fail "unhealthy (rolled back to previous image)"; fi
+  fail "unhealthy (rollback also failed)"
+fi
+fail "unhealthy"

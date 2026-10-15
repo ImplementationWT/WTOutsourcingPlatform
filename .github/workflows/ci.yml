@@ -61,3 +61,17 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+
+  server-scripts:
+    name: Scripts del VPS (shellcheck + pruebas en contenedor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: |
+          docker run --rm -e LANG=C.UTF-8 -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.10.0 \
+            -x --source-path=SCRIPTDIR -s bash deploy/platform/bin/* deploy/platform/lib/common.sh \
+            deploy/platform/tests/entrypoint.sh deploy/platform/tests/run.sh deploy/platform/tests/stubs/certbot
+      # Contenedor propio (Docker, nginx, certbot simulado y registro local): no toca ningún servidor.
+      - name: Pruebas de bootstrap-vps.sh, install-client, deploy-client y provisioner-dispatch
+        run: deploy/platform/tests/run.sh

@@ -1,18 +1,29 @@
 import type { AtlasAdapter } from "../adapters/atlas.js";
 import type { GithubAdapter } from "../adapters/github.js";
 import type { HttpProbe } from "../adapters/http-probe.js";
+import type { ServerAdapter } from "../adapters/server.js";
 import type { MongoBootstrapAdapter } from "../adapters/mongo-bootstrap.js";
 import type { ClientNames } from "../domain/naming.js";
 import type { AdminStore } from "../store/admin-store.js";
 import type { InitialPasswordVault } from "../store/initial-password-vault.js";
 import type { ClientDoc, InitialAdminMode, StageName, SubStepStatus } from "../store/models.js";
 
-export interface DeployTargetConfig {
+/** VPS compartido (contrato §3, §5 y §6). Sin claves privadas: la del provisioner vive en el adaptador. */
+export interface ServerTargetConfig {
+  /** DEPLOY_HOST que se escribe en cada repo. */
   host: string;
-  user: string;
-  privateKey: string;
+  /** Líneas known_hosts del VPS (DEPLOY_KNOWN_HOSTS de cada repo). */
   knownHosts: string;
-  port?: number;
+  /** VPS_PUBLIC_IP: a ella debe resolver <slug>.<APP_BASE_DOMAIN>. */
+  publicIp: string;
+  ghcrOrg: string;
+  /** ACME_CA (solo pruebas): el health check acepta certificados que no son de confianza. */
+  acmeCa?: string;
+}
+
+/** Resolución DNS (inyectable para tests). */
+export interface DnsResolver {
+  resolve4(host: string): Promise<string[]>;
 }
 
 export interface ProvisioningConfig {
@@ -40,8 +51,8 @@ export interface ProvisioningConfig {
    * escribir los secrets: repo creado y conectado a su base.
    */
   deployEnabled: boolean;
-  /** Secrets SSH compartidos (decisión temporal: una clave para todos los repos). */
-  deploy?: DeployTargetConfig;
+  /** VPS donde se despliegan las apps (obligatorio con deployEnabled). */
+  server?: ServerTargetConfig;
 }
 
 /** Tiempos de espera/polling; los tests los reducen a milisegundos. */
@@ -79,6 +90,8 @@ export interface Deps {
   github: GithubAdapter;
   mongo: MongoBootstrapAdapter;
   probe: HttpProbe;
+  server: ServerAdapter;
+  resolver: DnsResolver;
   vault: InitialPasswordVault;
   config: ProvisioningConfig;
   timing: Timing;
@@ -101,6 +114,8 @@ export interface JobMemory {
   credential?: { password: string; version: number };
   /** INITIAL_ADMIN_PASSWORD recién generada; se descarta al terminar la etapa. */
   initialAdminPassword?: string;
+  /** Clave privada SSH del cliente recién generada (DEPLOY_SSH_KEY); se descarta al escribirla. */
+  deployKey?: string;
 }
 
 export interface StageContext {
