@@ -28,7 +28,7 @@ afterEach(async () => {
 
 async function setup() {
   const store = await freshStore();
-  const fakes = createFakes();
+  const fakes = createFakes(store);
   const logs: string[] = [];
   const logStream = new Writable({
     write(chunk, _enc, cb) {

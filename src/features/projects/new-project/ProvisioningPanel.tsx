@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowLeft, ArrowRight, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import InitialCredentialsCard from "../InitialCredentialsCard";
 import JobStages from "../JobStages";
 import { formatDuration, type useProvisioning } from "../provisioning";
 import { Pill } from "./parts";
@@ -91,6 +92,9 @@ export default function ProvisioningPanel({
           )}
         </CardContent>
       </Card>
+
+      {/* Al terminar: con qué credenciales entrar por primera vez a la app del cliente. */}
+      {job?.status === "succeeded" && <InitialCredentialsCard slug={job.clientId} />}
 
       <div className="flex items-center justify-between border-t border-white/10 pt-6">
         {job?.status === "failed" ? (

@@ -10,6 +10,7 @@ import {
   FolderGit2,
   Globe,
   KeyRound,
+  Layers,
   Loader2,
   RotateCcw,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useClient } from "./api";
+import InitialCredentialsCard from "./InitialCredentialsCard";
 import JobStages from "./JobStages";
 import { Code } from "./new-project/parts";
 import { isFinished, retryJob, useJobStream } from "./provisioning";
@@ -119,7 +121,23 @@ export default function ProjectDetailPage() {
                 <ResourceRow icon={KeyRound} label="Usuario de la base">
                   <Code>{data.resources.databaseUser}</Code>
                 </ResourceRow>
-                <ResourceRow icon={Globe} label="Subdominio">
+                <ResourceRow icon={Layers} label="Template">
+                  {data.client.template ? (
+                    <span>
+                      <Code>
+                        {data.client.template.name}@{data.client.template.version}
+                      </Code>
+                      <span className="ml-2 text-muted-foreground">
+                        {data.client.template.schemaVersion !== null
+                          ? `schemaVersion ${data.client.template.schemaVersion}`
+                          : "schemaVersion pendiente"}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">Pendiente de verificar</span>
+                  )}
+                </ResourceRow>
+                <ResourceRow icon={Globe} label="Aplicación">
                   {data.client.readiness.ready ? (
                     <a
                       href={data.resources.baseUrl}
@@ -173,6 +191,8 @@ export default function ProjectDetailPage() {
               </CardContent>
             </Card>
           </div>
+
+          <InitialCredentialsCard slug={data.client.id} />
         </>
       )}
     </section>

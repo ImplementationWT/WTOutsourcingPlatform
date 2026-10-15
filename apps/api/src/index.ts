@@ -4,16 +4,19 @@ import { createGithubAdapter } from "./adapters/github.js";
 import { createHttpProbe } from "./adapters/http-probe.js";
 import { createMongoBootstrapAdapter } from "./adapters/mongo-bootstrap.js";
 import { buildApp } from "./app.js";
-import { loadDeployConfig, loadEnv } from "./config/env.js";
+import { loadDeployConfig, loadEnv, loadInitialPasswordKey } from "./config/env.js";
 import { DEFAULT_TIMING } from "./jobs/types.js";
 import { registerSecret } from "./lib/redact.js";
 import { AdminStore } from "./store/admin-store.js";
+import { InitialPasswordVault } from "./store/initial-password-vault.js";
 
 const env = loadEnv();
 for (const secret of [env.ATLAS_CLIENT_SECRET, env.ADMIN_MONGODB_URI, env.SESSION_SECRET, env.PANEL_ADMIN_PASSWORD_HASH]) {
   registerSecret(secret);
 }
 const deploy = loadDeployConfig(env);
+// Antes de conectar: una clave mal configurada detiene el arranque con un mensaje claro.
+const initialPasswordKey = loadInitialPasswordKey(env);
 if (deploy) {
   registerSecret(deploy.privateKey);
 }
@@ -27,6 +30,8 @@ const adminClient = new MongoClient(env.ADMIN_MONGODB_URI, { appName: "provision
 await adminClient.connect();
 const store = new AdminStore(adminClient.db(env.ADMIN_MONGODB_DB));
 await store.init();
+const vault = new InitialPasswordVault(store.initialPasswords, initialPasswordKey);
+await vault.init();
 
 const app = await buildApp({
   store,
@@ -54,11 +59,21 @@ const app = await buildApp({
     }),
     mongo: createMongoBootstrapAdapter(),
     probe: createHttpProbe(),
+    vault,
     timing: DEFAULT_TIMING,
     config: {
       appsDomain: env.APPS_DOMAIN,
       atlas: { clusterName: env.ATLAS_CLUSTER_NAME, srvHost: env.ATLAS_CLUSTER_SRV_HOST },
-      template: { name: "node-typescript", environment: "production", deployWorkflow: "deploy.yml", ref: "main", schemaVersion: 1 },
+      template: {
+        name: "node-typescript",
+        environment: "production",
+        deployWorkflow: "deploy.yml",
+        ref: "main",
+        schemaVersion: 1,
+        expectedVersion: env.TEMPLATE_VERSION,
+        minSchemaVersion: env.MIN_SCHEMA_VERSION
+      },
+      initialAdmin: { mode: env.INITIAL_ADMIN_MODE, revealTtlMs: 30 * 60_000 },
       deployEnabled: env.DEPLOY_ENABLED,
       deploy
     }
@@ -69,7 +84,7 @@ const app = await buildApp({
 const abandoned = await store.failAbandonedJobs();
 if (abandoned) app.log.warn({ abandoned }, "Marked interrupted jobs as failed");
 app.log.info(
-  { deployEnabled: env.DEPLOY_ENABLED },
+  { deployEnabled: env.DEPLOY_ENABLED, templateVersion: env.TEMPLATE_VERSION, minSchemaVersion: env.MIN_SCHEMA_VERSION, initialAdminMode: env.INITIAL_ADMIN_MODE },
   env.DEPLOY_ENABLED ? "Pipeline completo (con despliegue)" : "Fase 1: repo + MongoDB + secrets (despliegue deshabilitado)"
 );
 

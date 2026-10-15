@@ -26,6 +26,7 @@ start() {
     --network host \
     --env-file "$APP_DIR/api.env" \
     -v "$APP_DIR/github-app.pem:/run/secrets/github-app.pem:ro" \
+    -v "$APP_DIR/initial-password.key:/run/secrets/initial-password.key:ro" \
     --log-opt max-size=10m --log-opt max-file=5 \
     "$IMAGE:$1" >/dev/null
 }
@@ -37,9 +38,12 @@ chmod 700 "$APP_DIR"
 mv "$INCOMING/api.env" "$APP_DIR/api.env"
 chown root:root "$APP_DIR/api.env"
 mv "$INCOMING/github-app.pem" "$APP_DIR/github-app.pem"
+# Clave de la revelación única de contraseñas iniciales: se genera una vez en el servidor,
+# nunca sale de él y se conserva entre despliegues.
+[ -s "$APP_DIR/initial-password.key" ] || openssl rand -base64 32 > "$APP_DIR/initial-password.key"
 # El contenedor corre como el usuario "node" (uid 1000) de la imagen, no como root.
-chown 1000:1000 "$APP_DIR/github-app.pem"
-chmod 400 "$APP_DIR/github-app.pem"
+chown 1000:1000 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key"
+chmod 400 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key"
 
 echo "Cargando imagen $IMAGE:$RELEASE…"
 gunzip -c "$INCOMING/api-image.tar.gz" | docker load

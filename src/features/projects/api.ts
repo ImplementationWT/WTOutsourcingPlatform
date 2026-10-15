@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
-import type { ClientDetail, Project, ProjectRepo } from "@/types/project";
+import type { ClientDetail, Project, ProjectRepo, RevealedCredentials } from "@/types/project";
 import { mockProjects } from "./data";
 
 /** Lo único que el navegador envía; el resto lo deriva el backend del slug. */
@@ -19,6 +19,13 @@ export function useClient(slug: string) {
     queryKey: ["client", slug],
     queryFn: () => apiFetch<ClientDetail>(`/api/clients/${encodeURIComponent(slug)}`),
     retry: false,
+  });
+}
+
+/** Revelación única de la contraseña inicial: el servidor la borra al entregarla. */
+export function revealInitialPassword(slug: string) {
+  return apiFetch<RevealedCredentials>(`/api/clients/${encodeURIComponent(slug)}/initial-password/reveal`, {
+    method: "POST",
   });
 }
 

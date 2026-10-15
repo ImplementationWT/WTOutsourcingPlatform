@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { verifyPassword, hashPassword } from "../src/auth/password.js";
 import { deriveNames, parseSlug } from "../src/domain/naming.js";
-import { envSchema } from "../src/config/env.js";
+import { envSchema, loadEnv } from "../src/config/env.js";
 import { TransientError } from "../src/lib/errors.js";
 import { clearRegisteredSecrets, redact, redactString, registerSecret, REDACTED } from "../src/lib/redact.js";
 import { backoffDelay, withRetry } from "../src/lib/retry.js";
@@ -96,6 +96,45 @@ describe("configuración", () => {
     const shape = envSchema.shape.ATLAS_CLUSTER_SRV_HOST;
     expect(shape.safeParse("cluster0.abcde.mongodb.net").success).toBe(true);
     expect(shape.safeParse("mongodb+srv://u:p@cluster0.abcde.mongodb.net").success).toBe(false);
+  });
+});
+
+describe("configuración del template y de la contraseña inicial", () => {
+  const base = {
+    GITHUB_APP_ID: "1",
+    GITHUB_INSTALLATION_ID: "2",
+    GITHUB_PRIVATE_KEY_PATH: "/tmp/key.pem",
+    GITHUB_TEMPLATE_OWNER: "acme",
+    GITHUB_TEMPLATE_REPO: "node-typescript-template",
+    GITHUB_TARGET_OWNER: "acme",
+    ATLAS_PROJECT_ID: "a".repeat(24),
+    ATLAS_CLIENT_ID: "id",
+    ATLAS_CLIENT_SECRET: "secret",
+    ATLAS_CLUSTER_NAME: "cluster",
+    ATLAS_CLUSTER_SRV_HOST: "cluster.abcde.mongodb.net",
+    ADMIN_MONGODB_URI: "mongodb://localhost",
+    APPS_DOMAIN: "apps.example.test",
+    PANEL_ADMIN_USERNAME: "admin",
+    PANEL_ADMIN_PASSWORD_HASH: "scrypt$x",
+    SESSION_SECRET: "x".repeat(32)
+  };
+
+  it("por defecto: template 1.1.0, schema mínima 1 y modo random (que exige la clave)", () => {
+    expect(() => loadEnv(base)).toThrow(/INITIAL_PASSWORD_KEY_PATH/);
+    const env = loadEnv({ ...base, INITIAL_PASSWORD_KEY_PATH: "/run/secrets/key" });
+    expect(env).toMatchObject({ TEMPLATE_VERSION: "1.1.0", MIN_SCHEMA_VERSION: 1, INITIAL_ADMIN_MODE: "random" });
+  });
+
+  it("valores vacíos usan el valor por defecto; el modo default no exige clave", () => {
+    const env = loadEnv({ ...base, TEMPLATE_VERSION: "", MIN_SCHEMA_VERSION: "", INITIAL_ADMIN_MODE: "default" });
+    expect(env).toMatchObject({ TEMPLATE_VERSION: "1.1.0", MIN_SCHEMA_VERSION: 1, INITIAL_ADMIN_MODE: "default" });
+  });
+
+  it("rechaza versiones y modos inválidos", () => {
+    expect(envSchema.shape.TEMPLATE_VERSION.safeParse("v1.2").success).toBe(false);
+    expect(envSchema.shape.TEMPLATE_VERSION.safeParse("1.2.0").success).toBe(true);
+    expect(envSchema.shape.MIN_SCHEMA_VERSION.safeParse("0").success).toBe(false);
+    expect(envSchema.shape.INITIAL_ADMIN_MODE.safeParse("manual").success).toBe(false);
   });
 });
 

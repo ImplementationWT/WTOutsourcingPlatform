@@ -57,7 +57,28 @@ export interface ProjectRepo {
   clientStatus: "provisioning" | "ready" | "failed" | null;
 }
 
-/** GET /api/clients/:slug — solo referencias, nunca URI ni contraseñas. */
+/**
+ * Estado de la contraseña inicial del admin de la app (sin el valor).
+ * GET /api/clients/:slug/initial-password y client.initialAdmin del detalle.
+ */
+export interface InitialAdminStatus {
+  username: string;
+  mustChangeOnFirstLogin: boolean;
+  mode: "random" | "default" | null;
+  state: "pending" | "default" | "available" | "revealed" | "expired" | "unavailable";
+  expiresAt?: string | null;
+  revealedAt?: string | null;
+  revealedBy?: string | null;
+}
+
+/** POST /api/clients/:slug/initial-password/reveal — solo una vez. */
+export interface RevealedCredentials {
+  username: string;
+  password: string;
+  mustChangeOnFirstLogin: boolean;
+}
+
+/** GET /api/clients/:slug — solo referencias, nunca URI, SESSION_SECRET ni contraseñas. */
 export interface ClientDetail {
   client: {
     id: string;
@@ -65,6 +86,9 @@ export interface ClientDetail {
     description: string;
     status: "provisioning" | "ready" | "failed";
     readiness: { ready: boolean; checkedAt?: string; detail?: string };
+    /** Versión real del template del repo y schemaVersion de /api/meta (tras el health check). */
+    template: { name: string; version: string; schemaVersion: number | null } | null;
+    initialAdmin: InitialAdminStatus;
     createdAt: string;
   };
   resources: {

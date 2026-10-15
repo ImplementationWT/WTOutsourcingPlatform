@@ -51,6 +51,18 @@ export const envSchema = z.object({
   DEPLOY_SSH_PRIVATE_KEY_PATH: optional(z.string().min(1)),
   DEPLOY_SSH_KNOWN_HOSTS_PATH: optional(z.string().min(1)),
 
+  // Template (contrato §1 y §8): versión exacta que deben tener los repos generados
+  // (package.json → template.version) y schemaVersion mínima que debe exponer /api/meta.
+  TEMPLATE_VERSION: optional(z.string().regex(/^\d+\.\d+\.\d+$/, "debe ser SemVer, p. ej. 1.1.0")).default("1.1.0"),
+  MIN_SCHEMA_VERSION: optional(z.coerce.number().int().min(1)).default(1),
+
+  // Contraseña inicial del admin de cada app (contrato §3).
+  // random: se genera y se escribe INITIAL_ADMIN_PASSWORD. default: el template usa la suya y obliga a cambiarla.
+  INITIAL_ADMIN_MODE: optional(z.enum(["random", "default"])).default("random"),
+  // Ruta al archivo con la clave (32 bytes en base64) que cifra la contraseña hasta su revelación única.
+  // Obligatoria con INITIAL_ADMIN_MODE=random. Genérala con: openssl rand -base64 32 > initial-password.key
+  INITIAL_PASSWORD_KEY_PATH: optional(z.string().min(1)),
+
   // Sesión del panel
   PANEL_ADMIN_USERNAME: z.string().min(3),
   PANEL_ADMIN_PASSWORD_HASH: z.string().regex(/^scrypt\$/, "genéralo con `pnpm hash-password`"),
@@ -74,7 +86,20 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     const problems = parsed.error.issues.map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`).join("\n");
     throw new Error(`Configuración inválida:\n${problems}`);
   }
+  if (parsed.data.INITIAL_ADMIN_MODE === "random" && !parsed.data.INITIAL_PASSWORD_KEY_PATH) {
+    throw new Error("Configuración inválida:\n  - INITIAL_PASSWORD_KEY_PATH: obligatoria con INITIAL_ADMIN_MODE=random");
+  }
   return parsed.data;
+}
+
+/** Clave AES-256 para la revelación única de la contraseña inicial (archivo con 32 bytes en base64). */
+export function loadInitialPasswordKey(env: Env) {
+  if (!env.INITIAL_PASSWORD_KEY_PATH) return undefined;
+  const key = Buffer.from(readFileSync(env.INITIAL_PASSWORD_KEY_PATH, "utf8").trim(), "base64");
+  if (key.length !== 32) {
+    throw new Error("Configuración inválida:\n  - INITIAL_PASSWORD_KEY_PATH: el archivo debe contener 32 bytes en base64 (openssl rand -base64 32)");
+  }
+  return key;
 }
 
 export function loadDeployConfig(env: Env) {

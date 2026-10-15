@@ -5,6 +5,8 @@ export interface HttpProbe {
   status(url: string): Promise<number>;
   /** GET <url> y parsea JSON (null si el cuerpo no es JSON). */
   json(url: string): Promise<{ status: number; body: unknown }>;
+  /** GET <url>: código y Content-Type (para comprobar que se sirve el frontend). */
+  page(url: string): Promise<{ status: number; contentType: string | null }>;
 }
 
 export function createHttpProbe(fetchImpl: typeof fetch = fetch): HttpProbe {
@@ -29,6 +31,11 @@ export function createHttpProbe(fetchImpl: typeof fetch = fetch): HttpProbe {
       const response = await get(url);
       const body = await response.json().catch(() => null);
       return { status: response.status, body };
+    },
+    async page(url) {
+      const response = await get(url);
+      await response.body?.cancel();
+      return { status: response.status, contentType: response.headers.get("content-type") };
     }
   };
 }

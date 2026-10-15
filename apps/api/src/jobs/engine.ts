@@ -251,6 +251,7 @@ export class JobEngine {
     } finally {
       clearInterval(heartbeat);
       memory.credential = undefined;
+      memory.initialAdminPassword = undefined;
     }
   }
 }

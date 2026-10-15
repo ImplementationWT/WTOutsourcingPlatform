@@ -15,7 +15,7 @@ beforeEach(() => clearRegisteredSecrets());
 
 async function setup() {
   const store = await freshStore();
-  const fakes = createFakes();
+  const fakes = createFakes(store);
   const engine = new JobEngine(store, fakes.deps, silent);
   const events: PublicJob[] = [];
   return { store, engine, events, ...fakes };
@@ -46,13 +46,21 @@ describe("motor de etapas", () => {
     // Estado final en los servicios.
     expect(github.repos.has("acme-crm-app")).toBe(true);
     expect(atlas.users.get("app_acme_crm")?.user.roles).toEqual([{ roleName: "readWrite", databaseName: "client_acme_crm" }]);
-    expect(mongo.databases.get("client_acme_crm")).toEqual({ clientId: "acme-crm", templateVersion: "1.0.0", schemaVersion: 1 });
+    expect(mongo.databases.get("client_acme_crm")).toEqual({ clientId: "acme-crm", templateVersion: "1.1.0", schemaVersion: 1 });
     const env = github.env("acme-crm-app");
-    expect([...env.secrets.keys()].sort()).toEqual(
-      ["DEPLOY_SSH_HOST", "DEPLOY_SSH_KNOWN_HOSTS", "DEPLOY_SSH_PRIVATE_KEY", "DEPLOY_SSH_USER", "MONGODB_DB", "MONGODB_URI"]
-    );
+    expect([...env.secrets.keys()].sort()).toEqual([
+      "DEPLOY_SSH_HOST",
+      "DEPLOY_SSH_KNOWN_HOSTS",
+      "DEPLOY_SSH_PRIVATE_KEY",
+      "DEPLOY_SSH_USER",
+      "INITIAL_ADMIN_PASSWORD",
+      "MONGODB_DB",
+      "MONGODB_URI",
+      "SESSION_SECRET"
+    ]);
     expect(env.secrets.get("MONGODB_DB")).toBe("client_acme_crm");
     expect(env.variables.get("APP_BASE_URL")).toBe("https://acme-crm.apps.example.test");
+    expect(env.variables.get("APP_DISPLAY_NAME")).toBe("Acme CRM");
     expect(github.count("dispatchWorkflow")).toBe(1);
 
     const client = await store.getClient("acme-crm");
@@ -228,7 +236,10 @@ describe("motor de etapas", () => {
   });
 
   it("mientras Atlas propaga el usuario, el paso lo explica con el número de intento", async () => {
-    const { store, engine, events, mongo, atlas } = await setup();
+    const { store, events, mongo, atlas, deps } = await setup();
+    // Lo que se comprueba son los mensajes, no los tiempos: espera holgada para que la carga
+    // de los demás archivos de tests en paralelo no agote los 20 ms de TEST_TIMING.
+    const engine = new JobEngine(store, { ...deps, timing: { ...deps.timing, mongoAuthTimeoutMs: 10_000 } }, silent);
     const job = await createClient(store);
     engine.subscribe(job._id, (j) => events.push(j));
     mongo.pendingAuthFailures = 2;

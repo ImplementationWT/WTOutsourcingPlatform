@@ -1,9 +1,12 @@
 import { AtlasUserExistsError, type AtlasAdapter, type AtlasDatabaseUser, type DatabaseUserSpec } from "../../src/adapters/atlas.js";
 import { GithubRepoExistsError, type GithubAdapter, type RepoInfo, type WorkflowRun } from "../../src/adapters/github.js";
 import type { HttpProbe } from "../../src/adapters/http-probe.js";
+import { randomBytes } from "node:crypto";
 import type { BootstrapDocument, BootstrapPhase, MongoBootstrapAdapter } from "../../src/adapters/mongo-bootstrap.js";
 import { TransientError } from "../../src/lib/errors.js";
 import type { Deps, ProvisioningConfig, Timing } from "../../src/jobs/types.js";
+import type { AdminStore } from "../../src/store/admin-store.js";
+import { InitialPasswordVault } from "../../src/store/initial-password-vault.js";
 
 type Fault = () => Error | undefined;
 
@@ -99,7 +102,7 @@ export class FakeGithub extends Faulty implements GithubAdapter {
   readonly runs = new Map<string, WorkflowRun[]>();
   /** Conclusión del próximo run lanzado. */
   nextRunConclusion: "success" | "failure" = "success";
-  templateVersion = "1.0.0";
+  templateVersion = "1.1.0";
 
   async getRepository(name: string) {
     this.hit("getRepository", name);
@@ -189,10 +192,17 @@ export class FakeGithub extends Faulty implements GithubAdapter {
 }
 
 /**
- * La "app" desplegada: responde ready solo si el secret MONGODB_URI del repo
- * autentica contra Atlas y la base tiene bootstrap (valida la cadena entera).
+ * La "app" desplegada (template 1.1.0): responde ready solo si el secret
+ * MONGODB_URI autentica contra Atlas, existe SESSION_SECRET y la base tiene
+ * bootstrap (valida la cadena entera). /api/meta lee APP_DISPLAY_NAME del entorno.
  */
 export class FakeProbe extends Faulty implements HttpProbe {
+  /** schemaVersion que registran las migraciones de la app simulada. */
+  schemaVersion = 1;
+  /** Para simular un frontend que no se sirve. */
+  frontendContentType = "text/html; charset=utf-8";
+  /** Para simular una app que expone otro appName. */
+  appNameOverride?: string;
   constructor(private readonly github: FakeGithub, private readonly mongo: FakeMongo, private readonly appsDomain: string) {
     super();
   }
@@ -203,9 +213,10 @@ export class FakeProbe extends Faulty implements HttpProbe {
     const env = this.github.environments.get(`${repo}/production`);
     const uri = env?.secrets.get("MONGODB_URI");
     const db = env?.secrets.get("MONGODB_DB");
+    const sessionSecret = env?.secrets.get("SESSION_SECRET");
     const deployed = (this.github.runs.get(repo) ?? []).some((r) => r.conclusion === "success");
-    const ok = deployed && !!uri && !!db && this.mongo.credentialsValid(uri);
-    return { ok, doc: db ? this.mongo.databases.get(db) : undefined };
+    const ok = deployed && !!uri && !!db && (sessionSecret?.length ?? 0) >= 32 && this.mongo.credentialsValid(uri);
+    return { ok, doc: db ? this.mongo.databases.get(db) : undefined, appName: env?.variables.get("APP_DISPLAY_NAME") ?? "Aplicación" };
   }
   async status(url: string) {
     this.hit("status", url);
@@ -213,9 +224,16 @@ export class FakeProbe extends Faulty implements HttpProbe {
   }
   async json(url: string) {
     this.hit("json", url);
-    const { ok, doc } = this.app(url);
+    const { ok, doc, appName } = this.app(url);
     if (!ok) return { status: 503, body: { error: "service_unavailable" } };
-    return { status: 200, body: doc ? { clientId: doc.clientId, templateVersion: doc.templateVersion, schemaVersion: doc.schemaVersion } : null };
+    return {
+      status: 200,
+      body: { appName: this.appNameOverride ?? appName, clientId: doc?.clientId ?? null, templateVersion: doc?.templateVersion ?? null, schemaVersion: this.schemaVersion }
+    };
+  }
+  async page(url: string) {
+    this.hit("page", url);
+    return this.app(url).ok ? { status: 200, contentType: this.frontendContentType } : { status: 503, contentType: "application/json" };
   }
 }
 
@@ -236,7 +254,16 @@ export const TEST_TIMING: Timing = {
 export const TEST_CONFIG: ProvisioningConfig = {
   appsDomain: "apps.example.test",
   atlas: { clusterName: "shared-cluster", srvHost: "shared-cluster.abcde.mongodb.net" },
-  template: { name: "node-typescript", environment: "production", deployWorkflow: "deploy.yml", ref: "main", schemaVersion: 1 },
+  template: {
+    name: "node-typescript",
+    environment: "production",
+    deployWorkflow: "deploy.yml",
+    ref: "main",
+    schemaVersion: 1,
+    expectedVersion: "1.1.0",
+    minSchemaVersion: 1
+  },
+  initialAdmin: { mode: "random", revealTtlMs: 30 * 60_000 },
   deployEnabled: true,
   deploy: {
     host: "deploy.example.test",
@@ -246,19 +273,31 @@ export const TEST_CONFIG: ProvisioningConfig = {
   }
 };
 
-export function createFakes() {
+/** Reloj controlable del almacén de contraseñas (para probar el TTL). */
+export class FakeClock {
+  ms = Date.now();
+  now = () => new Date(this.ms);
+  advance(ms: number) {
+    this.ms += ms;
+  }
+}
+
+export function createFakes(store: AdminStore) {
   const atlas = new FakeAtlas();
   const mongo = new FakeMongo(atlas);
   const github = new FakeGithub();
   const probe = new FakeProbe(github, mongo, TEST_CONFIG.appsDomain);
+  const clock = new FakeClock();
+  const vault = new InitialPasswordVault(store.initialPasswords, randomBytes(32), clock.now);
   const deps: Deps = {
     atlas,
     github,
     mongo,
     probe,
+    vault,
     config: TEST_CONFIG,
     timing: TEST_TIMING,
     sleep: async () => {}
   };
-  return { atlas, mongo, github, probe, deps };
+  return { atlas, mongo, github, probe, vault, clock, deps };
 }

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { type Db, MongoServerError } from "mongodb";
 import { OwnershipError } from "../lib/errors.js";
 import { redact } from "../lib/redact.js";
+import type { InitialPasswordDoc } from "./initial-password-vault.js";
 import {
   type AuditDoc,
   type ClientDoc,
@@ -30,12 +31,15 @@ export class AdminStore {
   readonly jobs;
   readonly resources;
   readonly auditLog;
+  /** Contraseñas iniciales cifradas pendientes de revelar (las gestiona InitialPasswordVault). */
+  readonly initialPasswords;
 
   constructor(db: Db, private readonly now: () => Date = () => new Date()) {
     this.clients = db.collection<ClientDoc>("clients");
     this.jobs = db.collection<JobDoc>("jobs");
     this.resources = db.collection<ResourceDoc>("resources");
     this.auditLog = db.collection<AuditDoc>("audit");
+    this.initialPasswords = db.collection<InitialPasswordDoc>("initial_password_reveals");
   }
 
   async init() {
@@ -108,7 +112,14 @@ export class AdminStore {
   }
 
   updateClient(slug: string, patch: Partial<Omit<ClientDoc, "_id">>) {
+    assertNoSecrets(patch, "el cliente");
     return this.clients.updateOne({ _id: slug }, { $set: { ...patch, updatedAt: this.now() } });
+  }
+
+  /** Actualiza campos anidados ("template.schemaVersion", …) sin reemplazar el objeto completo. */
+  setClientFields(slug: string, fields: Record<string, unknown>) {
+    assertNoSecrets(fields, "el cliente");
+    return this.clients.updateOne({ _id: slug }, { $set: { ...fields, updatedAt: this.now() } });
   }
 
   getJob(id: string) {

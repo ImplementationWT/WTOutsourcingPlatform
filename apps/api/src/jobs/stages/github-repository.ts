@@ -22,7 +22,14 @@ export const githubRepositoryStage: Stage = {
   async run(ctx) {
     const { names, store, deps, client } = ctx;
     const { github } = deps;
+    const expected = deps.config.template.expectedVersion;
+    await ctx.plan([
+      { id: "repository", label: `Crear ${names.repositoryFullName} desde la plantilla` },
+      { id: "content", label: "Esperar a que GitHub copie el contenido" },
+      { id: "version", label: `Verificar template ${deps.config.template.name}@${expected}` }
+    ]);
 
+    await ctx.step("repository", "running");
     const { created: newClaim } = await store.claimResource("github_repository", names.repositoryFullName, client._id);
 
     let repo = await github.getRepository(names.repository);
@@ -43,12 +50,15 @@ export const githubRepositoryStage: Stage = {
         repo = await github.getRepository(names.repository);
         if (!repo) throw error;
       }
+      await ctx.step("repository", "done", `${names.repositoryFullName} creado (privado).`);
     } else {
       await ctx.report(`${names.repositoryFullName} ya existe (creado por este cliente).`);
+      await ctx.step("repository", "skipped", "Ya existía, creado por este cliente en un intento anterior.");
     }
 
     // GitHub copia la plantilla de forma asíncrona: se espera a que exista package.json.
     await ctx.report("Esperando el contenido de la plantilla…");
+    await ctx.step("content", "running", "Esperando package.json en la rama main…");
     const raw = await pollUntil(() => github.readFile(names.repository, "package.json").then((r) => r ?? undefined), {
       timeoutMs: deps.timing.repoContentTimeoutMs,
       intervalMs: deps.timing.pollIntervalMs,
@@ -58,6 +68,9 @@ export const githubRepositoryStage: Stage = {
       throw new FatalError("template_content_timeout", `GitHub no terminó de copiar la plantilla en ${names.repositoryFullName}. Reintenta en unos minutos.`);
     }
 
+    await ctx.step("content", "done", "package.json disponible.");
+
+    await ctx.step("version", "running", "Leyendo template.version de package.json…");
     const template = parseTemplate(raw);
     if (!template || template.name !== deps.config.template.name) {
       throw new FatalError(
@@ -66,12 +79,26 @@ export const githubRepositoryStage: Stage = {
       );
     }
 
+    // La versión real se guarda siempre, también si no coincide: el panel muestra qué se encontró.
     await store.updateResourceRef("github_repository", names.repositoryFullName, client._id, {
       fullName: repo.fullName,
       url: repo.url,
       defaultBranch: repo.defaultBranch,
       templateVersion: template.version
     });
-    await ctx.report(`${repo.fullName} listo (template ${template.name}@${template.version}).`);
+    await store.setClientFields(client._id, {
+      template: { name: template.name, version: template.version, verifiedAt: new Date() }
+    });
+
+    // Contrato §1: el repo queda fijado a la versión con la que se generó; una distinta no cumple este contrato.
+    if (template.version !== expected) {
+      throw new FatalError(
+        "template_version_mismatch",
+        `${names.repositoryFullName} se generó con ${template.name}@${template.version} y se esperaba ${expected}. ` +
+          "Ajusta TEMPLATE_VERSION o publica la versión esperada en la rama main de la plantilla."
+      );
+    }
+    await ctx.step("version", "done", `Versión verificada: ${template.name}@${template.version}.`);
+    await ctx.report(`${repo.fullName} listo (template ${template.name}@${template.version} verificado).`);
   }
 };

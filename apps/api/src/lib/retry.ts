@@ -43,18 +43,21 @@ export async function withRetry<T>(
 /**
  * Consulta `check` hasta que devuelva un valor distinto de undefined o se
  * agote `timeoutMs`. Los TransientError dentro de `check` cuentan como "aún no".
+ * Con `maxIntervalMs`, la espera entre consultas crece ×1.5 hasta ese tope.
  */
 export async function pollUntil<T>(
   check: () => Promise<T | undefined>,
   {
     timeoutMs,
     intervalMs,
+    maxIntervalMs = intervalMs,
     sleep: wait = sleep,
     now = Date.now
-  }: { timeoutMs: number; intervalMs: number; sleep?: (ms: number) => Promise<void>; now?: () => number }
+  }: { timeoutMs: number; intervalMs: number; maxIntervalMs?: number; sleep?: (ms: number) => Promise<void>; now?: () => number }
 ): Promise<T | undefined> {
   const deadline = now() + timeoutMs;
   let lastTransient: TransientError | undefined;
+  let interval = intervalMs;
   for (;;) {
     try {
       const value = await check();
@@ -67,6 +70,7 @@ export async function pollUntil<T>(
       if (lastTransient) throw lastTransient;
       return undefined;
     }
-    await wait(intervalMs);
+    await wait(interval);
+    interval = Math.min(maxIntervalMs, Math.round(interval * 1.5));
   }
 }
