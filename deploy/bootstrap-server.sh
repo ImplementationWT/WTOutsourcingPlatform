@@ -18,7 +18,11 @@ main() {
   install -d -m 700 /root/.ssh
   touch /root/.ssh/authorized_keys
   chmod 600 /root/.ssh/authorized_keys
-  grep -qxF "$pubkey" /root/.ssh/authorized_keys || echo "$pubkey" >> /root/.ssh/authorized_keys
+  if ! grep -qxF "$pubkey" /root/.ssh/authorized_keys; then
+    # Si la última línea no termina en salto de línea, la clave quedaría pegada a ella.
+    [ -z "$(tail -c1 /root/.ssh/authorized_keys)" ] || echo >> /root/.ssh/authorized_keys
+    echo "$pubkey" >> /root/.ssh/authorized_keys
+  fi
 
   install -d -m 755 /opt/wt-launchpad /var/www/launchpad /var/www/launchpad/releases
   install -d -m 700 /opt/wt-launchpad/incoming
