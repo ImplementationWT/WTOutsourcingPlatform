@@ -49,11 +49,29 @@ export interface ServerConnection {
   provisionerKey: string;
 }
 
-/** Par ed25519 por cliente en formato OpenSSH; la privada queda registrada para redactarse. */
+/** Blob de una clave pública ed25519 válida: tipo (4 + 11 bytes) y clave de exactamente 32 bytes. */
+function isValidEd25519Blob(blob: Buffer) {
+  return blob.length === 51 && blob.readUInt32BE(0) === 11 && blob.toString("latin1", 4, 15) === "ssh-ed25519" && blob.readUInt32BE(15) === 32;
+}
+
+/**
+ * Par ed25519 por cliente en formato OpenSSH; la privada queda registrada para redactarse.
+ *
+ * ssh2 genera a veces (≈1 de cada 300) una clave inválida: si el primer byte de la
+ * clave pública es 0x00 lo descarta y la deja en 31 bytes. Esos pares se desechan y se
+ * genera otro; además se comprueba que la privada se lee y corresponde a la pública.
+ */
 export function generateClientKeyPair(comment: string) {
-  const pair = utils.generateKeyPairSync("ed25519", { comment });
-  registerSecret(pair.private);
-  return { privateKey: pair.private, publicKey: pair.public.trim() };
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const pair = utils.generateKeyPairSync("ed25519", { comment });
+    const publicKey = pair.public.trim();
+    const blob = Buffer.from(publicKey.split(" ")[1] ?? "", "base64");
+    const parsed = utils.parseKey(pair.private);
+    if (!isValidEd25519Blob(blob) || parsed instanceof Error || Array.isArray(parsed) || !parsed.getPublicSSH().equals(blob)) continue;
+    registerSecret(pair.private);
+    return { privateKey: pair.private, publicKey };
+  }
+  throw new Error("No se pudo generar una clave ed25519 válida.");
 }
 
 /** Únicos comandos que el orquestador puede pedir (provisioner-dispatch aplica la misma lista). */

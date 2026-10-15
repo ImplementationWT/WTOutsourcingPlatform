@@ -147,6 +147,16 @@ describe("adaptador SSH del orquestador", () => {
     expect(error.code).toBe("server_bad_response");
   });
 
+  it("las claves de cliente son siempre ed25519 válidas (ssh2 a veces genera claves de 31 bytes)", () => {
+    // Con ~1 de cada 300 claves defectuosas en ssh2, 3000 pares cubren el caso con holgura.
+    const valid = /^ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI[A-Za-z0-9+/]{43} /;
+    for (let i = 0; i < 3000; i++) {
+      const { publicKey, privateKey } = generateClientKeyPair("acme-org/acme-crm-app");
+      expect(publicKey).toMatch(valid);
+      expect(privateKey).toMatch(/^-----BEGIN OPENSSH PRIVATE KEY-----/);
+    }
+  });
+
   it("solo acepta slugs validados: el navegador no puede inyectar comandos", () => {
     for (const bad of ["acme; id", "acme\nid", "../x", "ACME", "a b"]) expect(() => parseSlug(bad)).toThrow();
   });
