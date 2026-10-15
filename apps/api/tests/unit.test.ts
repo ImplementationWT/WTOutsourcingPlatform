@@ -119,15 +119,17 @@ describe("configuración del template y de la contraseña inicial", () => {
     SESSION_SECRET: "x".repeat(32)
   };
 
-  it("por defecto: template 1.1.0, schema mínima 1 y modo random (que exige la clave)", () => {
+  it("por defecto: versión de la plantilla, schema mínima 1 y modo random (que exige la clave)", () => {
     expect(() => loadEnv(base)).toThrow(/INITIAL_PASSWORD_KEY_PATH/);
     const env = loadEnv({ ...base, INITIAL_PASSWORD_KEY_PATH: "/run/secrets/key" });
-    expect(env).toMatchObject({ TEMPLATE_VERSION: "1.1.0", MIN_SCHEMA_VERSION: 1, INITIAL_ADMIN_MODE: "random" });
+    expect(env).toMatchObject({ MIN_SCHEMA_VERSION: 1, INITIAL_ADMIN_MODE: "random" });
+    expect(env.TEMPLATE_VERSION).toBeUndefined();
   });
 
   it("valores vacíos usan el valor por defecto; el modo default no exige clave", () => {
     const env = loadEnv({ ...base, TEMPLATE_VERSION: "", MIN_SCHEMA_VERSION: "", INITIAL_ADMIN_MODE: "default" });
-    expect(env).toMatchObject({ TEMPLATE_VERSION: "1.1.0", MIN_SCHEMA_VERSION: 1, INITIAL_ADMIN_MODE: "default" });
+    expect(env).toMatchObject({ MIN_SCHEMA_VERSION: 1, INITIAL_ADMIN_MODE: "default" });
+    expect(env.TEMPLATE_VERSION).toBeUndefined();
   });
 
   it("rechaza versiones y modos inválidos", () => {

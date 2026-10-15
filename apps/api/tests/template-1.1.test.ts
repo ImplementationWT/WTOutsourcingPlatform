@@ -121,9 +121,36 @@ describe("INITIAL_ADMIN_PASSWORD", () => {
 });
 
 describe("verificación de la versión del template", () => {
-  it("una versión distinta a TEMPLATE_VERSION detiene el trabajo y guarda la versión real", async () => {
-    const { store, engine, github, atlas } = await setup();
+  it("sin TEMPLATE_VERSION sigue a la plantilla: una versión nueva no requiere configurar nada", async () => {
+    const { store, engine, github } = await setup();
     github.templateVersion = "1.2.0";
+    github.templateSourceVersion = "1.2.0";
+    const job = await createClient(store);
+    expect((await engine.run(job._id, "admin"))?.status).toBe("succeeded");
+    expect((await store.getClient("acme-crm"))?.template?.version).toBe("1.2.0");
+  });
+
+  it("si el repo generado no coincide con la plantilla, se detiene", async () => {
+    const { store, engine, github } = await setup();
+    github.templateSourceVersion = "1.2.0"; // el repo salió en 1.1.0
+    const job = await createClient(store);
+    const result = await engine.run(job._id, "admin");
+    expect(result?.stages[0].error?.code).toBe("template_version_mismatch");
+  });
+
+  it("rechaza plantillas anteriores al contrato soportado (1.1.0)", async () => {
+    const { store, engine, github } = await setup();
+    github.templateVersion = "1.0.0";
+    github.templateSourceVersion = "1.0.0";
+    const job = await createClient(store);
+    const result = await engine.run(job._id, "admin");
+    expect(result?.stages[0].error).toMatchObject({ code: "template_version_unsupported", retryable: false });
+  });
+
+  it("una versión distinta a TEMPLATE_VERSION (fijada) detiene el trabajo y guarda la versión real", async () => {
+    const { store, engine, github, atlas } = await setup({ template: { ...TEST_CONFIG.template, expectedVersion: "1.1.0" } });
+    github.templateVersion = "1.2.0";
+    github.templateSourceVersion = "1.2.0";
     const job = await createClient(store);
 
     const result = await engine.run(job._id, "admin");

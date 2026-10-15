@@ -103,6 +103,8 @@ export class FakeGithub extends Faulty implements GithubAdapter {
   /** Conclusión del próximo run lanzado. */
   nextRunConclusion: "success" | "failure" = "success";
   templateVersion = "1.1.0";
+  /** Versión actual del package.json de la plantilla (la que copian los repos nuevos). */
+  templateSourceVersion = "1.1.0";
 
   async getRepository(name: string) {
     this.hit("getRepository", name);
@@ -119,6 +121,10 @@ export class FakeGithub extends Faulty implements GithubAdapter {
   async readFile(repo: string, path: string) {
     this.hit("readFile", repo, path);
     return this.files.get(`${repo}/${path}`) ?? null;
+  }
+  async readTemplateFile(path: string) {
+    this.hit("readTemplateFile", path);
+    return path === "package.json" ? JSON.stringify({ template: { name: "node-typescript", version: this.templateSourceVersion } }) : null;
   }
   async environmentExists(repo: string, environment: string) {
     this.hit("environmentExists", repo);
@@ -260,7 +266,6 @@ export const TEST_CONFIG: ProvisioningConfig = {
     deployWorkflow: "deploy.yml",
     ref: "main",
     schemaVersion: 1,
-    expectedVersion: "1.1.0",
     minSchemaVersion: 1
   },
   initialAdmin: { mode: "random", revealTtlMs: 30 * 60_000 },

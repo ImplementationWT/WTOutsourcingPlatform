@@ -17,16 +17,40 @@ function parseTemplate(raw: string) {
   return null;
 }
 
+/**
+ * Primera versión del contrato que esta plataforma sabe aprovisionar: frontend,
+ * SESSION_SECRET, INITIAL_ADMIN_PASSWORD y la forma nueva de /api/meta (contrato §1).
+ */
+export const MIN_SUPPORTED_TEMPLATE_VERSION = "1.1.0";
+
+/** Compara x.y.z numéricamente (negativo si a < b). */
+export function compareVersions(a: string, b: string) {
+  const [pa, pb] = [a, b].map((v) => v.split(/[.-]/).slice(0, 3).map(Number));
+  for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
+  return 0;
+}
+
+/** Versión esperada: TEMPLATE_VERSION si está fijada; si no, la actual de la plantilla. */
+async function expectedVersion(ctx: Parameters<Stage["run"]>[0]) {
+  const { config, github } = ctx.deps;
+  if (config.template.expectedVersion) return { version: config.template.expectedVersion, source: "TEMPLATE_VERSION" };
+  const raw = await github.readTemplateFile("package.json");
+  const template = raw === null ? null : parseTemplate(raw);
+  if (!template) {
+    throw new FatalError("template_source_unreadable", "No se pudo leer template.version del package.json de la plantilla.");
+  }
+  return { version: template.version, source: "la plantilla" };
+}
+
 export const githubRepositoryStage: Stage = {
   name: "github_repository",
   async run(ctx) {
     const { names, store, deps, client } = ctx;
     const { github } = deps;
-    const expected = deps.config.template.expectedVersion;
     await ctx.plan([
       { id: "repository", label: `Crear ${names.repositoryFullName} desde la plantilla` },
       { id: "content", label: "Esperar a que GitHub copie el contenido" },
-      { id: "version", label: `Verificar template ${deps.config.template.name}@${expected}` }
+      { id: "version", label: `Verificar la versión del template ${deps.config.template.name}` }
     ]);
 
     await ctx.step("repository", "running");
@@ -90,12 +114,19 @@ export const githubRepositoryStage: Stage = {
       template: { name: template.name, version: template.version, verifiedAt: new Date() }
     });
 
-    // Contrato §1: el repo queda fijado a la versión con la que se generó; una distinta no cumple este contrato.
-    if (template.version !== expected) {
+    if (compareVersions(template.version, MIN_SUPPORTED_TEMPLATE_VERSION) < 0) {
+      throw new FatalError(
+        "template_version_unsupported",
+        `${names.repositoryFullName} se generó con ${template.name}@${template.version}; la plataforma necesita ${MIN_SUPPORTED_TEMPLATE_VERSION} o superior.`
+      );
+    }
+    // Contrato §1: el repo queda fijado a la versión con la que se generó y debe ser la esperada.
+    const expected = await expectedVersion(ctx);
+    if (template.version !== expected.version) {
       throw new FatalError(
         "template_version_mismatch",
-        `${names.repositoryFullName} se generó con ${template.name}@${template.version} y se esperaba ${expected}. ` +
-          "Ajusta TEMPLATE_VERSION o publica la versión esperada en la rama main de la plantilla."
+        `${names.repositoryFullName} se generó con ${template.name}@${template.version} y ${expected.source} indica ${expected.version}.` +
+          (expected.source === "TEMPLATE_VERSION" ? " Ajusta o quita TEMPLATE_VERSION." : " Reintenta: la plantilla pudo cambiar mientras se copiaba.")
       );
     }
     await ctx.step("version", "done", `Versión verificada: ${template.name}@${template.version}.`);

@@ -25,8 +25,11 @@ export interface ProvisioningConfig {
     deployWorkflow: string;
     ref: string;
     schemaVersion: number;
-    /** TEMPLATE_VERSION: template.version exacta que deben tener los repos generados. */
-    expectedVersion: string;
+    /**
+     * TEMPLATE_VERSION: template.version exacta que deben tener los repos generados.
+     * Sin valor, se usa la versión actual de la plantilla (su package.json).
+     */
+    expectedVersion?: string;
     /** MIN_SCHEMA_VERSION: schemaVersion mínima que debe devolver /api/meta. */
     minSchemaVersion: number;
   };

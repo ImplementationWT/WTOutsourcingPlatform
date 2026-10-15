@@ -52,6 +52,8 @@ export interface GithubAdapter {
   createRepositoryFromTemplate(name: string, description: string): Promise<RepoInfo>;
   /** Contenido de un archivo de la rama por defecto, o null si aún no existe. */
   readFile(repo: string, path: string): Promise<string | null>;
+  /** Contenido de un archivo de la rama por defecto de la plantilla. */
+  readTemplateFile(path: string): Promise<string | null>;
   environmentExists(repo: string, environment: string): Promise<boolean>;
   createEnvironment(repo: string, environment: string): Promise<void>;
   listEnvironmentSecretNames(repo: string, environment: string): Promise<string[]>;
@@ -145,6 +147,13 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
     }
   }
 
+  const readContent = (repoOwner: string, repo: string, path: string) =>
+    find(`leer ${path} de ${repoOwner}/${repo}`, async () => {
+      const { data } = await octokit.rest.repos.getContent({ owner: repoOwner, repo, path });
+      if (Array.isArray(data) || data.type !== "file" || !("content" in data)) return null;
+      return Buffer.from(data.content, "base64").toString("utf8");
+    });
+
   const toRepo = (data: { name: string; full_name: string; html_url: string; private: boolean; default_branch?: string }): RepoInfo => ({
     name: data.name,
     fullName: data.full_name,
@@ -185,12 +194,9 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
       }
     },
 
-    readFile: (repo, path) =>
-      find(`leer ${path}`, async () => {
-        const { data } = await octokit.rest.repos.getContent({ owner, repo, path });
-        if (Array.isArray(data) || data.type !== "file" || !("content" in data)) return null;
-        return Buffer.from(data.content, "base64").toString("utf8");
-      }),
+    readFile: (repo, path) => readContent(owner, repo, path),
+
+    readTemplateFile: (path) => readContent(config.templateOwner, config.templateRepo, path),
 
     environmentExists: async (repo, environment) =>
       (await find("consultar el entorno", () => octokit.rest.repos.getEnvironment({ owner, repo, environment_name: environment }))) !== null,

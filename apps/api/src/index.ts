@@ -84,7 +84,7 @@ const app = await buildApp({
 const abandoned = await store.failAbandonedJobs();
 if (abandoned) app.log.warn({ abandoned }, "Marked interrupted jobs as failed");
 app.log.info(
-  { deployEnabled: env.DEPLOY_ENABLED, templateVersion: env.TEMPLATE_VERSION, minSchemaVersion: env.MIN_SCHEMA_VERSION, initialAdminMode: env.INITIAL_ADMIN_MODE },
+  { deployEnabled: env.DEPLOY_ENABLED, templateVersion: env.TEMPLATE_VERSION ?? "la de la plantilla", minSchemaVersion: env.MIN_SCHEMA_VERSION, initialAdminMode: env.INITIAL_ADMIN_MODE },
   env.DEPLOY_ENABLED ? "Pipeline completo (con despliegue)" : "Fase 1: repo + MongoDB + secrets (despliegue deshabilitado)"
 );
 

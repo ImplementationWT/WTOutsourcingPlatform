@@ -51,9 +51,11 @@ export const envSchema = z.object({
   DEPLOY_SSH_PRIVATE_KEY_PATH: optional(z.string().min(1)),
   DEPLOY_SSH_KNOWN_HOSTS_PATH: optional(z.string().min(1)),
 
-  // Template (contrato §1 y §8): versión exacta que deben tener los repos generados
-  // (package.json → template.version) y schemaVersion mínima que debe exponer /api/meta.
-  TEMPLATE_VERSION: optional(z.string().regex(/^\d+\.\d+\.\d+$/, "debe ser SemVer, p. ej. 1.1.0")).default("1.1.0"),
+  // Template (contrato §1 y §8). Sin TEMPLATE_VERSION, la versión esperada se lee en cada trabajo
+  // del package.json de la plantilla: al actualizarla no hay que tocar la configuración.
+  // Solo para fijar una versión concreta (p. ej. congelar los clientes nuevos en una).
+  TEMPLATE_VERSION: optional(z.string().regex(/^\d+\.\d+\.\d+$/, "debe ser SemVer, p. ej. 1.2.0")),
+  // schemaVersion mínima que debe exponer /api/meta (opcional; /health/ready ya exige migraciones terminadas).
   MIN_SCHEMA_VERSION: optional(z.coerce.number().int().min(1)).default(1),
 
   // Contraseña inicial del admin de cada app (contrato §3).
