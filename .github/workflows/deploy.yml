@@ -96,8 +96,8 @@ jobs:
       - name: Subir release
         run: |
           SSH="ssh -p $SSH_PORT -o BatchMode=yes"
-          rsync -az --delete --chmod=D755,F644 -e "$SSH" dist/ "$SSH_TARGET:/var/www/launchpad/releases/$RELEASE/"
-          rsync -az --chmod=F600 -e "$SSH" \
+          rsync -az --delete --chmod=D755,F644 --chown=root:root -e "$SSH" dist/ "$SSH_TARGET:/var/www/launchpad/releases/$RELEASE/"
+          rsync -az --chmod=F600 --chown=root:root -e "$SSH" \
             api-image.tar.gz api.env github-app.pem deploy/activate.sh \
             "$SSH_TARGET:/opt/wt-launchpad/incoming/"
 

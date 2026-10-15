@@ -31,7 +31,11 @@ start() {
 }
 
 umask 077
+# rsync conserva el uid del runner, que en el VPS puede ser un usuario real: todo pasa a root
+# y el directorio queda cerrado para el resto de usuarios.
+chmod 700 "$APP_DIR"
 mv "$INCOMING/api.env" "$APP_DIR/api.env"
+chown root:root "$APP_DIR/api.env"
 mv "$INCOMING/github-app.pem" "$APP_DIR/github-app.pem"
 # El contenedor corre como el usuario "node" (uid 1000) de la imagen, no como root.
 chown 1000:1000 "$APP_DIR/github-app.pem"

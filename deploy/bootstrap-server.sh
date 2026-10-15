@@ -24,8 +24,8 @@ main() {
     echo "$pubkey" >> /root/.ssh/authorized_keys
   fi
 
-  install -d -m 755 /opt/wt-launchpad /var/www/launchpad /var/www/launchpad/releases
-  install -d -m 700 /opt/wt-launchpad/incoming
+  install -d -m 755 /var/www/launchpad /var/www/launchpad/releases
+  install -d -m 700 /opt/wt-launchpad /opt/wt-launchpad/incoming
 
   # Certificado (el plugin nginx solo atiende el challenge; no edita la configuración).
   if [ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
