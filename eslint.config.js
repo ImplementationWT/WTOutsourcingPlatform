@@ -6,7 +6,8 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // apps/api tiene su propio eslint.config.js y se lintea por separado.
+  globalIgnores(['dist', 'apps']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -17,6 +18,7 @@ export default defineConfig([
     ],
     languageOptions: {
       globals: globals.browser,
+      parserOptions: { tsconfigRootDir: import.meta.dirname },
     },
   },
   {
