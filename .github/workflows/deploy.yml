@@ -1,0 +1,112 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Nunca dos despliegues a la vez; uno en curso no se cancela a medias.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Deploy a launchpad.whatever.tech
+    needs: ci
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://launchpad.whatever.tech
+    env:
+      RELEASE: ${{ github.sha }}
+      SSH_TARGET: ${{ secrets.SERVER_SSH_USER }}@${{ secrets.SERVER_SSH_HOST }}
+      SSH_PORT: ${{ vars.SERVER_SSH_PORT || '22' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "12.11.2"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Build frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Build imagen de la API
+        run: |
+          docker build -t "launchpad-api:$RELEASE" apps/api
+          docker save "launchpad-api:$RELEASE" | gzip > api-image.tar.gz
+
+      - name: Generar configuración de la API
+        env:
+          GH_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          ATLAS_CLIENT_SECRET: ${{ secrets.ATLAS_CLIENT_SECRET }}
+          ADMIN_MONGODB_URI: ${{ secrets.ADMIN_MONGODB_URI }}
+          PANEL_ADMIN_PASSWORD_HASH: ${{ secrets.PANEL_ADMIN_PASSWORD_HASH }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+        run: |
+          umask 077
+          printf '%s\n' "$GH_APP_PRIVATE_KEY" > github-app.pem
+          # Formato --env-file de Docker: KEY=valor literal, sin comillas.
+          cat > api.env <<EOF
+          NODE_ENV=production
+          PORT=3001
+          LOG_LEVEL=${{ vars.LOG_LEVEL || 'info' }}
+          GITHUB_APP_ID=${{ vars.GH_APP_ID }}
+          GITHUB_INSTALLATION_ID=${{ vars.GH_INSTALLATION_ID }}
+          GITHUB_PRIVATE_KEY_PATH=/run/secrets/github-app.pem
+          GITHUB_TEMPLATE_OWNER=${{ vars.GH_TEMPLATE_OWNER }}
+          GITHUB_TEMPLATE_REPO=${{ vars.GH_TEMPLATE_REPO }}
+          GITHUB_TARGET_OWNER=${{ vars.GH_TARGET_OWNER }}
+          ATLAS_PROJECT_ID=${{ vars.ATLAS_PROJECT_ID }}
+          ATLAS_CLIENT_ID=${{ vars.ATLAS_CLIENT_ID }}
+          ATLAS_CLIENT_SECRET=$ATLAS_CLIENT_SECRET
+          ATLAS_CLUSTER_NAME=${{ vars.ATLAS_CLUSTER_NAME }}
+          ATLAS_CLUSTER_SRV_HOST=${{ vars.ATLAS_CLUSTER_SRV_HOST }}
+          ADMIN_MONGODB_URI=$ADMIN_MONGODB_URI
+          APPS_DOMAIN=${{ vars.APPS_DOMAIN }}
+          DEPLOY_ENABLED=${{ vars.DEPLOY_ENABLED || 'false' }}
+          PANEL_ADMIN_USERNAME=${{ vars.PANEL_ADMIN_USERNAME }}
+          PANEL_ADMIN_PASSWORD_HASH=$PANEL_ADMIN_PASSWORD_HASH
+          SESSION_SECRET=$SESSION_SECRET
+          EOF
+
+      - name: Configurar SSH
+        env:
+          SERVER_SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
+          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SERVER_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      - name: Subir release
+        run: |
+          SSH="ssh -p $SSH_PORT -o BatchMode=yes"
+          rsync -az --delete --chmod=D755,F644 -e "$SSH" dist/ "$SSH_TARGET:/var/www/launchpad/releases/$RELEASE/"
+          rsync -az --chmod=F600 -e "$SSH" \
+            api-image.tar.gz api.env github-app.pem deploy/activate.sh \
+            "$SSH_TARGET:/opt/wt-launchpad/incoming/"
+
+      - name: Activar release
+        run: ssh -p "$SSH_PORT" -o BatchMode=yes "$SSH_TARGET" "bash /opt/wt-launchpad/incoming/activate.sh '$RELEASE'"
+
+      - name: Verificar https://launchpad.whatever.tech/health
+        run: curl -fsS --retry 5 --retry-delay 3 --retry-all-errors https://launchpad.whatever.tech/health
+
+      - name: Limpiar credenciales del runner
+        if: always()
+        run: rm -f github-app.pem api.env ~/.ssh/id_ed25519

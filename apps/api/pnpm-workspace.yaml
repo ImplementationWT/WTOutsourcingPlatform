@@ -1,2 +1,4 @@
 allowBuilds:
   esbuild: true
+  # Su postinstall solo predescarga mongod; los tests lo descargan al arrancar.
+  mongodb-memory-server: false
