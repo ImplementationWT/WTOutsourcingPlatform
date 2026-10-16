@@ -112,6 +112,7 @@ export class FakeGithub extends Faulty implements GithubAdapter {
   readonly files = new Map<string, string>();
   readonly environments = new Map<string, FakeEnvironment>();
   readonly runs = new Map<string, WorkflowRun[]>();
+  readonly topics = new Map<string, string[]>();
   /** Conclusión del próximo run lanzado. */
   nextRunConclusion: "success" | "failure" = "success";
   templateVersion = "1.4.0";
@@ -217,8 +218,13 @@ export class FakeGithub extends Faulty implements GithubAdapter {
       archived: false,
       language: "TypeScript",
       createdAt: null,
-      pushedAt: null
+      pushedAt: null,
+      topics: this.topics.get(r.name) ?? []
     }));
+  }
+  async setRepositoryTopics(name: string, topics: string[]) {
+    this.hit("setRepositoryTopics", name, topics.join(","));
+    this.topics.set(name, topics);
   }
 }
 

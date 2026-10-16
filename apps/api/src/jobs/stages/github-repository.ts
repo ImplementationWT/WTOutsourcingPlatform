@@ -1,4 +1,4 @@
-import { GithubRepoExistsError } from "../../adapters/github.js";
+import { GithubRepoExistsError, PLATFORM_TOPIC } from "../../adapters/github.js";
 import { FatalError, OwnershipError } from "../../lib/errors.js";
 import { pollUntil } from "../../lib/retry.js";
 import type { Stage } from "../types.js";
@@ -57,6 +57,12 @@ export const githubRepositoryStage: Stage = {
       try {
         repo = await github.createRepositoryFromTemplate(names.repository, client.description);
         await ctx.audit("github.repository.created", names.repositoryFullName, { private: true });
+        // Etiqueta para filtrarlo en el panel y en GitHub (topic:launchpad). No bloquea el alta.
+        try {
+          await github.setRepositoryTopics(names.repository, [PLATFORM_TOPIC]);
+        } catch {
+          await ctx.report(`No se pudo etiquetar ${names.repositoryFullName} con "${PLATFORM_TOPIC}"; puedes hacerlo desde Proyectos.`);
+        }
       } catch (error) {
         // Un intento anterior sí llegó a crearlo: el reclamo es nuestro, se reutiliza.
         if (!(error instanceof GithubRepoExistsError)) throw error;

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { GithubAdapter } from "../adapters/github.js";
+import { type GithubAdapter, PLATFORM_TOPIC } from "../adapters/github.js";
 import type { Deps } from "../jobs/types.js";
 import { requireAdmin } from "../auth/session.js";
 import { deriveNames, parseSlug, slugSchema } from "../domain/naming.js";
@@ -30,6 +30,16 @@ export function registerIncomingSecrets(value: unknown) {
   if (typeof value === "string") registerSecret(value);
   else if (value && typeof value === "object") Object.values(value).forEach(registerIncomingSecrets);
 }
+
+/** Reglas de GitHub para topics: minúsculas, números y guiones, hasta 50 caracteres y 20 por repo. */
+const topicsSchema = z
+  .object({
+    topics: z
+      .array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,49}$/, "Etiqueta inválida: minúsculas, números y guiones (máx. 50)."))
+      .max(20, "Máximo 20 etiquetas por proyecto.")
+  })
+  .strict();
+const repoParams = z.object({ name: z.string().regex(/^[A-Za-z0-9._-]{1,100}$/) });
 
 const idParams = z.object({ id: z.string().uuid() });
 const slugParams = z.object({ slug: slugSchema });
@@ -395,7 +405,22 @@ export async function registerClientRoutes(
         const slug = repo.name.match(/^(.+)-app$/)?.[1];
         const status = slug ? clients.get(slug) : undefined;
         return { ...repo, clientId: status ? slug : null, clientStatus: status ?? null };
-      })
+      }),
+      platformTopic: PLATFORM_TOPIC
     };
+  });
+
+  /** Etiquetas (topics de GitHub) de un proyecto de la lista; los internos AB/WT y la plantilla no. */
+  app.put("/api/projects/:name/topics", { preHandler: requireAdmin }, async (request, reply) => {
+    const params = repoParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "Repositorio inválido." });
+    const body = topicsSchema.safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.issues[0]?.message ?? "Etiquetas inválidas." });
+    const repo = (await github.listProjectRepos()).find((r) => r.name === params.data.name);
+    if (!repo) return reply.code(404).send({ error: "Proyecto no encontrado." });
+    const topics = [...new Set(body.data.topics)].sort();
+    await github.setRepositoryTopics(repo.name, topics);
+    await store.audit({ actor: request.user!.username, action: "project.topics_updated", clientId: "-", target: repo.fullName, details: { topics } });
+    return { topics };
   });
 }

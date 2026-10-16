@@ -67,6 +67,14 @@ export function useProjects() {
   return useQuery({ queryKey: ["projects"], queryFn: fetchProjects });
 }
 
+/** Reemplaza las etiquetas (topics de GitHub) de un proyecto. */
+export function updateProjectTopics(name: string, topics: string[]) {
+  return apiFetch<{ topics: string[] }>(`/api/projects/${encodeURIComponent(name)}/topics`, {
+    method: "PUT",
+    body: JSON.stringify({ topics }),
+  });
+}
+
 /** Catálogo de integraciones (sin secretos: solo cómo pintar el formulario). */
 export function useIntegrationCatalog() {
   return useQuery({

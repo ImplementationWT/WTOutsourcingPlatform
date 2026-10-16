@@ -29,7 +29,12 @@ export interface ProjectRepo extends RepoInfo {
   language: string | null;
   createdAt: string | null;
   pushedAt: string | null;
+  /** Topics de GitHub: las etiquetas con las que se filtran los proyectos en el panel. */
+  topics: string[];
 }
+
+/** Topic que la plataforma pone a los repos que crea (visible y buscable en GitHub). */
+export const PLATFORM_TOPIC = "launchpad";
 
 export interface WorkflowRun {
   id: number;
@@ -68,6 +73,8 @@ export interface GithubAdapter {
   /** "Job › paso" del primer paso fallido de un run, o null. */
   getRunFailure(repo: string, runId: number): Promise<string | null>;
   listProjectRepos(): Promise<ProjectRepo[]>;
+  /** Reemplaza los topics del repositorio (ya validados). */
+  setRepositoryTopics(name: string, topics: string[]): Promise<void>;
   /** Borra el repositorio. false si ya no existía. */
   deleteRepository(name: string): Promise<boolean>;
   /**
@@ -331,6 +338,11 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
         return step ? `${job.name} › ${step.name}` : job.name;
       }),
 
+    setRepositoryTopics: (name, topics) =>
+      call("cambiar las etiquetas del repositorio", async () => {
+        await octokit.rest.repos.replaceAllTopics({ owner, repo: name, names: topics });
+      }),
+
     listProjectRepos: () =>
       call("listar los repositorios", async () => {
         const repos = await octokit.paginate(octokit.rest.apps.listReposAccessibleToInstallation, { per_page: 100 });
@@ -348,7 +360,8 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
             archived: repo.archived,
             language: repo.language ?? null,
             createdAt: repo.created_at ?? null,
-            pushedAt: repo.pushed_at ?? null
+            pushedAt: repo.pushed_at ?? null,
+            topics: repo.topics ?? []
           }))
           .sort((a, b) => (b.pushedAt ?? "").localeCompare(a.pushedAt ?? ""));
       })

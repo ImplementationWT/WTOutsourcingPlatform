@@ -24,6 +24,8 @@ export interface ProjectRepo {
   language: string | null;
   createdAt: string | null;
   pushedAt: string | null;
+  /** Topics de GitHub del repo: las etiquetas del panel. */
+  topics: string[];
   /** Cliente de la plataforma asociado ({slug}-app), si existe. */
   clientId: string | null;
   clientStatus: "provisioning" | "ready" | "failed" | null;
