@@ -41,7 +41,10 @@ export const deployStage: Stage = {
     }
 
     const { resource } = await store.claimResource("deploy", names.repositoryFullName, client._id);
-    let runId = typeof resource.ref.runId === "number" ? resource.ref.runId : undefined;
+    // Un run anterior solo cuenta si es de ESTE trabajo (reintento). Un trabajo nuevo
+    // (p. ej. tras actualizar una integración) siempre lanza un despliegue nuevo.
+    const sameJob = resource.ref.jobId === ctx.job.id;
+    let runId = sameJob && typeof resource.ref.runId === "number" ? resource.ref.runId : undefined;
     let discardedFailedRun = false;
 
     // Un run anterior que terminó mal no se "sigue": el reintento lanza un despliegue nuevo.
@@ -57,7 +60,7 @@ export const deployStage: Stage = {
       }
     }
 
-    if (!runId && !discardedFailedRun && typeof resource.ref.dispatchRequestedAt === "string") {
+    if (sameJob && !runId && !discardedFailedRun && typeof resource.ref.dispatchRequestedAt === "string") {
       // Se pidió el dispatch pero no se registró el run (timeout o reinicio): se busca antes de repetir.
       const adopted = await findDispatchedRun(ctx, new Date(resource.ref.dispatchRequestedAt), { adopting: true });
       if (adopted) runId = adopted.id;
@@ -68,6 +71,7 @@ export const deployStage: Stage = {
       await store.updateResourceRef("deploy", names.repositoryFullName, client._id, {
         workflow,
         ref: config.template.ref,
+        jobId: ctx.job.id,
         dispatchRequestedAt: requestedAt.toISOString(),
         runId: null,
         runUrl: null

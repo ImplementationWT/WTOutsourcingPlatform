@@ -7,7 +7,8 @@ import { deriveNames, parseSlug, slugSchema } from "../domain/naming.js";
 import { type JobEngine, toPublicJob } from "../jobs/engine.js";
 import { ActiveWorkError, type Teardown, toPublicDeletion } from "../jobs/teardown.js";
 import { INITIAL_ADMIN_USERNAME } from "../jobs/stages/github-secrets.js";
-import { redact } from "../lib/redact.js";
+import { getProvider, integrationsInputSchema } from "../integrations/catalog.js";
+import { redact, registerSecret } from "../lib/redact.js";
 import { ActiveJobExistsError, type AdminStore, DuplicateClientError } from "../store/admin-store.js";
 import type { ClientDoc } from "../store/models.js";
 
@@ -19,8 +20,16 @@ import type { ClientDoc } from "../store/models.js";
 const createClientSchema = z.object({
   name: z.string().trim().min(3).max(60),
   slug: slugSchema,
-  description: z.string().trim().min(10).max(280)
+  description: z.string().trim().min(10).max(280),
+  // Integraciones opcionales: estricto (solo proveedores del catálogo y sus campos).
+  integrations: integrationsInputSchema.optional()
 });
+
+/** Registra para redacción cualquier credencial recibida, antes incluso de validarla. */
+export function registerIncomingSecrets(value: unknown) {
+  if (typeof value === "string") registerSecret(value);
+  else if (value && typeof value === "object") Object.values(value).forEach(registerIncomingSecrets);
+}
 
 const idParams = z.object({ id: z.string().uuid() });
 const slugParams = z.object({ slug: slugSchema });
@@ -55,6 +64,18 @@ export function initialAdminStatus(client: ClientDoc, pendingUntil: Date | null,
     revealedAt: info.revealedAt ?? null,
     revealedBy: info.revealedBy ?? null
   };
+}
+
+/** Integraciones del cliente para el panel: estado y fechas. Nunca valores, parciales ni longitudes. */
+export function integrationsView(client: ClientDoc) {
+  return Object.entries(client.integrations ?? {})
+    .filter(([providerId]) => getProvider(providerId))
+    .map(([provider, state]) => ({
+      provider,
+      enabled: state.enabled,
+      configuredAt: state.configuredAt ?? null,
+      updatedAt: state.updatedAt ?? null
+    }));
 }
 
 /** Digest abreviado de una imagen ghcr.io/<org>/<repo>@sha256:… para mostrar en el panel. */
@@ -92,16 +113,28 @@ export async function registerClientRoutes(
     const namesFor = (slug: string) => deriveNames(parseSlug(slug), { targetOwner: github.owner, appsDomain: config.appsDomain });
 
   app.post("/api/clients", { preHandler: requireAdmin }, async (request, reply) => {
+    registerIncomingSecrets((request.body as { integrations?: unknown } | null)?.integrations);
     const parsed = createClientSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "Datos inválidos.", issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
     }
     const { name, slug, description } = parsed.data;
+    const integrations = Object.entries(parsed.data.integrations ?? {}).filter(
+      (entry): entry is [string, Record<string, string>] => entry[1] !== undefined
+    );
+    if (integrations.length && !deps.secrets.available) {
+      return reply.code(503).send({ error: "Las integraciones no están disponibles: falta INTEGRATION_ENCRYPTION_KEY_SECRET_REF en el servidor." });
+    }
     const actor = request.user!.username;
 
     try {
       const job = await store.createClientWithJob({ slug, name, description, actor, stages: engine.stageNames });
       await store.audit({ actor, action: "client.created", clientId: slug, target: slug });
+      // Las credenciales quedan cifradas (TTL) hasta que github_secrets las escribe en GitHub.
+      for (const [providerId, credentials] of integrations) {
+        await deps.secrets.put(slug, providerId, credentials);
+        await store.setClientFields(slug, { [`integrations.${providerId}`]: { enabled: true, requestedAt: new Date() } });
+      }
       void engine.start(job._id, actor);
       return reply.code(202).send({ clientId: slug, jobId: job._id });
     } catch (error) {
@@ -138,6 +171,7 @@ export async function registerClientRoutes(
           ? { name: client.template.name, version: client.template.version, schemaVersion: client.template.schemaVersion ?? null }
           : null,
         initialAdmin: initialAdminStatus(client, pendingUntil, vault.now()),
+        integrations: integrationsView(client),
         deployment: deploymentView(client, names.baseUrl),
         deployEnabled: config.deployEnabled,
         createdAt: client.createdAt
@@ -200,6 +234,8 @@ export async function registerClientRoutes(
   app.get("/api/platform", { preHandler: requireAdmin }, async () => ({
     deployEnabled: config.deployEnabled,
     appBaseDomain: config.appsDomain,
+    templateVersion: config.template.expectedVersion,
+    integrationsAvailable: deps.secrets.available,
     githubOwner: github.owner,
     atlas: {
       clusterName: config.atlas.clusterName,
@@ -335,7 +371,7 @@ export async function registerClientRoutes(
     const actor = request.user!.username;
 
     try {
-      const job = await store.prepareRetry(params.data.id, engine.stageNames);
+      const job = await store.prepareRetry(params.data.id, engine.retryableStageNames);
       if (!job) return reply.code(409).send({ error: "Solo se puede reintentar un trabajo fallido." });
       await store.updateClient(job.clientId, { status: "provisioning" });
       const resumeFrom = job.stages.find((s) => s.status !== "succeeded")?.name ?? null;

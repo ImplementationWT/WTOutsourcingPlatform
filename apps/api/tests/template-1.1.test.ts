@@ -120,58 +120,45 @@ describe("INITIAL_ADMIN_PASSWORD", () => {
 });
 
 describe("verificación de la versión del template", () => {
-  it("sin TEMPLATE_VERSION sigue a la plantilla: una versión nueva no requiere configurar nada", async () => {
-    const { store, engine, github } = await setup();
-    github.templateVersion = "1.4.0";
-    github.templateSourceVersion = "1.4.0";
-    const job = await createClient(store);
-    expect((await engine.run(job._id, "admin"))?.status).toBe("succeeded");
-    expect((await store.getClient("acme-crm"))?.template?.version).toBe("1.4.0");
-  });
-
-  it("si el repo generado no coincide con la plantilla, se detiene", async () => {
-    const { store, engine, github } = await setup();
-    github.templateSourceVersion = "1.4.0"; // el repo salió en 1.3.0
-    const job = await createClient(store);
-    const result = await engine.run(job._id, "admin");
-    expect(result?.stages[0].error?.code).toBe("template_version_mismatch");
-  });
-
-  it("rechaza plantillas anteriores al protocolo de despliegue soportado (1.3.0)", async () => {
-    const { store, engine, github } = await setup();
-    github.templateVersion = "1.2.0";
-    github.templateSourceVersion = "1.2.0";
-    const job = await createClient(store);
-    const result = await engine.run(job._id, "admin");
-    expect(result?.stages[0].error).toMatchObject({ code: "template_version_unsupported", retryable: false });
-  });
-
-  it("una versión distinta a TEMPLATE_VERSION (fijada) detiene el trabajo y guarda la versión real", async () => {
-    const { store, engine, github, atlas } = await setup({ template: { ...TEST_CONFIG.template, expectedVersion: "1.3.0" } });
-    github.templateVersion = "1.4.0";
-    github.templateSourceVersion = "1.4.0";
-    const job = await createClient(store);
-
-    const result = await engine.run(job._id, "admin");
-    expect(result?.status).toBe("failed");
-    expect(result?.stages[0]).toMatchObject({
-      name: "github_repository",
-      status: "failed",
-      error: { code: "template_version_mismatch", retryable: false }
-    });
-    expect(result?.stages[0].error?.message).toContain("1.4.0");
-    expect(result?.stages[0].error?.message).toContain("1.3.0");
-    expect((await store.getClient("acme-crm"))?.template?.version).toBe("1.4.0");
-    // No se tocó nada más.
-    expect(atlas.count("createDatabaseUser")).toBe(0);
-  });
-
-  it("con la versión esperada queda verificada en clients.template.version", async () => {
+  it("con la versión esperada (TEMPLATE_VERSION) queda verificada en clients.template.version", async () => {
     const { store, engine } = await setup();
     const job = await createClient(store);
     const result = await engine.run(job._id, "admin");
     expect(result?.stages[0].steps?.find((s) => s.id === "version")).toMatchObject({ status: "done" });
-    expect((await store.getClient("acme-crm"))?.template).toMatchObject({ name: "node-typescript", version: "1.3.0", schemaVersion: 1 });
+    expect(result?.stages[0].steps?.find((s) => s.id === "version")?.label).toContain("node-typescript@1.4.0");
+    expect((await store.getClient("acme-crm"))?.template).toMatchObject({ name: "node-typescript", version: "1.4.0", schemaVersion: 1 });
+  });
+
+  it("otra versión detiene el trabajo indicando la esperada, la encontrada y dónde cambiar la configuración", async () => {
+    const { store, engine, github, atlas } = await setup();
+    github.templateVersion = "1.5.0";
+    const job = await createClient(store);
+
+    const result = await engine.run(job._id, "admin");
+    expect(result?.status).toBe("failed");
+    const error = result?.stages[0].error;
+    expect(error).toMatchObject({ code: "template_version_mismatch", retryable: false });
+    expect(error?.message).toContain("node-typescript@1.5.0");
+    expect(error?.message).toContain("espera 1.4.0");
+    expect(error?.message).toContain("TEMPLATE_VERSION");
+    expect(error?.message).toContain("Environments → production");
+    expect((await store.getClient("acme-crm"))?.template?.version).toBe("1.5.0");
+    expect(atlas.count("createDatabaseUser")).toBe(0);
+  });
+
+  it("TEMPLATE_VERSION es configurable", async () => {
+    const { store, engine, github } = await setup({ template: { ...TEST_CONFIG.template, expectedVersion: "1.5.0" } });
+    github.templateVersion = "1.5.0";
+    const job = await createClient(store);
+    expect((await engine.run(job._id, "admin"))?.status).toBe("succeeded");
+  });
+
+  it("rechaza plantillas anteriores al protocolo de despliegue soportado (1.3.0)", async () => {
+    const { store, engine, github } = await setup({ template: { ...TEST_CONFIG.template, expectedVersion: "1.2.0" } });
+    github.templateVersion = "1.2.0";
+    const job = await createClient(store);
+    const result = await engine.run(job._id, "admin");
+    expect(result?.stages[0].error).toMatchObject({ code: "template_version_unsupported", retryable: false });
   });
 });
 

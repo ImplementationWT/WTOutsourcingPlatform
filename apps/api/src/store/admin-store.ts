@@ -3,6 +3,7 @@ import { type Db, MongoServerError } from "mongodb";
 import { OwnershipError } from "../lib/errors.js";
 import { redact } from "../lib/redact.js";
 import type { InitialPasswordDoc } from "./initial-password-vault.js";
+import type { ProvisioningSecretDoc } from "./provisioning-secrets.js";
 import type { DeletionDoc } from "./models.js";
 import {
   type AuditDoc,
@@ -10,6 +11,8 @@ import {
   type JobDoc,
   type ResourceDoc,
   type ResourceKind,
+  INTEGRATION_STAGES,
+  type StageName,
   STAGES,
   type StageState
 } from "./models.js";
@@ -36,6 +39,8 @@ export class AdminStore {
   readonly initialPasswords;
   /** Progreso del borrado de cada cliente (se conserva tras borrarlo, como constancia). */
   readonly deletions;
+  /** Credenciales de integraciones en tránsito (cifradas; las gestiona ProvisioningSecrets). */
+  readonly provisioningSecrets;
 
   constructor(db: Db, private readonly now: () => Date = () => new Date()) {
     this.clients = db.collection<ClientDoc>("clients");
@@ -44,6 +49,7 @@ export class AdminStore {
     this.auditLog = db.collection<AuditDoc>("audit");
     this.initialPasswords = db.collection<InitialPasswordDoc>("initial_password_reveals");
     this.deletions = db.collection<DeletionDoc>("deletions");
+    this.provisioningSecrets = db.collection<ProvisioningSecretDoc>("provisioning_secrets");
   }
 
   async init() {
@@ -111,6 +117,35 @@ export class AdminStore {
     return job;
   }
 
+  /**
+   * Trabajo nuevo para un cliente existente (p. ej. actualizar una integración y
+   * redesplegar). Falla con ActiveJobExistsError si ya tiene uno activo.
+   */
+  async createJob(input: { clientId: string; stages: StageName[]; actor: string; integration?: JobDoc["integration"] }) {
+    const at = this.now();
+    const labels = new Map<string, string>([...STAGES, ...INTEGRATION_STAGES].map((s) => [s.name, s.label]));
+    const job: JobDoc = {
+      _id: randomUUID(),
+      clientId: input.clientId,
+      ...(input.integration ? { integration: input.integration } : {}),
+      status: "queued",
+      active: true,
+      stages: input.stages.map((name) => ({ name, label: labels.get(name) ?? name, status: "pending", attempts: 0 })),
+      lease: null,
+      createdBy: input.actor,
+      createdAt: at,
+      updatedAt: at
+    };
+    try {
+      await this.jobs.insertOne(job);
+    } catch (error) {
+      if (isDuplicateKey(error)) throw new ActiveJobExistsError(input.clientId);
+      throw error;
+    }
+    await this.clients.updateOne({ _id: input.clientId }, { $set: { latestJobId: job._id, updatedAt: at } });
+    return job;
+  }
+
   getClient(slug: string) {
     return this.clients.findOne({ _id: slug });
   }
@@ -118,6 +153,13 @@ export class AdminStore {
   updateClient(slug: string, patch: Partial<Omit<ClientDoc, "_id">>) {
     assertNoSecrets(patch, "el cliente");
     return this.clients.updateOne({ _id: slug }, { $set: { ...patch, updatedAt: this.now() } });
+  }
+
+  unsetClientFields(slug: string, fields: string[]) {
+    return this.clients.updateOne(
+      { _id: slug },
+      { $unset: Object.fromEntries(fields.map((f) => [f, ""])), $set: { updatedAt: this.now() } }
+    );
   }
 
   /** Actualiza campos anidados ("template.schemaVersion", …) sin reemplazar el objeto completo. */

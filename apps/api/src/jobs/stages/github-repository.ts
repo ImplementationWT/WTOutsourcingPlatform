@@ -31,18 +31,6 @@ export function compareVersions(a: string, b: string) {
   return 0;
 }
 
-/** Versión esperada: TEMPLATE_VERSION si está fijada; si no, la actual de la plantilla. */
-async function expectedVersion(ctx: Parameters<Stage["run"]>[0]) {
-  const { config, github } = ctx.deps;
-  if (config.template.expectedVersion) return { version: config.template.expectedVersion, source: "TEMPLATE_VERSION" };
-  const raw = await github.readTemplateFile("package.json");
-  const template = raw === null ? null : parseTemplate(raw);
-  if (!template) {
-    throw new FatalError("template_source_unreadable", "No se pudo leer template.version del package.json de la plantilla.");
-  }
-  return { version: template.version, source: "la plantilla" };
-}
-
 export const githubRepositoryStage: Stage = {
   name: "github_repository",
   async run(ctx) {
@@ -51,7 +39,7 @@ export const githubRepositoryStage: Stage = {
     await ctx.plan([
       { id: "repository", label: `Crear ${names.repositoryFullName} desde la plantilla` },
       { id: "content", label: "Esperar a que GitHub copie el contenido" },
-      { id: "version", label: `Verificar la versión del template ${deps.config.template.name}` }
+      { id: "version", label: `Verificar la versión del template (${deps.config.template.name}@${deps.config.template.expectedVersion})` }
     ]);
 
     await ctx.step("repository", "running");
@@ -122,12 +110,13 @@ export const githubRepositoryStage: Stage = {
       );
     }
     // Contrato §1: el repo queda fijado a la versión con la que se generó y debe ser la esperada.
-    const expected = await expectedVersion(ctx);
-    if (template.version !== expected.version) {
+    const expected = deps.config.template.expectedVersion;
+    if (template.version !== expected) {
       throw new FatalError(
         "template_version_mismatch",
-        `${names.repositoryFullName} se generó con ${template.name}@${template.version} y ${expected.source} indica ${expected.version}.` +
-          (expected.source === "TEMPLATE_VERSION" ? " Ajusta o quita TEMPLATE_VERSION." : " Reintenta: la plantilla pudo cambiar mientras se copiaba.")
+        `${names.repositoryFullName} se generó con ${template.name}@${template.version} y la plataforma espera ${expected}. ` +
+          "Para aceptar otra versión, cambia la variable TEMPLATE_VERSION del entorno production del repo de la plataforma " +
+          "(GitHub → Settings → Environments → production) y redespliégala."
       );
     }
     await ctx.step("version", "done", `Versión verificada: ${template.name}@${template.version}.`);

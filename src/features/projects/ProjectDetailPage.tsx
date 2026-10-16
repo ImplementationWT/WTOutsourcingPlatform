@@ -23,6 +23,7 @@ import { useClient } from "./api";
 import DeleteProjectCard from "./DeleteProjectCard";
 import DeploymentCard from "./DeploymentCard";
 import InitialCredentialsCard from "./InitialCredentialsCard";
+import IntegrationsCard from "./IntegrationsCard";
 import JobStages from "./JobStages";
 import { Code } from "./new-project/parts";
 import { isFinished, retryJob, useJobStream } from "./provisioning";
@@ -198,6 +199,8 @@ export default function ProjectDetailPage() {
             <DeploymentCard client={data.client} />
             <InitialCredentialsCard slug={data.client.id} />
           </div>
+
+          <IntegrationsCard client={data.client} />
 
           {/* Sin borrar mientras se aprovisiona: el servidor lo rechazaría. */}
           {job && isFinished(job) && (

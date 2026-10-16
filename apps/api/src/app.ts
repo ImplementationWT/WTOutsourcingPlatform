@@ -9,6 +9,7 @@ import { loggerOptions } from "./lib/logger.js";
 import { redact } from "./lib/redact.js";
 import { registerClientRoutes } from "./routes/clients.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
+import { registerIntegrationRoutes } from "./routes/integrations.js";
 import type { AdminStore } from "./store/admin-store.js";
 
 export interface AppOptions {
@@ -29,11 +30,14 @@ export async function buildApp({ store, deps, auth, logLevel, logStream }: AppOp
   app.addHook("preSerialization", async (_request, _reply, payload) => redact(payload));
 
   app.setErrorHandler((error, request, reply) => {
-    request.log.error({ err: error }, "Request failed");
     const status = (error as { statusCode?: number }).statusCode;
     if (status && status >= 400 && status < 500) {
+      // Errores del cliente (p. ej. JSON mal formado): el mensaje puede citar el cuerpo
+      // recibido, que puede llevar credenciales. Se registra solo el código.
+      request.log.warn({ code: (error as { code?: string }).code ?? "client_error", statusCode: status }, "Bad request");
       return reply.code(status).send({ error: "Petición inválida." });
     }
+    request.log.error({ err: error }, "Request failed");
     const message = error instanceof ProvisioningError ? error.message : "Error interno del servidor.";
     return reply.code(error instanceof ProvisioningError ? 502 : 500).send({ error: redact(message) });
   });
@@ -43,6 +47,7 @@ export async function buildApp({ store, deps, auth, logLevel, logStream }: AppOp
   await registerAuth(app, auth);
   await registerClientRoutes(app, { store, engine, teardown, deps });
   await registerDashboardRoutes(app, { store, deps });
+  await registerIntegrationRoutes(app, { store, engine, deps });
 
   app.addHook("onClose", async () => {
     await Promise.all([engine.idle(), teardown.idle()]);

@@ -8,7 +8,13 @@ export const STAGES = [
   { name: "health_check", label: "Verificación de salud" }
 ] as const;
 
-export type StageName = (typeof STAGES)[number]["name"];
+/** Etapas de los trabajos sobre integraciones de un cliente existente (antes de deploy/health_check). */
+export const INTEGRATION_STAGES = [
+  { name: "integration_secret", label: "Credencial de la integración en GitHub" },
+  { name: "integration_remove", label: "Quitar la integración de GitHub" }
+] as const;
+
+export type StageName = (typeof STAGES)[number]["name"] | (typeof INTEGRATION_STAGES)[number]["name"];
 export type StageStatus = "pending" | "running" | "succeeded" | "failed";
 export type JobStatus = "queued" | "running" | "failed" | "succeeded";
 export type ClientStatus = "provisioning" | "ready" | "failed";
@@ -41,6 +47,8 @@ export interface StageState {
 export interface JobDoc {
   _id: string;
   clientId: string;
+  /** Trabajos de integración: qué proveedor y qué operación (sin credenciales). */
+  integration?: { provider: string; action: "set" | "remove" };
   status: JobStatus;
   /** true mientras el trabajo está en cola o en curso; índice único parcial por cliente. */
   active: boolean;
@@ -67,6 +75,15 @@ export interface InitialAdminInfo {
   revealedBy?: string;
   /** El secret ya existía (intento anterior) y la plataforma no conoce su valor. */
   reused?: boolean;
+}
+
+export interface IntegrationState {
+  enabled: boolean;
+  /** Se pidió activarla; queda pendiente hasta escribir el secret. */
+  requestedAt: Date;
+  /** Secret escrito en GitHub por primera vez / por última vez. */
+  configuredAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface DeploymentInfo {
@@ -97,6 +114,8 @@ export interface ClientDoc {
   initialAdmin?: InitialAdminInfo;
   /** Despliegue en el VPS: solo referencias (nunca claves, tokens ni variables de entorno). */
   deployment?: DeploymentInfo;
+  /** Integraciones por proveedor: solo estado y fechas, nunca credenciales. */
+  integrations?: Record<string, IntegrationState>;
   latestJobId: string;
   createdBy: string;
   createdAt: Date;

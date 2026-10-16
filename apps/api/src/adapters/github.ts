@@ -52,13 +52,13 @@ export interface GithubAdapter {
   createRepositoryFromTemplate(name: string, description: string): Promise<RepoInfo>;
   /** Contenido de un archivo de la rama por defecto, o null si aún no existe. */
   readFile(repo: string, path: string): Promise<string | null>;
-  /** Contenido de un archivo de la rama por defecto de la plantilla. */
-  readTemplateFile(path: string): Promise<string | null>;
   environmentExists(repo: string, environment: string): Promise<boolean>;
   createEnvironment(repo: string, environment: string): Promise<void>;
   listEnvironmentSecretNames(repo: string, environment: string): Promise<string[]>;
   /** Cifra con la clave pública del entorno (sealed box) y escribe el secret. */
   putEnvironmentSecret(repo: string, environment: string, name: string, value: string): Promise<void>;
+  /** Borra un secret del entorno. false si no existía. */
+  deleteEnvironmentSecret(repo: string, environment: string, name: string): Promise<boolean>;
   getEnvironmentVariable(repo: string, environment: string, name: string): Promise<string | null>;
   setEnvironmentVariable(repo: string, environment: string, name: string, value: string): Promise<void>;
   getWorkflow(repo: string, file: string): Promise<{ id: number; state: string } | null>;
@@ -205,8 +205,6 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
 
     readFile: (repo, path) => readContent(owner, repo, path),
 
-    readTemplateFile: (path) => readContent(config.templateOwner, config.templateRepo, path),
-
     environmentExists: async (repo, environment) =>
       (await find("consultar el entorno", () => octokit.rest.repos.getEnvironment({ owner, repo, environment_name: environment }))) !== null,
 
@@ -239,6 +237,16 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
           encrypted_value: await sealForGithub(key.key, value)
         });
       }),
+
+    async deleteEnvironmentSecret(repo, environment, name) {
+      try {
+        await octokit.rest.actions.deleteEnvironmentSecret({ owner, repo, environment_name: environment, secret_name: name });
+        return true;
+      } catch (error) {
+        if (statusOf(error) === 404) return false;
+        return classifyGithubError(error, `borrar el secret ${name}`);
+      }
+    },
 
     getEnvironmentVariable: (repo, environment, name) =>
       find(`leer la variable ${name}`, async () =>

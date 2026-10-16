@@ -5,7 +5,9 @@ import type { ServerAdapter } from "../adapters/server.js";
 import type { MongoBootstrapAdapter } from "../adapters/mongo-bootstrap.js";
 import type { ClientNames } from "../domain/naming.js";
 import type { AdminStore } from "../store/admin-store.js";
+import type { ValidationResult } from "../integrations/catalog.js";
 import type { InitialPasswordVault } from "../store/initial-password-vault.js";
+import type { ProvisioningSecrets } from "../store/provisioning-secrets.js";
 import type { ClientDoc, InitialAdminMode, StageName, SubStepStatus } from "../store/models.js";
 
 /** VPS compartido (contrato §3, §5 y §6). Sin claves privadas: la del provisioner vive en el adaptador. */
@@ -37,11 +39,8 @@ export interface ProvisioningConfig {
     deployWorkflow: string;
     ref: string;
     schemaVersion: number;
-    /**
-     * TEMPLATE_VERSION: template.version exacta que deben tener los repos generados.
-     * Sin valor, se usa la versión actual de la plantilla (su package.json).
-     */
-    expectedVersion?: string;
+    /** TEMPLATE_VERSION: template.version exacta que deben tener los repos generados. */
+    expectedVersion: string;
     /** MIN_SCHEMA_VERSION: schemaVersion mínima que debe devolver /api/meta. */
     minSchemaVersion: number;
   };
@@ -94,6 +93,10 @@ export interface Deps {
   server: ServerAdapter;
   resolver: DnsResolver;
   vault: InitialPasswordVault;
+  /** Credenciales de integraciones en tránsito (cifradas, con TTL). */
+  secrets: ProvisioningSecrets;
+  /** Valida una credencial contra el proveedor (inyectable para tests). */
+  validateIntegration: (provider: string, credentials: Record<string, string>) => Promise<ValidationResult>;
   config: ProvisioningConfig;
   timing: Timing;
   sleep?: (ms: number) => Promise<void>;
@@ -126,6 +129,8 @@ export interface StageContext {
   store: AdminStore;
   memory: JobMemory;
   actor: string;
+  /** Datos del trabajo que necesitan algunas etapas (operación de integración). */
+  job: { id: string; integration?: { provider: string; action: "set" | "remove" } };
   log: Logger;
   /** Mensaje de progreso visible en el panel (se redacta). */
   report(detail: string): Promise<void>;

@@ -69,12 +69,15 @@ export const envSchema = z.object({
   // Solo para pruebas con la CA de staging: el health check acepta su certificado (no es de confianza).
   ACME_CA: optional(z.string().regex(/^https:\/\/\S+$/, "debe ser una URL https")),
 
-  // Template (contrato §1 y §8). Sin TEMPLATE_VERSION, la versión esperada se lee en cada trabajo
-  // del package.json de la plantilla: al actualizarla no hay que tocar la configuración.
-  // Solo para fijar una versión concreta (p. ej. congelar los clientes nuevos en una).
-  TEMPLATE_VERSION: optional(z.string().regex(/^\d+\.\d+\.\d+$/, "debe ser SemVer, p. ej. 1.2.0")),
-  // schemaVersion mínima que debe exponer /api/meta (opcional; /health/ready ya exige migraciones terminadas).
-  MIN_SCHEMA_VERSION: optional(z.coerce.number().int().min(1)).default(1),
+  // Template (contrato §1 y §8): versión exacta que deben tener los repos generados
+  // (package.json → template.version) y schemaVersion mínima que debe devolver /api/meta.
+  TEMPLATE_VERSION: optional(z.string().regex(/^\d+\.\d+\.\d+$/, "debe ser SemVer, p. ej. 1.4.0")).default("1.4.0"),
+  MIN_SCHEMA_VERSION: optional(z.coerce.number().int().min(1)).default(3),
+
+  // Integraciones de clientes (Monday.com…): clave AES-256 (ruta a un archivo con 32 bytes en
+  // base64) que cifra las credenciales mientras se aprovisiona, y cuánto pueden esperar.
+  INTEGRATION_ENCRYPTION_KEY_SECRET_REF: optional(z.string().min(1)),
+  INTEGRATION_SECRET_TTL_HOURS: optional(z.coerce.number().int().min(1).max(168)).default(24),
 
   // Contraseña inicial del admin de cada app (contrato §3).
   // random: se genera y se escribe INITIAL_ADMIN_PASSWORD. default: el template usa la suya y obliga a cambiarla.
@@ -147,14 +150,24 @@ export function parseHostKeys(raw: string, host: string) {
   return keys;
 }
 
-/** Clave AES-256 para la revelación única de la contraseña inicial (archivo con 32 bytes en base64). */
-export function loadInitialPasswordKey(env: Env) {
-  if (!env.INITIAL_PASSWORD_KEY_PATH) return undefined;
-  const key = Buffer.from(readFileSync(env.INITIAL_PASSWORD_KEY_PATH, "utf8").trim(), "base64");
+/** Lee una clave AES-256 (archivo con 32 bytes en base64). */
+function readAesKey(path: string | undefined, variable: string) {
+  if (!path) return undefined;
+  const key = Buffer.from(readFileSync(path, "utf8").trim(), "base64");
   if (key.length !== 32) {
-    throw new Error("Configuración inválida:\n  - INITIAL_PASSWORD_KEY_PATH: el archivo debe contener 32 bytes en base64 (openssl rand -base64 32)");
+    throw new Error(`Configuración inválida:\n  - ${variable}: el archivo debe contener 32 bytes en base64 (openssl rand -base64 32)`);
   }
   return key;
+}
+
+/** Clave AES-256 para la revelación única de la contraseña inicial. */
+export function loadInitialPasswordKey(env: Env) {
+  return readAesKey(env.INITIAL_PASSWORD_KEY_PATH, "INITIAL_PASSWORD_KEY_PATH");
+}
+
+/** Clave AES-256 de las credenciales de integraciones en tránsito. */
+export function loadIntegrationKey(env: Env) {
+  return readAesKey(env.INTEGRATION_ENCRYPTION_KEY_SECRET_REF, "INTEGRATION_ENCRYPTION_KEY_SECRET_REF");
 }
 
 export function loadServerConfig(env: Env) {

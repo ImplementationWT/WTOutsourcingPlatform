@@ -12,6 +12,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePlatform } from "../api";
 import { DEPLOY_DOMAIN, deriveResources, STACK } from "../config";
+import IntegrationsSection from "../integrations/IntegrationsSection";
 import { Code, InfoRow, Pill } from "./parts";
 
 export default function ConfigurationStep({ slug }: { slug: string }) {
@@ -24,7 +25,7 @@ export default function ConfigurationStep({ slug }: { slug: string }) {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Integraciones</CardTitle>
+          <CardTitle>Recursos</CardTitle>
           <CardDescription>
             Se generan automáticamente a partir del identificador <Code>{slug}</Code>.
           </CardDescription>
@@ -62,9 +63,16 @@ export default function ConfigurationStep({ slug }: { slug: string }) {
           </InfoRow>
           <InfoRow icon={Tag} title="Versionamiento" pill={<Pill>Estándar</Pill>}>
             {STACK.versioning} sobre la rama <Code>main</Code>.
+            {platform && (
+              <>
+                {" "}La plataforma espera <Code>node-typescript@{platform.templateVersion}</Code>.
+              </>
+            )}
           </InfoRow>
         </CardContent>
       </Card>
+
+      <IntegrationsSection />
 
       <Card>
         <CardHeader>

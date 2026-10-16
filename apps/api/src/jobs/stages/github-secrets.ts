@@ -1,8 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { buildMongoUri } from "../../adapters/mongo-bootstrap.js";
+import { getProvider } from "../../integrations/catalog.js";
+import { FatalError } from "../../lib/errors.js";
 import { registerSecret } from "../../lib/redact.js";
 import type { Stage, StageContext } from "../types.js";
 import { ensureCredential } from "./credentials.js";
+import { markConfigured, writeIntegrationSecrets } from "./integrations.js";
 
 /** Usuario que crea la migración 1 del template (contrato §8). */
 export const INITIAL_ADMIN_USERNAME = "admin";
@@ -73,6 +76,47 @@ async function writeInitialAdminPassword(ctx: StageContext, present: Set<string>
   await ctx.step("initial_admin", "done", `Generada y escrita. El operador puede verla una sola vez durante ${minutes} min.`);
 }
 
+/**
+ * Integraciones activadas al crear el cliente (o al actualizar la credencial de un
+ * cliente cuyo trabajo falló antes de esta etapa). La credencial llega cifrada en
+ * provisioning_secrets y se borra en cuanto se escribe. Sin valor transitorio, si
+ * el secret ya existe en GitHub no se toca; si tampoco existe, la credencial caducó.
+ */
+async function writeRequestedIntegrations(ctx: StageContext, present: Set<string>, written: string[]) {
+  const { deps, names, store, client } = ctx;
+  const requested = Object.entries((await store.getClient(client._id))?.integrations ?? {}).filter(([, state]) => state.enabled);
+  if (!requested.length) {
+    await ctx.step("integrations", "skipped", "Ninguna integración activada.");
+    return;
+  }
+  await ctx.step("integrations", "running");
+  const done: string[] = [];
+  for (const [providerId] of requested) {
+    const provider = getProvider(providerId);
+    if (!provider) continue;
+    const credentials = await deps.secrets.get(client._id, provider.id);
+    if (credentials) {
+      written.push(...(await writeIntegrationSecrets(deps, names.repository, provider, credentials)));
+      const { firstTime } = await markConfigured(ctx, provider.id);
+      await deps.secrets.delete(client._id, provider.id);
+      await ctx.audit(firstTime ? "integration_enabled" : "integration_updated", names.repositoryFullName, {
+        provider: provider.id,
+        names: provider.fields.map((f) => f.envVar)
+      });
+      done.push(`${provider.label}: escrita`);
+    } else if (provider.fields.every((f) => present.has(f.envVar))) {
+      done.push(`${provider.label}: ya configurada`);
+    } else {
+      throw new FatalError(
+        "integration_credential_expired",
+        `La credencial de ${provider.label} caducó antes de escribirse (el trabajo estuvo detenido más del plazo). ` +
+          "Vuelve a introducirla desde el detalle del cliente (Integraciones → Actualizar credencial) y reintenta."
+      );
+    }
+  }
+  await ctx.step("integrations", "done", done.join(" · "));
+}
+
 export const githubSecretsStage: Stage = {
   name: "github_secrets",
   async run(ctx) {
@@ -88,6 +132,7 @@ export const githubSecretsStage: Stage = {
         id: "initial_admin",
         label: config.initialAdmin.mode === "random" ? "INITIAL_ADMIN_PASSWORD aleatoria" : "INITIAL_ADMIN_PASSWORD (modo default: no se escribe)"
       },
+      { id: "integrations", label: "Integraciones activadas (secrets del contrato)" },
       { id: "variables", label: "Variable APP_DISPLAY_NAME" }
     ]);
 
@@ -147,6 +192,7 @@ export const githubSecretsStage: Stage = {
       }
 
       await writeInitialAdminPassword(ctx, present, written);
+      await writeRequestedIntegrations(ctx, present, written);
 
       // Contrato 1.3.0 (§3): DEPLOY_SSH_KEY, DEPLOY_HOST, DEPLOY_KNOWN_HOSTS y APP_HOSTNAME los
       // escribe server_prepare. Los nombres anteriores (DEPLOY_SSH_*, APP_BASE_URL) ya no se escriben;

@@ -74,6 +74,8 @@ export interface ClientDetail {
       redeployRequestedBy: string | null;
     };
     deployEnabled: boolean;
+    /** Estado y fechas por proveedor; nunca valores. */
+    integrations: ClientIntegration[];
     createdAt: string;
   };
   resources: {
@@ -125,3 +127,22 @@ export interface Deletion {
   finishedAt: string | null;
   error: { code: string; message: string } | null;
 }
+
+/** GET /api/integrations/catalog — campos del formulario de cada proveedor (sin secretos). */
+export interface IntegrationProvider {
+  id: string;
+  label: string;
+  description: string;
+  help: string[];
+  helpUrl: string;
+  fields: { name: string; label: string; type: "secret" | "text"; placeholder?: string; maxLength: number }[];
+}
+
+export interface ClientIntegration {
+  provider: string;
+  enabled: boolean;
+  configuredAt: string | null;
+  updatedAt: string | null;
+}
+
+export type ValidationOutcome = { ok: true } | { ok: false; code: "auth_failed" | "timeout" | "unavailable"; error: string };

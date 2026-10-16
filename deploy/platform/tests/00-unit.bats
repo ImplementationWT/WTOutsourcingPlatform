@@ -30,11 +30,11 @@ setup() {
   done
 }
 
-@test "env: acepta las del contrato y rechaza PORT, HOST, NODE_ENV, TRUST_PROXY_HOPS y desconocidas" {
-  for ok in MONGODB_URI MONGODB_DB SESSION_SECRET INITIAL_ADMIN_PASSWORD APP_DISPLAY_NAME LOG_LEVEL SESSION_TTL_HOURS; do
+@test "env: solo las 6 del contrato; cualquier otra se rechaza (PORT, HOST, NODE_ENV, TRUST_PROXY_HOPS…)" {
+  for ok in MONGODB_URI MONGODB_DB SESSION_SECRET INITIAL_ADMIN_PASSWORD APP_DISPLAY_NAME MONDAY_API_TOKEN; do
     env_key_allowed "$ok"
   done
-  for bad in PORT HOST NODE_ENV TRUST_PROXY_HOPS PATH LD_PRELOAD FOO mongodb_uri; do
+  for bad in PORT HOST NODE_ENV TRUST_PROXY_HOPS LOG_LEVEL SESSION_TTL_HOURS FORCE_ADMIN_PASSWORD_CHANGE MONDAY_MAX_BOARDS PATH LD_PRELOAD FOO monday_api_token; do
     run env_key_allowed "$bad"
     [ "$status" -ne 0 ]
   done

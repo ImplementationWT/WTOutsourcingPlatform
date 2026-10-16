@@ -195,7 +195,8 @@ export class Teardown {
         store.clients.deleteOne({ _id: slug }),
         store.jobs.deleteMany({ clientId: slug }),
         store.resources.deleteMany({ clientId: slug }),
-        store.initialPasswords.deleteOne({ _id: slug })
+        store.initialPasswords.deleteOne({ _id: slug }),
+        deps.secrets.deleteAll(slug)
       ]);
       await store.audit({ actor, action: "client.deleted", clientId: slug, target: slug });
       await this.setStep(slug, current, "done", "Cliente, trabajos y recursos borrados; la auditoría se conserva.");

@@ -6,11 +6,13 @@ import { createHttpProbe } from "./adapters/http-probe.js";
 import { createMongoBootstrapAdapter } from "./adapters/mongo-bootstrap.js";
 import { createServerAdapter } from "./adapters/server.js";
 import { buildApp } from "./app.js";
-import { appBaseDomain, loadEnv, loadInitialPasswordKey, loadServerConfig } from "./config/env.js";
+import { appBaseDomain, loadEnv, loadInitialPasswordKey, loadIntegrationKey, loadServerConfig } from "./config/env.js";
+import { getProvider } from "./integrations/catalog.js";
 import { DEFAULT_TIMING } from "./jobs/types.js";
 import { registerSecret } from "./lib/redact.js";
 import { AdminStore } from "./store/admin-store.js";
 import { InitialPasswordVault } from "./store/initial-password-vault.js";
+import { ProvisioningSecrets } from "./store/provisioning-secrets.js";
 
 const env = loadEnv();
 for (const secret of [env.ATLAS_CLIENT_SECRET, env.ADMIN_MONGODB_URI, env.SESSION_SECRET, env.PANEL_ADMIN_PASSWORD_HASH]) {
@@ -19,6 +21,7 @@ for (const secret of [env.ATLAS_CLIENT_SECRET, env.ADMIN_MONGODB_URI, env.SESSIO
 const server = loadServerConfig(env);
 // Antes de conectar: una clave mal configurada detiene el arranque con un mensaje claro.
 const initialPasswordKey = loadInitialPasswordKey(env);
+const integrationKey = loadIntegrationKey(env);
 if (server) registerSecret(server.provisionerKey);
 
 const adminClient = new MongoClient(env.ADMIN_MONGODB_URI, { appName: "provisioning-platform" });
@@ -27,6 +30,8 @@ const store = new AdminStore(adminClient.db(env.ADMIN_MONGODB_DB));
 await store.init();
 const vault = new InitialPasswordVault(store.initialPasswords, initialPasswordKey);
 await vault.init();
+const secrets = new ProvisioningSecrets(store.provisioningSecrets, integrationKey, env.INTEGRATION_SECRET_TTL_HOURS * 3_600_000);
+await secrets.init();
 
 const app = await buildApp({
   store,
@@ -63,6 +68,12 @@ const app = await buildApp({
         },
     resolver: { resolve4: (host) => dns.resolve4(host) },
     vault,
+    secrets,
+    validateIntegration: async (providerId, credentials) => {
+      const provider = getProvider(providerId);
+      if (!provider) return { ok: false, code: "unavailable" };
+      return provider.validate(credentials);
+    },
     timing: DEFAULT_TIMING,
     config: {
       appsDomain: appBaseDomain(env),
@@ -93,7 +104,7 @@ const app = await buildApp({
 const abandoned = await store.failAbandonedJobs();
 if (abandoned) app.log.warn({ abandoned }, "Marked interrupted jobs as failed");
 app.log.info(
-  { deployEnabled: env.DEPLOY_ENABLED, templateVersion: env.TEMPLATE_VERSION ?? "la de la plantilla", minSchemaVersion: env.MIN_SCHEMA_VERSION, initialAdminMode: env.INITIAL_ADMIN_MODE },
+  { deployEnabled: env.DEPLOY_ENABLED, templateVersion: env.TEMPLATE_VERSION, integrations: secrets.available, minSchemaVersion: env.MIN_SCHEMA_VERSION, initialAdminMode: env.INITIAL_ADMIN_MODE },
   env.DEPLOY_ENABLED ? "Pipeline completo (con despliegue)" : "Fase 1: repo + MongoDB + secrets (despliegue deshabilitado)"
 );
 

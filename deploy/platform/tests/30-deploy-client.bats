@@ -28,7 +28,7 @@ port_of_client() { awk -v s="$1" '$1 == s { print $2 }' /srv/customer-apps/.port
 }
 
 @test "rechaza variables no permitidas (incluidas PORT, HOST, NODE_ENV y TRUST_PROXY_HOPS)" {
-  for key in PORT HOST NODE_ENV TRUST_PROXY_HOPS FOO LD_PRELOAD; do
+  for key in PORT HOST NODE_ENV TRUST_PROXY_HOPS LOG_LEVEL SESSION_TTL_HOURS MONDAY_MAX_BOARDS FOO LD_PRELOAD; do
     deploy acme "$(payload "$GOOD_IMAGE_ACME" "{\"$key\": \"x\"}")"
     [ "$status" -ne 0 ]
     [ "$output" = "DEPLOY_FAILED env key not allowed: $key" ]
@@ -63,6 +63,14 @@ port_of_client() { awk -v s="$1" '$1 == s { print $2 }' /srv/customer-apps/.port
   [ "$(jq -r .image /srv/customer-apps/acme/state.json)" = "$GOOD_IMAGE_ACME" ]
   container=$(docker compose -p app-acme ps -q app)
   [ "$(docker inspect --format '{{.State.Health.Status}}' "$container")" = healthy ]
+}
+
+@test "acepta MONDAY_API_TOKEN (contrato 1.4.0) y lo deja en el .env 0600" {
+  deploy acme "$(payload "$GOOD_IMAGE_ACME" '{"MONDAY_API_TOKEN": "monday-token-de-prueba-123"}')"
+  [ "$status" -eq 0 ]
+  [ "$output" = "DEPLOY_OK" ]
+  grep -qx 'MONDAY_API_TOKEN=monday-token-de-prueba-123' /srv/customer-apps/acme/.env
+  [ "$(stat -c '%a' /srv/customer-apps/acme/.env)" = "600" ]
 }
 
 @test "el compose fija NODE_ENV, TRUST_PROXY_HOPS, PORT y HOST, y endurece el contenedor" {

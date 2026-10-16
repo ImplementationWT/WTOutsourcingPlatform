@@ -7,7 +7,9 @@ import type { BootstrapDocument, BootstrapPhase, MongoBootstrapAdapter } from ".
 import { FatalError, TransientError } from "../../src/lib/errors.js";
 import type { Deps, DnsResolver, ProvisioningConfig, Timing } from "../../src/jobs/types.js";
 import type { AdminStore } from "../../src/store/admin-store.js";
+import type { ValidationResult } from "../../src/integrations/catalog.js";
 import { InitialPasswordVault } from "../../src/store/initial-password-vault.js";
+import { ProvisioningSecrets } from "../../src/store/provisioning-secrets.js";
 
 type Fault = () => Error | undefined;
 
@@ -112,9 +114,7 @@ export class FakeGithub extends Faulty implements GithubAdapter {
   readonly runs = new Map<string, WorkflowRun[]>();
   /** Conclusión del próximo run lanzado. */
   nextRunConclusion: "success" | "failure" = "success";
-  templateVersion = "1.3.0";
-  /** Versión actual del package.json de la plantilla (la que copian los repos nuevos). */
-  templateSourceVersion = "1.3.0";
+  templateVersion = "1.4.0";
 
   async getRepository(name: string) {
     this.hit("getRepository", name);
@@ -131,10 +131,6 @@ export class FakeGithub extends Faulty implements GithubAdapter {
   async readFile(repo: string, path: string) {
     this.hit("readFile", repo, path);
     return this.files.get(`${repo}/${path}`) ?? null;
-  }
-  async readTemplateFile(path: string) {
-    this.hit("readTemplateFile", path);
-    return path === "package.json" ? JSON.stringify({ template: { name: "node-typescript", version: this.templateSourceVersion } }) : null;
   }
   async environmentExists(repo: string, environment: string) {
     this.hit("environmentExists", repo);
@@ -158,6 +154,10 @@ export class FakeGithub extends Faulty implements GithubAdapter {
   async putEnvironmentSecret(repo: string, environment: string, name: string, value: string) {
     this.hit("putEnvironmentSecret", repo, name);
     this.env(repo, environment).secrets.set(name, value);
+  }
+  async deleteEnvironmentSecret(repo: string, environment: string, name: string) {
+    this.hit("deleteEnvironmentSecret", repo, name);
+    return this.env(repo, environment).secrets.delete(name);
   }
   async getEnvironmentVariable(repo: string, environment: string, name: string) {
     this.hit("getEnvironmentVariable", repo, name);
@@ -364,6 +364,7 @@ export const TEST_CONFIG: ProvisioningConfig = {
     deployWorkflow: "deploy.yml",
     ref: "main",
     schemaVersion: 1,
+    expectedVersion: "1.4.0",
     minSchemaVersion: 1
   },
   initialAdmin: { mode: "random", revealTtlMs: 30 * 60_000 },
@@ -394,6 +395,17 @@ export function createFakes(store: AdminStore) {
   const probe = new FakeProbe(github, mongo, TEST_CONFIG.appsDomain, server);
   const clock = new FakeClock();
   const vault = new InitialPasswordVault(store.initialPasswords, randomBytes(32), clock.now);
+  const secrets = new ProvisioningSecrets(store.provisioningSecrets, randomBytes(32), 24 * 3_600_000, clock.now);
+  /** Validación simulada: "token-valido…" es correcto; el resto, el código configurado. */
+  const integrationCheck = {
+    calls: [] as { provider: string; credentials: Record<string, string> }[],
+    failWith: null as ValidationResult | null
+  };
+  const validateIntegration = async (provider: string, credentials: Record<string, string>): Promise<ValidationResult> => {
+    integrationCheck.calls.push({ provider, credentials });
+    if (integrationCheck.failWith) return integrationCheck.failWith;
+    return Object.values(credentials).every((v) => v.startsWith("token-valido")) ? { ok: true } : { ok: false, code: "auth_failed" };
+  };
   const deps: Deps = {
     atlas,
     github,
@@ -402,11 +414,13 @@ export function createFakes(store: AdminStore) {
     server,
     resolver,
     vault,
+    secrets,
+    validateIntegration,
     config: TEST_CONFIG,
     timing: TEST_TIMING,
     sleep: async () => {}
   };
-  return { atlas, mongo, github, probe, server, resolver, vault, clock, deps };
+  return { atlas, mongo, github, probe, server, resolver, vault, secrets, integrationCheck, clock, deps };
 }
 
 /** Logger de los tests: silencioso salvo con DEBUG_STAGES=1 (muestra fallos de etapa, sin valores). */

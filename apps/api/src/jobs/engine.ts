@@ -11,6 +11,7 @@ import { dnsHttpsStage } from "./stages/dns-https.js";
 import { githubRepositoryStage } from "./stages/github-repository.js";
 import { githubSecretsStage } from "./stages/github-secrets.js";
 import { healthCheckStage } from "./stages/health-check.js";
+import { integrationRemoveStage, integrationSecretStage } from "./stages/integrations.js";
 import { mongodbDatabaseStage } from "./stages/mongodb-database.js";
 import { serverPrepareStage } from "./stages/server-prepare.js";
 import type { Deps, JobMemory, Logger, Stage, StageContext } from "./types.js";
@@ -29,6 +30,9 @@ export const PIPELINE: Stage[] = [
 const DEPLOY_STAGES: StageName[] = ["dns_https", "server_prepare", "deploy", "health_check"];
 
 /** Etapas activas según la configuración (sin despliegue mientras esté deshabilitado). */
+/** Etapas que solo usan los trabajos de integración (no forman parte de la creación). */
+export const INTEGRATION_PIPELINE: Stage[] = [integrationSecretStage, integrationRemoveStage];
+
 export function activePipeline(config: { deployEnabled: boolean }) {
   return PIPELINE.filter((stage) => config.deployEnabled || !DEPLOY_STAGES.includes(stage.name));
 }
@@ -84,9 +88,14 @@ export class JobEngine {
     this.events.setMaxListeners(100);
   }
 
-  /** Nombres de las etapas que ejecuta esta instancia, en orden. */
+  /** Nombres de las etapas de creación que ejecuta esta instancia, en orden. */
   get stageNames(): StageName[] {
     return this.stages.map((s) => s.name);
+  }
+
+  /** Etapas que puede conservar un reintento (creación e integraciones). */
+  get retryableStageNames(): StageName[] {
+    return [...this.stageNames, ...INTEGRATION_PIPELINE.map((s) => s.name)];
   }
 
   subscribe(jobId: string, listener: (job: PublicJob) => void) {
@@ -147,7 +156,7 @@ export class JobEngine {
       for (let index = 0; index < job.stages.length; index++) {
         const state = job.stages[index];
         if (state.status === "succeeded") continue;
-        const stage = this.stages.find((s) => s.name === state.name);
+        const stage = [...this.stages, ...INTEGRATION_PIPELINE].find((s) => s.name === state.name);
         if (!stage) throw new FatalError("unknown_stage", `Etapa desconocida: ${state.name}`);
 
         const startedAt = new Date();
@@ -170,6 +179,7 @@ export class JobEngine {
           store,
           memory,
           actor,
+          job: { id: jobId, ...(acquired.integration ? { integration: acquired.integration } : {}) },
           log,
           report: async (detail) => {
             job = (await store.updateStage(jobId, owner, index, { detail: redactString(detail) })) ?? job;

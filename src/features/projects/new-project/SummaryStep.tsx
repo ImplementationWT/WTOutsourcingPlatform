@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { usePlatform } from "../api";
+import { useIntegrationCatalog, usePlatform } from "../api";
 import { deriveResources, STACK } from "../config";
 import { Code } from "./parts";
 import type { NewProjectValues } from "./schema";
@@ -56,8 +56,11 @@ export default function SummaryStep({
   onEditInfo: () => void;
 }) {
   const platform = usePlatform().data;
+  const catalog = useIntegrationCatalog().data;
   const DEPLOY_ENABLED = platform?.deployEnabled ?? false;
   const resources = deriveResources(values.slug, platform?.appBaseDomain);
+  // Solo el estado: los valores de las credenciales nunca se muestran.
+  const enabledIntegrations = (catalog?.providers ?? []).filter((p) => values.integrations?.[p.id]?.enabled);
 
   return (
     <div className="space-y-6">
@@ -69,7 +72,7 @@ export default function SummaryStep({
         <Row label="Descripción">{values.description}</Row>
       </Section>
 
-      <Section title="Integraciones" description="Recursos que se crearán automáticamente.">
+      <Section title="Recursos e integraciones" description="Lo que se creará automáticamente.">
         <Row label="Repositorio GitHub">
           <Code>
             {platform?.githubOwner ?? "…"}/{resources.repository}
@@ -87,7 +90,15 @@ export default function SummaryStep({
         </Row>
         <Row label="Tecnología">{STACK.runtime}</Row>
         <Row label="CI/CD">{STACK.ci}: tests, build y despliegue</Row>
-        <Row label="Versionamiento">{STACK.versioning}</Row>
+        <Row label="Versionamiento">
+          {STACK.versioning}
+          {platform && <span className="text-muted-foreground"> · plantilla node-typescript@{platform.templateVersion}</span>}
+        </Row>
+        <Row label="Integraciones">
+          {enabledIntegrations.length
+            ? enabledIntegrations.map((p) => `${p.label}: activada`).join(" · ")
+            : "Ninguna"}
+        </Row>
       </Section>
 
       <Section

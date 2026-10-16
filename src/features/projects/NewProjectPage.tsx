@@ -4,7 +4,7 @@ import { FormProvider, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, ArrowRight, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useProjects } from "./api";
+import { useIntegrationCatalog, useProjects } from "./api";
 import { deriveResources } from "./config";
 import ConfigurationStep from "./new-project/ConfigurationStep";
 import ProjectInfoStep from "./new-project/ProjectInfoStep";
@@ -19,13 +19,14 @@ const FORM_STEPS = 3;
 
 export default function NewProjectPage() {
   const { data: projects } = useProjects();
+  const { data: catalog } = useIntegrationCatalog();
   const provisioning = useProvisioning();
   const [step, setStep] = useState(0);
   const [slugTouched, setSlugTouched] = useState(false);
 
   const form = useForm<NewProjectValues>({
     resolver: zodResolver(newProjectSchema),
-    defaultValues: { name: "", slug: "", description: "" },
+    defaultValues: { name: "", slug: "", description: "", integrations: {} },
     mode: "onTouched",
   });
   const values = useWatch({ control: form.control }) as NewProjectValues;
@@ -40,6 +41,17 @@ export default function NewProjectPage() {
         return;
       }
     }
+    if (step === 1) {
+      // Una integración activada necesita todos sus campos.
+      const incomplete = (catalog?.providers ?? []).find((provider) => {
+        const state = values.integrations?.[provider.id];
+        return state?.enabled && provider.fields.some((f) => !(state.credentials[f.name] ?? "").trim());
+      });
+      if (incomplete) {
+        form.setError("integrations", { message: `Completa la credencial de ${incomplete.label} o desactívala.` });
+        return;
+      }
+    }
     setStep((s) => Math.min(s + 1, FORM_STEPS - 1));
   }
 
@@ -48,8 +60,16 @@ export default function NewProjectPage() {
   }
 
   function submit(data: NewProjectValues) {
+    const enabled = Object.entries(data.integrations ?? {}).filter(([, state]) => state.enabled);
     setStep(FORM_STEPS);
-    void provisioning.start(data);
+    void provisioning.start({
+      name: data.name,
+      slug: data.slug,
+      description: data.description,
+      ...(enabled.length ? { integrations: Object.fromEntries(enabled.map(([id, state]) => [id, state.credentials])) } : {}),
+    });
+    // Enviadas una vez: se borran del formulario (si se vuelve atrás habrá que escribirlas de nuevo).
+    form.setValue("integrations", {});
   }
 
   const stepperCurrent = provisioning.job?.status === "succeeded" ? STEPS.length : step;

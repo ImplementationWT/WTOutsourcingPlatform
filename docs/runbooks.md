@@ -85,6 +85,35 @@ La plataforma no deshace la rotación: si el secret existe, `server_prepare` lla
 Para revocar de inmediato (el cliente deja de poder desplegar):
 `sed -i '/ platform-client:<slug>$/d' /home/deploy/.ssh/authorized_keys`.
 
+## Actualizar el servidor con la lista de variables permitida
+
+Desde el template 1.4.0, `deploy-client` acepta exactamente las 6 variables del contrato
+(`MONGODB_URI`, `MONGODB_DB`, `SESSION_SECRET`, `INITIAL_ADMIN_PASSWORD`,
+`APP_DISPLAY_NAME`, `MONDAY_API_TOKEN`) y rechaza cualquier otra. Para instalar la
+versión nueva de los scripts:
+
+```bash
+rsync -a --delete deploy/platform/ whatever-vps:/root/platform-src/   # desde el repo (tu equipo)
+bash /root/platform-src/bin/bootstrap-vps.sh                           # en el VPS; idempotente
+grep -A2 'ALLOWED_ENV_KEYS=(' /opt/platform/lib/common.sh               # comprobar la lista
+```
+
+No hace falta reiniciar nada: cada despliegue usa la versión instalada.
+
+## Rotar la credencial de integración de un cliente
+
+1. Genera la credencial nueva en el proveedor (Monday.com: avatar → Developers → My access tokens).
+2. En el panel: detalle del cliente → **Integraciones** → *Actualizar credencial* → pega
+   el valor → *Probar conexión* → *Guardar*.
+   - Cliente listo: se escribe `MONDAY_API_TOKEN` en el entorno `production` y se
+     redespliega (el progreso aparece en *Aprovisionamiento*).
+   - Cliente con el aprovisionamiento fallido: se guarda (o escribe) y se aplica al
+     pulsar *Reintentar*.
+3. Revoca la credencial anterior en el proveedor.
+
+Para quitar la integración: *Desactivar* (borra el secret y redespliega). Detalles en
+[security.md](security.md).
+
 ## Borrar un cliente
 
 Desde el panel: detalle del proyecto → **Zona de peligro** → *Eliminar proyecto* (hay que

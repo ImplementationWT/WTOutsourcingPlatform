@@ -1,12 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
-import type { ClientDetail, DashboardData, Deletion, ProjectRepo, RevealedCredentials } from "@/types/project";
+import type {
+  ClientDetail,
+  DashboardData,
+  Deletion,
+  IntegrationProvider,
+  ProjectRepo,
+  RevealedCredentials,
+  ValidationOutcome,
+} from "@/types/project";
 
 /** Lo único que el navegador envía; el resto lo deriva el backend del slug. */
 export interface NewProjectInput {
   name: string;
   slug: string;
   description: string;
+  /** Solo las integraciones activadas, con sus credenciales (viajan una vez, por HTTPS). */
+  integrations?: Record<string, Record<string, string>>;
 }
 
 async function fetchProjects(): Promise<ProjectRepo[]> {
@@ -30,6 +40,8 @@ export function usePlatform() {
         deployEnabled: boolean;
         appBaseDomain: string;
         githubOwner: string;
+        templateVersion: string;
+        integrationsAvailable: boolean;
         atlas: { clusterName: string; consoleUrl: string | null };
       }>("/api/platform"),
     staleTime: 5 * 60_000,
@@ -53,6 +65,40 @@ export function revealInitialPassword(slug: string) {
 /** Proyectos reales: repos de GitHub de la organización (sin internos AB/WT). */
 export function useProjects() {
   return useQuery({ queryKey: ["projects"], queryFn: fetchProjects });
+}
+
+/** Catálogo de integraciones (sin secretos: solo cómo pintar el formulario). */
+export function useIntegrationCatalog() {
+  return useQuery({
+    queryKey: ["integration-catalog"],
+    queryFn: () => apiFetch<{ providers: IntegrationProvider[]; available: boolean }>("/api/integrations/catalog"),
+    staleTime: 10 * 60_000,
+  });
+}
+
+/*
+ * Las llamadas con credenciales son funciones simples (no useMutation ni useQuery):
+ * así las credenciales no quedan en la caché de react-query.
+ */
+export function validateIntegration(provider: string, credentials: Record<string, string>) {
+  return apiFetch<ValidationOutcome>(`/api/integrations/${encodeURIComponent(provider)}/validate`, {
+    method: "POST",
+    body: JSON.stringify(credentials),
+  });
+}
+
+export function saveIntegration(slug: string, provider: string, credentials: Record<string, string>) {
+  return apiFetch<{ action: "redeploy" | "write" | "stored" | "written"; jobId?: string; message?: string }>(
+    `/api/clients/${encodeURIComponent(slug)}/integrations/${encodeURIComponent(provider)}`,
+    { method: "PUT", body: JSON.stringify(credentials) },
+  );
+}
+
+export function removeIntegration(slug: string, provider: string) {
+  return apiFetch<{ action: string; jobId: string }>(
+    `/api/clients/${encodeURIComponent(slug)}/integrations/${encodeURIComponent(provider)}`,
+    { method: "DELETE" },
+  );
 }
 
 /** Panel principal con datos reales: estado, salud en vivo, atención y actividad. */
