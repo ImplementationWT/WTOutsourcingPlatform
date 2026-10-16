@@ -29,7 +29,7 @@ Ninguna etapa borra recursos ante un fallo: el panel muestra el motivo y se rein
 
 | Ruta | Contenido |
 | --- | --- |
-| `/opt/platform/bin` | `bootstrap-vps.sh`, `install-client`, `deploy-client`, `client-status`, `provisioner-dispatch` (root:root, 755) |
+| `/opt/platform/bin` | `bootstrap-vps.sh`, `install-client`, `deploy-client`, `client-status`, `uninstall-client`, `provisioner-dispatch` (root:root, 755) |
 | `/opt/platform/lib`, `/opt/platform/templates` | Biblioteca común y plantillas de nginx y compose |
 | `/opt/platform/etc/platform.conf` | Configuración (`GHCR_ORG`, `APP_BASE_DOMAIN`, `ACME_EMAIL`, …). Se lee clave a clave, no se ejecuta |
 | `/srv/customer-apps/<slug>` | `.env` (0600), `compose.yaml`, `state.json` (imagen y fecha del último despliegue), `deploy.log` |
@@ -51,11 +51,11 @@ actualizaciones automáticas ni los sitios, contenedores o certificados existent
   El slug lo fija el servidor: un repo no puede desplegar en otro cliente.
 - **Orquestador → servidor.** Una clave en `~provisioner/.ssh/authorized_keys` con
   `command="/opt/platform/bin/provisioner-dispatch",restrict`. El dispatch solo acepta
-  exactamente `install-client <slug>` o `client-status <slug>`; cualquier otra cosa
+  exactamente `install-client <slug>`, `client-status <slug>` o `uninstall-client <slug>`; cualquier otra cosa
   sale con 126. El adaptador fija la huella del servidor (`DEPLOY_HOST_KEY`), como
   `StrictHostKeyChecking yes`.
 - **sudoers** (`/etc/sudoers.d/platform-apps`): `deploy` solo puede ejecutar
-  `deploy-client`; `provisioner`, solo `install-client` y `client-status`.
+  `deploy-client`; `provisioner`, solo `install-client`, `client-status` y `uninstall-client`.
 - **Imagen.** `deploy-client` solo acepta `ghcr.io/<GHCR_ORG>/<slug>-app@sha256:<64 hex>`.
   Hace `docker login` con el `registryToken` (el `GITHUB_TOKEN` del job, de vida corta)
   en un directorio temporal que borra al terminar: en el VPS no queda ningún token.

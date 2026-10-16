@@ -68,6 +68,13 @@ export interface GithubAdapter {
   /** "Job › paso" del primer paso fallido de un run, o null. */
   getRunFailure(repo: string, runId: number): Promise<string | null>;
   listProjectRepos(): Promise<ProjectRepo[]>;
+  /** Borra el repositorio. false si ya no existía. */
+  deleteRepository(name: string): Promise<boolean>;
+  /**
+   * Borra el paquete de contenedor <name> de GHCR. "forbidden" si la GitHub App no
+   * puede (en cuentas personales GitHub no lo permite a las Apps).
+   */
+  deleteContainerPackage(name: string): Promise<"deleted" | "not_found" | "forbidden">;
 }
 
 // Repos internos de la empresa que no son proyectos de la plataforma.
@@ -278,6 +285,34 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
       call("consultar la ejecución del workflow", async () =>
         toRun((await octokit.rest.actions.getWorkflowRun({ owner, repo, run_id: runId })).data)
       ),
+
+    async deleteRepository(name) {
+      try {
+        await octokit.rest.repos.delete({ owner, repo: name });
+        return true;
+      } catch (error) {
+        if (statusOf(error) === 404) return false;
+        return classifyGithubError(error, "borrar el repositorio");
+      }
+    },
+
+    async deleteContainerPackage(name) {
+      try {
+        // El owner puede ser una organización o una cuenta personal: se prueba en ese orden.
+        try {
+          await octokit.rest.packages.deletePackageForOrg({ org: owner, package_type: "container", package_name: name });
+        } catch (error) {
+          if (statusOf(error) !== 404) throw error;
+          await octokit.rest.packages.deletePackageForUser({ username: owner, package_type: "container", package_name: name });
+        }
+        return "deleted";
+      } catch (error) {
+        const status = statusOf(error);
+        if (status === 404) return "not_found";
+        if (status === 401 || status === 403) return "forbidden";
+        return classifyGithubError(error, "borrar la imagen del contenedor");
+      }
+    },
 
     getRunFailure: (repo, runId) =>
       call("consultar los jobs del workflow", async () => {

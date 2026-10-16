@@ -14,7 +14,7 @@ function SubStepIcon({ status }: { status: SubStep["status"] }) {
     case "failed":
       return <X className="size-3.5 text-red-400" aria-label="Falló" />;
     default:
-      return <Circle className="size-2 fill-white/15 text-transparent" aria-label="Pendiente" />;
+      return <Circle className="size-2 fill-foreground/15 text-transparent" aria-label="Pendiente" />;
   }
 }
 
@@ -39,7 +39,7 @@ function SubSteps({ stage }: { stage: JobStage }) {
         </button>
       )}
       {open && (
-        <ol className="mt-1 space-y-1.5 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+        <ol className="mt-1 space-y-1.5 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-3">
           {stage.steps.map((step) => (
             <li key={step.id} className="flex gap-2.5">
               <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
@@ -79,7 +79,7 @@ function StageIcon({ status }: { status: JobStage["status"] }) {
     case "failed":
       return <XCircle className="size-5 text-red-400" aria-label="Fallida" />;
     default:
-      return <Circle className="size-5 text-white/20" aria-label="Pendiente" />;
+      return <Circle className="size-5 text-foreground/20" aria-label="Pendiente" />;
   }
 }
 
@@ -91,7 +91,7 @@ export default function JobStages({ job }: { job: Job }) {
   return (
     <div className="space-y-6">
       <div
-        className="h-1.5 overflow-hidden rounded-full bg-white/10"
+        className="h-1.5 overflow-hidden rounded-full bg-foreground/10"
         role="progressbar"
         aria-valuenow={progress}
         aria-valuemin={0}
@@ -115,7 +115,7 @@ export default function JobStages({ job }: { job: Job }) {
               <div className="flex flex-col items-center">
                 <StageIcon status={stage.status} />
                 {index < job.stages.length - 1 && (
-                  <span className={cn("my-1 w-px flex-1", stage.status === "succeeded" ? "bg-emerald-400/30" : "bg-white/10")} />
+                  <span className={cn("my-1 w-px flex-1", stage.status === "succeeded" ? "bg-emerald-400/30" : "bg-foreground/10")} />
                 )}
               </div>
               <div className="min-w-0 flex-1 pb-4">

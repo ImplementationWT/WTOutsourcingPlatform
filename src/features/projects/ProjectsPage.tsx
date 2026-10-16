@@ -18,26 +18,41 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { LinkedAccount, ProjectRepo } from "@/types/project";
-import { useProjects } from "./api";
+import { usePlatform, useProjects } from "./api";
 import { deriveResources } from "./config";
 import { accountStatusMeta, providerMeta } from "./meta";
 import StatusLabel from "./StatusLabel";
 
+type Platform = ReturnType<typeof usePlatform>["data"];
+type Account = LinkedAccount & { href?: string; hrefTitle?: string };
+
 /**
- * GitHub es la única cuenta que se consulta de verdad. Los repos creados por la
- * plataforma ({slug}-app) muestran además MongoDB y dominio, que aún no se aprovisionan.
+ * Cuentas ligadas con enlace a cada servicio: el repo en GitHub, la base en la
+ * consola de MongoDB Atlas y el subdominio publicado. Solo los repos que creó la
+ * plataforma ({slug}-app) tienen base y subdominio propios.
  */
-function linkedAccounts(repo: ProjectRepo): (LinkedAccount & { href?: string })[] {
-  const accounts: (LinkedAccount & { href?: string })[] = [
-    { provider: "github", label: repo.fullName, status: "connected", href: repo.url },
+function linkedAccounts(repo: ProjectRepo, platform: Platform): Account[] {
+  const accounts: Account[] = [
+    { provider: "github", label: repo.fullName, status: "connected", href: repo.url, hrefTitle: `Abrir ${repo.fullName} en GitHub` },
   ];
-  // Solo los repos que creó la plataforma tienen base y subdominio propios.
   if (repo.clientId) {
-    const names = deriveResources(repo.clientId);
+    const names = deriveResources(repo.clientId, platform?.appBaseDomain);
     const status = repo.clientStatus === "ready" ? "connected" : repo.clientStatus === "failed" ? "error" : "pending";
     accounts.push(
-      { provider: "mongodb", label: names.database, status },
-      { provider: "domain", label: names.subdomain, status },
+      {
+        provider: "mongodb",
+        label: names.database,
+        status,
+        href: platform?.atlas.consoleUrl ?? undefined,
+        hrefTitle: platform ? `Abrir el clúster ${platform.atlas.clusterName} en MongoDB Atlas` : undefined,
+      },
+      {
+        provider: "domain",
+        label: names.subdomain,
+        status,
+        href: `https://${names.subdomain}`,
+        hrefTitle: `Abrir https://${names.subdomain}`,
+      },
     );
   }
   return accounts;
@@ -113,7 +128,7 @@ export default function ProjectsPage() {
       ) : projects?.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center py-10 text-center">
-            <div className="flex size-12 items-center justify-center rounded-xl border border-white/10 bg-white/5">
+            <div className="flex size-12 items-center justify-center rounded-xl border border-foreground/10 bg-foreground/5">
               <FolderGit2 className="size-6" />
             </div>
             <p className="mt-4 font-medium">Aún no hay proyectos</p>
@@ -140,6 +155,7 @@ export default function ProjectsPage() {
 }
 
 function ProjectCard({ repo }: { repo: ProjectRepo }) {
+  const platform = usePlatform().data;
   return (
     <Card className={cn(repo.archived && "opacity-70")}>
       <CardHeader>
@@ -170,7 +186,7 @@ function ProjectCard({ repo }: { repo: ProjectRepo }) {
             Cuentas ligadas
           </p>
           <ul className="divide-y rounded-lg border">
-            {linkedAccounts(repo).map((account) => {
+            {linkedAccounts(repo, platform).map((account) => {
               const provider = providerMeta[account.provider];
               const Icon = provider.icon;
               return (
@@ -185,7 +201,7 @@ function ProjectCard({ repo }: { repo: ProjectRepo }) {
                       href={account.href}
                       target="_blank"
                       rel="noreferrer"
-                      title={`Abrir ${account.label} en GitHub`}
+                      title={account.hrefTitle}
                       className="group inline-flex min-w-0 flex-1 items-center gap-1 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                     >
                       <span className="truncate">{account.label}</span>

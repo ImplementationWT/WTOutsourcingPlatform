@@ -29,19 +29,19 @@ export default function ConfigurationStep({ slug }: { slug: string }) {
             Se generan automáticamente a partir del identificador <Code>{slug}</Code>.
           </CardDescription>
         </CardHeader>
-        <CardContent className="divide-y divide-white/10">
+        <CardContent className="divide-y divide-foreground/10">
           <InfoRow
             icon={FolderGit2}
             title="Repositorio GitHub"
-            note="La organización corporativa se configura globalmente."
+            note={platform ? `Privado, en la cuenta ${platform.githubOwner} de GitHub.` : undefined}
             pill={<Pill>Obligatorio</Pill>}
           >
-            Nombre generado automáticamente: <Code>{resources.repository}</Code>
+            Nombre generado automáticamente: <Code>{platform ? `${platform.githubOwner}/` : ""}{resources.repository}</Code>
           </InfoRow>
           <InfoRow
             icon={Database}
             title="Base de datos MongoDB Atlas"
-            note="En el clúster compartido, con la colección app_metadata inicializada."
+            note={`En el clúster compartido${platform ? ` ${platform.atlas.clusterName}` : ""}, con la colección app_metadata inicializada.`}
             pill={<Pill>Obligatorio</Pill>}
           >
             Base de datos dedicada: <Code>{resources.database}</Code>
@@ -78,7 +78,7 @@ export default function ConfigurationStep({ slug }: { slug: string }) {
         <CardContent className="space-y-6">
           <div className="space-y-2">
             <p className="text-sm font-medium text-muted-foreground">Entorno de despliegue</p>
-            <div className="flex items-center gap-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="flex items-center gap-4 rounded-xl border border-foreground/10 bg-foreground/[0.03] p-4">
               <Server className="size-6 shrink-0" />
               <div className="min-w-0 flex-1">
                 <p className="font-medium">{STACK.environment}</p>
@@ -90,9 +90,9 @@ export default function ConfigurationStep({ slug }: { slug: string }) {
 
           <div className="space-y-2">
             <p className="text-sm font-medium text-muted-foreground">Subdominio</p>
-            <div className="flex items-center overflow-hidden rounded-lg border border-white/10 bg-white/[0.03] font-mono text-sm">
+            <div className="flex items-center overflow-hidden rounded-lg border border-foreground/10 bg-foreground/[0.03] font-mono text-sm">
               <span className="truncate px-3 py-2.5 text-foreground">{slug || "mi-proyecto"}</span>
-              <span className="border-l border-white/10 bg-white/[0.03] px-3 py-2.5 text-muted-foreground">
+              <span className="border-l border-foreground/10 bg-foreground/[0.03] px-3 py-2.5 text-muted-foreground">
                 .{domain}
               </span>
             </div>
@@ -101,7 +101,7 @@ export default function ConfigurationStep({ slug }: { slug: string }) {
             </p>
           </div>
 
-          <div className="divide-y divide-white/10">
+          <div className="divide-y divide-foreground/10">
             <InfoRow
               icon={ShieldCheck}
               title="Certificado TLS automático"

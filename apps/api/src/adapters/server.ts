@@ -28,7 +28,24 @@ const clientStatusSchema = z.object({
   container: z.object({ state: z.string(), health: z.string().nullable() }).nullable()
 });
 
+/** Respuesta de uninstall-client: qué había y se retiró. */
+const uninstallResultSchema = z.object({
+  status: z.literal("ok"),
+  slug: z.string(),
+  removed: z.object({
+    container: z.boolean(),
+    images: z.number().int(),
+    network: z.boolean(),
+    nginx: z.boolean(),
+    certificate: z.boolean(),
+    key: z.boolean(),
+    port: z.boolean(),
+    files: z.boolean()
+  })
+});
+
 export type InstallResult = z.infer<typeof installResultSchema>;
+export type UninstallResult = z.infer<typeof uninstallResultSchema>;
 export type ServerClientStatus = z.infer<typeof clientStatusSchema>;
 
 export interface ServerAdapter {
@@ -39,6 +56,8 @@ export interface ServerAdapter {
   installClient(slug: Slug, publicKey?: string): Promise<InstallResult>;
   /** Consulta predefinida de solo lectura. */
   clientStatus(slug: Slug): Promise<ServerClientStatus>;
+  /** sudo /opt/platform/bin/uninstall-client <slug>: retira todo lo del cliente (idempotente). */
+  uninstallClient(slug: Slug): Promise<UninstallResult>;
 }
 
 export interface ServerConnection {
@@ -75,7 +94,7 @@ export function generateClientKeyPair(comment: string) {
 }
 
 /** Únicos comandos que el orquestador puede pedir (provisioner-dispatch aplica la misma lista). */
-type ServerCommand = "install-client" | "client-status";
+type ServerCommand = "install-client" | "client-status" | "uninstall-client";
 
 const INSTALL_TIMEOUT_MS = 10 * 60_000; // incluye la emisión del certificado
 const QUERY_TIMEOUT_MS = 30_000;
@@ -182,6 +201,11 @@ export function createServerAdapter(connection: ServerConnection): ServerAdapter
       const result = await run("client-status", slug, "", QUERY_TIMEOUT_MS);
       check("client-status", result);
       return parse(clientStatusSchema, "client-status", result.stdout);
+    },
+    async uninstallClient(slug) {
+      const result = await run("uninstall-client", slug, "", INSTALL_TIMEOUT_MS);
+      check("uninstall-client", result);
+      return parse(uninstallResultSchema, "uninstall-client", result.stdout);
     }
   };
 }

@@ -3,7 +3,7 @@ import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePlatform } from "../api";
-import { deriveResources, GITHUB_ORG, STACK } from "../config";
+import { deriveResources, STACK } from "../config";
 import { Code } from "./parts";
 import type { NewProjectValues } from "./schema";
 
@@ -42,7 +42,7 @@ function Section({
         )}
       </CardHeader>
       <CardContent>
-        <dl className="divide-y divide-white/10">{children}</dl>
+        <dl className="divide-y divide-foreground/10">{children}</dl>
       </CardContent>
     </Card>
   );
@@ -72,11 +72,15 @@ export default function SummaryStep({
       <Section title="Integraciones" description="Recursos que se crearán automáticamente.">
         <Row label="Repositorio GitHub">
           <Code>
-            {GITHUB_ORG}/{resources.repository}
-          </Code>
+            {platform?.githubOwner ?? "…"}/{resources.repository}
+          </Code>{" "}
+          <span className="text-muted-foreground">· privado, generado desde la plantilla</span>
         </Row>
         <Row label="Base de datos MongoDB">
           <Code>{resources.database}</Code>
+          {platform && (
+            <span className="text-muted-foreground"> · clúster {platform.atlas.clusterName} de MongoDB Atlas</span>
+          )}
         </Row>
         <Row label="Usuario de la base">
           <Code>{resources.dbUser}</Code> <span className="text-muted-foreground">· readWrite solo sobre su base</span>

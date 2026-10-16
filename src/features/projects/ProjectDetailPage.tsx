@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useClient } from "./api";
+import DeleteProjectCard from "./DeleteProjectCard";
 import DeploymentCard from "./DeploymentCard";
 import InitialCredentialsCard from "./InitialCredentialsCard";
 import JobStages from "./JobStages";
@@ -29,7 +30,7 @@ import { isFinished, retryJob, useJobStream } from "./provisioning";
 function ResourceRow({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
   return (
     <div className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5">
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-foreground/10 bg-foreground/5">
         <Icon className="size-4" />
       </div>
       <div className="min-w-0 flex-1">
@@ -100,7 +101,7 @@ export default function ProjectDetailPage() {
                 <CardTitle>Recursos</CardTitle>
                 <CardDescription>Referencias; las credenciales nunca se muestran.</CardDescription>
               </CardHeader>
-              <CardContent className="divide-y divide-white/10">
+              <CardContent className="divide-y divide-foreground/10">
                 <ResourceRow icon={FolderGit2} label="Repositorio">
                   {data.resources.repository.url ? (
                     <a
@@ -197,6 +198,15 @@ export default function ProjectDetailPage() {
             <DeploymentCard client={data.client} />
             <InitialCredentialsCard slug={data.client.id} />
           </div>
+
+          {/* Sin borrar mientras se aprovisiona: el servidor lo rechazaría. */}
+          {job && isFinished(job) && (
+            <DeleteProjectCard
+              client={data.client}
+              repository={data.resources.repository.fullName}
+              database={data.resources.database}
+            />
+          )}
         </>
       )}
     </section>

@@ -1,42 +1,14 @@
 import type { Job } from "@/features/projects/provisioning";
 
-export type ProjectStatus = "online" | "degraded" | "offline" | "provisioning";
-
-export type AccountProvider =
-  | "github"
-  | "domain"
-  | "mongodb"
-  | "claude"
-  | "vercel"
-  | "aws"
-  | "stripe";
+export type AccountProvider = "github" | "domain" | "mongodb";
 
 export type AccountStatus = "connected" | "pending" | "expiring" | "error";
 
 export interface LinkedAccount {
   provider: AccountProvider;
-  /** Identificador visible: repo, dominio, cluster, workspace, etc. */
+  /** Identificador visible: repo, dominio, base, etc. */
   label: string;
   status: AccountStatus;
-}
-
-export interface ProjectMetrics {
-  uptime: number;
-  requestsPerDay: number;
-  avgResponseMs: number;
-  monthlyCost: number;
-}
-
-export interface Project {
-  id: string;
-  name: string;
-  description: string;
-  url: string;
-  environment: "production" | "staging";
-  status: ProjectStatus;
-  createdAt: string;
-  accounts: LinkedAccount[];
-  metrics: ProjectMetrics;
 }
 
 /** Repositorio de GitHub tal como lo devuelve GET /api/projects. */
@@ -112,4 +84,44 @@ export interface ClientDetail {
     baseUrl: string;
   };
   job: Job | null;
+}
+
+/** GET /api/dashboard — datos reales (sin métricas inventadas). */
+export type LiveStatus = "online" | "offline" | "not_deployed";
+
+export interface DashboardProject {
+  id: string;
+  name: string;
+  status: "provisioning" | "ready" | "failed";
+  appUrl: string;
+  live: LiveStatus;
+  responseMs: number | null;
+  templateVersion: string | null;
+  schemaVersion: number | null;
+  httpsVerifiedAt: string | null;
+  image: { digest: string | null; deployedAt: string | null } | null;
+  latestJob: { status: string; failedStage: { name: string; label: string; message: string | null } | null; finishedAt: string | null } | null;
+  initialAdmin: InitialAdminStatus["state"];
+  createdAt: string;
+}
+
+export interface DashboardData {
+  generatedAt: string;
+  deployEnabled: boolean;
+  totals: { projects: number; ready: number; provisioning: number; failed: number; online: number; offline: number; deployed: number };
+  lastDeployAt: string | null;
+  projects: DashboardProject[];
+  attention: { clientId: string; name: string; kind: "job_failed" | "offline" | "password_pending"; message: string }[];
+  activity: { at: string; actor: string; action: string; clientId: string }[];
+}
+
+/** Borrado de un proyecto (POST /delete y GET /deletion). */
+export interface Deletion {
+  clientId: string;
+  status: "running" | "succeeded" | "failed";
+  steps: { id: string; label: string; status: "pending" | "running" | "done" | "skipped" | "warning" | "failed"; detail?: string }[];
+  requestedBy: string;
+  startedAt: string;
+  finishedAt: string | null;
+  error: { code: string; message: string } | null;
 }

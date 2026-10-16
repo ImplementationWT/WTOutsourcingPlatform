@@ -63,6 +63,8 @@ export interface AtlasAdapter {
   createDatabaseUser(spec: DatabaseUserSpec): Promise<void>;
   /** Reafirma rol/scope/etiquetas y fija una contraseña nueva. */
   updateDatabaseUser(spec: DatabaseUserSpec): Promise<void>;
+  /** Borra el usuario. false si ya no existía. */
+  deleteDatabaseUser(username: string): Promise<boolean>;
 }
 
 interface AtlasApiError {
@@ -210,6 +212,13 @@ export function createAtlasAdapter(
     async updateDatabaseUser(spec) {
       const response = await request("PATCH", userPath(spec.username), userBody(spec));
       if (!response.ok) return fail(response, "actualizar el usuario de base de datos");
+    },
+
+    async deleteDatabaseUser(username) {
+      const response = await request("DELETE", userPath(username));
+      if (response.status === 404) return false;
+      if (!response.ok) return fail(response, "borrar el usuario de base de datos");
+      return true;
     }
   };
 }

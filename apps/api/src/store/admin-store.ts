@@ -3,6 +3,7 @@ import { type Db, MongoServerError } from "mongodb";
 import { OwnershipError } from "../lib/errors.js";
 import { redact } from "../lib/redact.js";
 import type { InitialPasswordDoc } from "./initial-password-vault.js";
+import type { DeletionDoc } from "./models.js";
 import {
   type AuditDoc,
   type ClientDoc,
@@ -33,6 +34,8 @@ export class AdminStore {
   readonly auditLog;
   /** Contraseñas iniciales cifradas pendientes de revelar (las gestiona InitialPasswordVault). */
   readonly initialPasswords;
+  /** Progreso del borrado de cada cliente (se conserva tras borrarlo, como constancia). */
+  readonly deletions;
 
   constructor(db: Db, private readonly now: () => Date = () => new Date()) {
     this.clients = db.collection<ClientDoc>("clients");
@@ -40,6 +43,7 @@ export class AdminStore {
     this.resources = db.collection<ResourceDoc>("resources");
     this.auditLog = db.collection<AuditDoc>("audit");
     this.initialPasswords = db.collection<InitialPasswordDoc>("initial_password_reveals");
+    this.deletions = db.collection<DeletionDoc>("deletions");
   }
 
   async init() {

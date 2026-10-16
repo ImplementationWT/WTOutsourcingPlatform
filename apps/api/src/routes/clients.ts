@@ -5,6 +5,7 @@ import type { Deps } from "../jobs/types.js";
 import { requireAdmin } from "../auth/session.js";
 import { deriveNames, parseSlug, slugSchema } from "../domain/naming.js";
 import { type JobEngine, toPublicJob } from "../jobs/engine.js";
+import { ActiveWorkError, type Teardown, toPublicDeletion } from "../jobs/teardown.js";
 import { INITIAL_ADMIN_USERNAME } from "../jobs/stages/github-secrets.js";
 import { redact } from "../lib/redact.js";
 import { ActiveJobExistsError, type AdminStore, DuplicateClientError } from "../store/admin-store.js";
@@ -80,7 +81,12 @@ function deploymentView(client: ClientDoc, baseUrl: string) {
 
 export async function registerClientRoutes(
   app: FastifyInstance,
-  { store, engine, deps }: { store: AdminStore; engine: JobEngine; deps: Deps & { github: GithubAdapter } }
+  {
+    store,
+    engine,
+    teardown,
+    deps
+  }: { store: AdminStore; engine: JobEngine; teardown: Teardown; deps: Deps & { github: GithubAdapter } }
 ) {
   const { github, vault, server, config } = deps;
     const namesFor = (slug: string) => deriveNames(parseSlug(slug), { targetOwner: github.owner, appsDomain: config.appsDomain });
@@ -193,8 +199,44 @@ export async function registerClientRoutes(
   /** Configuración visible para el panel (sin secretos): evita duplicarla en el frontend. */
   app.get("/api/platform", { preHandler: requireAdmin }, async () => ({
     deployEnabled: config.deployEnabled,
-    appBaseDomain: config.appsDomain
+    appBaseDomain: config.appsDomain,
+    githubOwner: github.owner,
+    atlas: {
+      clusterName: config.atlas.clusterName,
+      consoleUrl: config.atlas.projectId ? `https://cloud.mongodb.com/v2/${config.atlas.projectId}#/clusters` : null
+    }
   }));
+
+  /**
+   * Borra el proyecto y todo lo que la plataforma creó para él. Irreversible: exige
+   * reenviar el identificador del proyecto como confirmación. Responde 202 y el
+   * progreso se consulta en /deletion.
+   */
+  app.post("/api/clients/:slug/delete", { preHandler: requireAdmin }, async (request, reply) => {
+    const params = slugParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
+    const slug = params.data.slug;
+    const confirm = (request.body as { confirm?: unknown } | null)?.confirm;
+    if (confirm !== slug) return reply.code(400).send({ error: "Escribe el identificador exacto del proyecto para confirmar." });
+    const [client, previous] = await Promise.all([store.getClient(slug), store.deletions.findOne({ _id: slug })]);
+    // Se puede reintentar un borrado fallido aunque el cliente ya no exista en la base.
+    if (!client && previous?.status !== "failed") return reply.code(404).send({ error: "Cliente no encontrado." });
+    try {
+      const doc = await teardown.start(slug, request.user!.username);
+      return reply.code(202).send(toPublicDeletion(doc));
+    } catch (error) {
+      if (error instanceof ActiveWorkError) return reply.code(409).send({ error: error.message });
+      throw error;
+    }
+  });
+
+  app.get("/api/clients/:slug/deletion", { preHandler: requireAdmin }, async (request, reply) => {
+    const params = slugParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
+    const doc = await store.deletions.findOne({ _id: params.data.slug });
+    if (!doc) return reply.code(404).send({ error: "No hay ningún borrado de este proyecto." });
+    return toPublicDeletion(doc);
+  });
 
   /** Estado en vivo en el servidor (consulta predefinida client-status). Sin variables de entorno. */
   app.get("/api/clients/:slug/server-status", { preHandler: requireAdmin }, async (request, reply) => {

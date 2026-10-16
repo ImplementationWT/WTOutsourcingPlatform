@@ -102,7 +102,7 @@ export default function NewProjectPage() {
           )}
           {step === 2 && <SummaryStep values={values} onEditInfo={() => setStep(0)} />}
 
-          <div className="flex items-center justify-between border-t border-white/10 pt-6">
+          <div className="flex items-center justify-between border-t border-foreground/10 pt-6">
             {step === 0 ? (
               <Button variant="ghost" render={<Link to="/projects" />} nativeButton={false}>
                 Cancelar

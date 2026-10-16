@@ -4,10 +4,11 @@
 # El orquestador solo puede pedir, por SSH_ORIGINAL_COMMAND, exactamente:
 #   install-client <slug>   (la clave pública del cliente llega por stdin)
 #   client-status <slug>
+#   uninstall-client <slug>
 # Cualquier otra cosa se rechaza. El slug se valida aquí y otra vez en el script.
 set -euo pipefail
 
-readonly ALLOWED_RE='^(install-client|client-status) ([a-z0-9]+(-[a-z0-9]+)*)$'
+readonly ALLOWED_RE='^(install-client|client-status|uninstall-client) ([a-z0-9]+(-[a-z0-9]+)*)$'
 
 command=${SSH_ORIGINAL_COMMAND:-}
 if [[ ${#command} -gt 64 || ! $command =~ $ALLOWED_RE ]]; then

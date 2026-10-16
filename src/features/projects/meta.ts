@@ -1,39 +1,20 @@
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Cloud,
-  CreditCard,
-  Database,
-  GitBranch,
-  Globe,
-  Hourglass,
-  Loader2,
-  Sparkles,
-  Triangle,
-  XCircle,
-  type LucideIcon,
-} from "lucide-react";
-import type { AccountProvider, AccountStatus, ProjectStatus } from "@/types/project";
+import { AlertTriangle, CheckCircle2, Database, GitBranch, Globe, Hourglass, Loader2, MinusCircle, XCircle, type LucideIcon } from "lucide-react";
+import type { AccountProvider, AccountStatus, LiveStatus } from "@/types/project";
 
 export const providerMeta: Record<AccountProvider, { name: string; icon: LucideIcon }> = {
   github: { name: "GitHub", icon: GitBranch },
   domain: { name: "Dominio", icon: Globe },
   mongodb: { name: "MongoDB", icon: Database },
-  claude: { name: "Claude", icon: Sparkles },
-  vercel: { name: "Vercel", icon: Triangle },
-  aws: { name: "AWS", icon: Cloud },
-  stripe: { name: "Stripe", icon: CreditCard },
 };
 
 // Los estados siempre llevan icono + texto, nunca solo color.
-export const projectStatusMeta: Record<
-  ProjectStatus,
-  { label: string; icon: LucideIcon; className: string }
-> = {
+/** Salud en vivo de la app (GET /health/ready por HTTPS) o estado del aprovisionamiento. */
+export const liveStatusMeta: Record<LiveStatus | "provisioning" | "failed", { label: string; icon: LucideIcon; className: string }> = {
   online: { label: "Online", icon: CheckCircle2, className: "text-emerald-600 dark:text-emerald-400" },
-  degraded: { label: "Degradado", icon: AlertTriangle, className: "text-amber-600 dark:text-amber-400" },
-  offline: { label: "Offline", icon: XCircle, className: "text-red-600 dark:text-red-400" },
+  offline: { label: "No responde", icon: XCircle, className: "text-red-600 dark:text-red-400" },
+  not_deployed: { label: "Sin desplegar", icon: MinusCircle, className: "text-muted-foreground" },
   provisioning: { label: "Aprovisionando", icon: Loader2, className: "text-sky-600 dark:text-sky-400" },
+  failed: { label: "Falló", icon: AlertTriangle, className: "text-amber-600 dark:text-amber-400" },
 };
 
 export const accountStatusMeta: Record<

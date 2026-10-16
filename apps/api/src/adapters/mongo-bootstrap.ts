@@ -22,6 +22,12 @@ export interface MongoBootstrapAdapter {
     input: { uri: string; database: string; document: BootstrapDocument },
     onPhase?: (phase: BootstrapPhase, detail: string) => Promise<void> | void
   ): Promise<void>;
+  /**
+   * Borra todas las colecciones de la base del cliente con su propio usuario
+   * (readWrite incluye dropCollection; no dropDatabase). Una base sin colecciones
+   * deja de existir. Devuelve cuántas se borraron.
+   */
+  dropAllCollections(input: { uri: string; database: string }): Promise<number>;
 }
 
 export const METADATA_COLLECTION = "app_metadata";
@@ -62,6 +68,31 @@ export function createMongoBootstrapAdapter(
     new MongoClient(uri, { serverSelectionTimeoutMS: 10_000, connectTimeoutMS: 10_000, maxPoolSize: 2 })
 ): MongoBootstrapAdapter {
   return {
+    async dropAllCollections({ uri, database }) {
+      const client = connect(uri);
+      try {
+        await client.connect();
+        const db = client.db(database);
+        const collections = await db.listCollections({}, { nameOnly: true }).toArray();
+        let dropped = 0;
+        for (const { name } of collections) {
+          if (name.startsWith("system.")) continue;
+          try {
+            await db.dropCollection(name);
+            dropped++;
+          } catch (error) {
+            // 26 NamespaceNotFound: ya no existía.
+            if (!(error instanceof MongoServerError && error.code === 26)) throw error;
+          }
+        }
+        return dropped;
+      } catch (error) {
+        return classify(error);
+      } finally {
+        await client.close().catch(() => undefined);
+      }
+    },
+
     async bootstrap({ uri, database, document }, onPhase = () => {}) {
       const client = connect(uri);
       try {

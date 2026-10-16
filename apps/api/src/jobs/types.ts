@@ -28,7 +28,8 @@ export interface DnsResolver {
 
 export interface ProvisioningConfig {
   appsDomain: string;
-  atlas: { clusterName: string; srvHost: string };
+  /** projectId: solo para enlazar la consola de Atlas desde el panel. */
+  atlas: { clusterName: string; srvHost: string; projectId?: string };
   /** Del contrato del template (§1, §3, §4, §7). */
   template: {
     name: string;

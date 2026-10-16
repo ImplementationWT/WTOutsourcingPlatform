@@ -1,6 +1,5 @@
 // Configuración global de la plataforma. Los recursos de cada proyecto se
 // derivan de su identificador (slug) y no se editan por proyecto.
-export const GITHUB_ORG = "forge-org";
 /** Valor por defecto mientras carga /api/platform (que manda el backend). */
 export const DEPLOY_DOMAIN = "apps.whatever.tech";
 

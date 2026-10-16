@@ -85,6 +85,31 @@ La plataforma no deshace la rotación: si el secret existe, `server_prepare` lla
 Para revocar de inmediato (el cliente deja de poder desplegar):
 `sed -i '/ platform-client:<slug>$/d' /home/deploy/.ssh/authorized_keys`.
 
+## Borrar un cliente
+
+Desde el panel: detalle del proyecto → **Zona de peligro** → *Eliminar proyecto* (hay que
+escribir el identificador). Borra, en este orden y solo lo que la plataforma creó para ese
+cliente:
+
+1. Comprobación previa: si el usuario de Atlas no está etiquetado como de ese cliente, no se borra nada.
+2. Servidor (`uninstall-client`): contenedor e imágenes, red, sitio de nginx (con `nginx -t`;
+   si fallara se restaura), certificado, clave en `~deploy`, puerto y `/srv/customer-apps/<slug>`.
+3. GitHub: el repositorio `<slug>-app` y su imagen en GHCR. En cuentas personales GitHub no deja
+   a la App borrar paquetes: el panel avisa con el enlace para borrarla a mano.
+4. MongoDB: las colecciones de `client_<slug>` (con el usuario del cliente) y el usuario `app_<slug>`.
+5. Registros de la plataforma (la auditoría se conserva). El DNS no se toca: el comodín es compartido.
+
+Si un paso falla, *Reintentar el borrado* continúa: lo ya borrado no se repite.
+
+Requiere `uninstall-client` en el VPS (bootstrap actualizado):
+
+```bash
+rsync -a --delete deploy/platform/ whatever-vps:/root/platform-src/   # desde el repo (tu equipo)
+bash /root/platform-src/bin/bootstrap-vps.sh                           # en el VPS: instala el script y actualiza sudoers
+```
+
+A mano en el VPS (solo la parte del servidor): `/opt/platform/bin/uninstall-client <slug>`.
+
 ## Revertir un cliente a mano
 
 Quita su sitio de nginx sin afectar a los demás:
@@ -96,5 +121,4 @@ nginx -t && systemctl reload nginx
 
 Si además quieres parar la app: `docker compose -p app-<slug> -f /srv/customer-apps/<slug>/compose.yaml down`.
 Para volver a la imagen anterior, redespliega desde el panel ("Redesplegar") o lanza
-el workflow Deploy de un commit anterior. La baja automática de clientes (borrar
-carpeta, puerto, certificado y red) queda fuera de este alcance.
+el workflow Deploy de un commit anterior.

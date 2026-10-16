@@ -15,7 +15,7 @@ const dateTime = (iso: string) =>
 function Row({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
   return (
     <div className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5">
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-foreground/10 bg-foreground/5">
         <Icon className="size-4" />
       </div>
       <div className="min-w-0 flex-1">
@@ -68,7 +68,7 @@ export default function DeploymentCard({ client }: { client: ClientDetail["clien
         )}
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="divide-y divide-white/10">
+        <div className="divide-y divide-foreground/10">
           <Row icon={ExternalLink} label="Aplicación">
             <a href={deployment.appUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline-offset-4 hover:underline">
               {deployment.appUrl}

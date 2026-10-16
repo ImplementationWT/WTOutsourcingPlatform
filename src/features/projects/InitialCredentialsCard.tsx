@@ -29,7 +29,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
 function Row({ icon: Icon, label, children }: { icon: typeof User; label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-foreground/10 bg-foreground/5">
         <Icon className="size-4" />
       </div>
       <div className="min-w-0 flex-1">

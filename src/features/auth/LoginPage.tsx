@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { useQueryClient } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import { Layers3, Lock, LogIn, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { applyTheme } from "@/lib/theme";
 import { ApiError } from "@/lib/api-client";
 import { login, SESSION_KEY, useSession } from "./auth";
 import NeuralBackground from "./NeuralBackground";
@@ -20,9 +21,11 @@ const schema = z.object({
 type LoginValues = z.infer<typeof schema>;
 
 const glassInput =
-  "h-11 border-white/15 bg-white/5 dark:bg-white/5 pl-10 text-white placeholder:text-white/40 focus-visible:border-white/40 focus-visible:ring-white/20";
+  "h-11 border-foreground/15 bg-foreground/5 dark:bg-foreground/5 pl-10 text-white placeholder:text-foreground/40 focus-visible:border-foreground/40 focus-visible:ring-foreground/20";
 
 export default function LoginPage() {
+  // El login es siempre oscuro: su fondo animado es parte de la marca.
+  useEffect(() => applyTheme("dark"), []);
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -56,20 +59,20 @@ export default function LoginPage() {
       <div className="pointer-events-none absolute top-1/2 left-1/2 size-[28rem] -translate-x-[60%] -translate-y-[60%] rounded-full bg-violet-600/30 blur-3xl" />
       <div className="pointer-events-none absolute top-1/2 left-1/2 size-80 -translate-x-[10%] -translate-y-[10%] rounded-full bg-sky-500/20 blur-3xl" />
 
-      <div className="relative w-full max-w-sm rounded-2xl border border-white/15 bg-white/10 p-8 text-white shadow-[0_8px_32px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+      <div className="relative w-full max-w-sm rounded-2xl border border-foreground/15 bg-foreground/10 p-8 text-white shadow-[0_8px_32px_rgba(0,0,0,0.45)] backdrop-blur-xl">
         <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-4 flex size-12 items-center justify-center rounded-xl border border-white/20 bg-white/10">
+          <div className="mb-4 flex size-12 items-center justify-center rounded-xl border border-foreground/20 bg-foreground/10">
             <Layers3 className="size-6" />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Forge</h1>
-          <p className="mt-1 text-sm text-white/60">by Whatever Tech</p>
+          <p className="mt-1 text-sm text-foreground/60">by Whatever Tech</p>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
           <div className="space-y-2">
-            <Label htmlFor="username" className="text-white/80">Usuario</Label>
+            <Label htmlFor="username" className="text-foreground/80">Usuario</Label>
             <div className="relative">
-              <User className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-white/50" />
+              <User className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-foreground/50" />
               <Input
                 id="username"
                 autoComplete="username"
@@ -83,9 +86,9 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password" className="text-white/80">Contraseña</Label>
+            <Label htmlFor="password" className="text-foreground/80">Contraseña</Label>
             <div className="relative">
-              <Lock className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-white/50" />
+              <Lock className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-foreground/50" />
               <Input
                 id="password"
                 type="password"
@@ -108,7 +111,7 @@ export default function LoginPage() {
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="h-11 w-full bg-white text-slate-900 hover:bg-white/90"
+            className="h-11 w-full bg-white text-slate-900 hover:bg-foreground/90"
           >
             <LogIn />
             Ingresar

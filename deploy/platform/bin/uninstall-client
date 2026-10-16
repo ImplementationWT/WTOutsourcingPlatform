@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# uninstall-client <slug>  (root, vía sudo desde provisioner-dispatch)
+#
+# Retira del servidor todo lo de un cliente. Idempotente: lo que ya no existe se
+# omite. Solo toca rutas derivadas del slug validado:
+#   contenedor y sus imágenes, red app-<slug>, server de nginx (nginx -t o se
+#   restaura), certificado de <slug>.<APP_BASE_DOMAIN>, clave en ~deploy, puerto
+#   del registro y /srv/customer-apps/<slug>.
+# Salida: una última línea JSON {"status":"ok","removed":{…}}.
+set -euo pipefail
+
+# shellcheck source=../lib/common.sh
+source /opt/platform/lib/common.sh
+
+[[ $# -eq 1 ]] || die "uso: uninstall-client <slug>"
+slug=$1
+require_slug "$slug"
+load_config
+
+host=$(client_host "$slug")
+dir=$(client_dir "$slug")
+network=$(client_network "$slug")
+conf="$NGINX_APPS_DIR/$slug.conf"
+project="app-$slug"
+
+container=false images=0 net=false nginx=false certificate=false key=false port=false files=false
+
+# Sin despliegues a medias mientras se retira.
+if [[ -d $dir ]]; then
+  exec 9>"$dir/.deploy.lock"
+  flock -w 900 9 || die "hay un despliegue en curso para $slug"
+fi
+
+# 1. Contenedor e imágenes.
+if [[ -n $(docker ps --all --quiet --filter "label=com.docker.compose.project=$project") ]]; then
+  if [[ -f "$dir/compose.yaml" ]]; then
+    docker compose --project-name "$project" --file "$dir/compose.yaml" down --remove-orphans >/dev/null 2>&1 || true
+  fi
+  # Por si el compose ya no estaba: se quitan por etiqueta.
+  docker ps --all --quiet --filter "label=com.docker.compose.project=$project" | xargs -r docker rm -f >/dev/null
+  container=true
+fi
+# Por referencia (repo@digest), no por ID: si otra app compartiera capas o imagen, no se toca.
+while IFS= read -r image; do
+  [[ $image == *@sha256:* ]] || continue
+  docker rmi "$image" >/dev/null 2>&1 && images=$((images + 1))
+done < <(docker images --digests --format '{{.Repository}}@{{.Digest}}' "$REGISTRY_HOST/$GHCR_ORG/$slug-app" | sort -u)
+
+# 2. Red propia.
+if docker network inspect "$network" >/dev/null 2>&1; then
+  docker network rm "$network" >/dev/null
+  net=true
+fi
+
+# 3. Server de nginx: se quita, nginx -t y recarga; si fallara, se restaura.
+if [[ -e $conf ]]; then
+  exec {nginx_lock}>"$NGINX_APPS_DIR/.lock"
+  flock -w 120 "$nginx_lock" || die "no se pudo bloquear la configuración de nginx"
+  backup=$(mktemp "$conf.bak.XXXXXX")
+  mv -f "$conf" "$backup"
+  if ! output=$(nginx -t 2>&1); then
+    mv -f "$backup" "$conf"
+    printf '%s\n' "$output" >&2
+    die "nginx -t falló al quitar $slug.conf; se restauró"
+  fi
+  rm -f "$backup"
+  nginx_reload
+  flock -u "$nginx_lock"
+  nginx=true
+fi
+
+# 4. Certificado del subdominio (solo el de este host).
+if [[ -d "$LETSENCRYPT_LIVE/$host" ]]; then
+  certbot delete --cert-name "$host" --non-interactive >&2
+  certificate=true
+fi
+
+# 5. Clave del cliente en ~deploy.
+deploy_home=$(getent passwd deploy | cut -d: -f6 || true)
+keys="$deploy_home/.ssh/authorized_keys"
+if [[ -n $deploy_home && -f $keys ]] && awk -v m="$KEY_MARKER_PREFIX$slug" '$NF == m { f = 1 } END { exit !f }' "$keys"; then
+  exec {keys_lock}>"$deploy_home/.ssh/.authorized_keys.lock"
+  flock -w 60 "$keys_lock" || die "no se pudo bloquear authorized_keys"
+  tmp=$(mktemp "$deploy_home/.ssh/.authorized_keys.XXXXXX")
+  awk -v m="$KEY_MARKER_PREFIX$slug" '$NF != m' "$keys" >"$tmp"
+  chown deploy:deploy "$tmp"
+  chmod 600 "$tmp"
+  mv -f "$tmp" "$keys"
+  flock -u "$keys_lock"
+  key=true
+fi
+
+# 6. Puerto del registro.
+ports=$(ports_file)
+if [[ -f $ports ]] && awk -v s="$slug" '$1 == s { f = 1 } END { exit !f }' "$ports"; then
+  exec {ports_lock}>"$ports.lock"
+  flock -w 60 "$ports_lock" || die "no se pudo bloquear el registro de puertos"
+  tmp=$(mktemp "$ports.XXXXXX")
+  awk -v s="$slug" '$1 != s' "$ports" >"$tmp"
+  chmod 600 "$tmp"
+  mv -f "$tmp" "$ports"
+  flock -u "$ports_lock"
+  port=true
+fi
+
+# 7. Carpeta del cliente (.env, compose, estado y log).
+if [[ -d $dir ]]; then
+  exec 9>&-
+  rm -rf -- "$dir"
+  files=true
+fi
+
+jq -cn --arg slug "$slug" --argjson container "$container" --argjson images "$images" --argjson network "$net" \
+  --argjson nginx "$nginx" --argjson certificate "$certificate" --argjson key "$key" --argjson port "$port" --argjson files "$files" \
+  '{status: "ok", slug: $slug, removed: {container: $container, images: $images, network: $network, nginx: $nginx, certificate: $certificate, key: $key, port: $port, files: $files}}'

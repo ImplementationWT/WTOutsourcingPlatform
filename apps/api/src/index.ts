@@ -58,14 +58,15 @@ const app = await buildApp({
       ? createServerAdapter({ host: server.host, port: server.port, hostKeys: server.hostKeys, provisionerKey: server.provisionerKey })
       : {
           installClient: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
-          clientStatus: () => Promise.reject(new Error("Servidor de despliegue no configurado."))
+          clientStatus: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
+          uninstallClient: () => Promise.reject(new Error("Servidor de despliegue no configurado."))
         },
     resolver: { resolve4: (host) => dns.resolve4(host) },
     vault,
     timing: DEFAULT_TIMING,
     config: {
       appsDomain: appBaseDomain(env),
-      atlas: { clusterName: env.ATLAS_CLUSTER_NAME, srvHost: env.ATLAS_CLUSTER_SRV_HOST },
+      atlas: { clusterName: env.ATLAS_CLUSTER_NAME, srvHost: env.ATLAS_CLUSTER_SRV_HOST, projectId: env.ATLAS_PROJECT_ID },
       template: {
         name: "node-typescript",
         environment: "production",

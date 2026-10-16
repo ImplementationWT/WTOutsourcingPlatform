@@ -1,7 +1,7 @@
 import { AtlasUserExistsError, type AtlasAdapter, type AtlasDatabaseUser, type DatabaseUserSpec } from "../../src/adapters/atlas.js";
 import { GithubRepoExistsError, type GithubAdapter, type RepoInfo, type WorkflowRun } from "../../src/adapters/github.js";
 import type { HttpProbe } from "../../src/adapters/http-probe.js";
-import type { InstallResult, ServerAdapter, ServerClientStatus } from "../../src/adapters/server.js";
+import type { InstallResult, ServerAdapter, ServerClientStatus, UninstallResult } from "../../src/adapters/server.js";
 import { randomBytes } from "node:crypto";
 import type { BootstrapDocument, BootstrapPhase, MongoBootstrapAdapter } from "../../src/adapters/mongo-bootstrap.js";
 import { FatalError, TransientError } from "../../src/lib/errors.js";
@@ -56,6 +56,10 @@ export class FakeAtlas extends Faulty implements AtlasAdapter {
     this.seenPasswords.push(spec.password);
     this.users.set(spec.username, { user: this.toUser(spec), password: spec.password });
   }
+  async deleteDatabaseUser(username: string) {
+    this.hit("deleteDatabaseUser", username);
+    return this.users.delete(username);
+  }
 }
 
 /** Mongo simulado: valida la contraseña contra FakeAtlas como haría el clúster. */
@@ -87,6 +91,11 @@ export class FakeMongo extends Faulty implements MongoBootstrapAdapter {
     if (!this.databases.has(database)) this.databases.set(database, document);
     await onPhase("document", "documento");
     await onPhase("verified", "verificado");
+  }
+  async dropAllCollections({ uri, database }: { uri: string; database: string }) {
+    this.hit("dropAllCollections", database);
+    if (!this.credentialsValid(uri)) throw new TransientError("mongodb_auth_pending", "auth failed");
+    return this.databases.delete(database) ? 1 : 0;
   }
 }
 
@@ -185,6 +194,17 @@ export class FakeGithub extends Faulty implements GithubAdapter {
     if (!run) throw new Error("run not found");
     return run;
   }
+  /** Resultado de borrar la imagen en GHCR (en cuentas personales la App no puede). */
+  packageDeletion: "deleted" | "not_found" | "forbidden" = "deleted";
+  async deleteRepository(name: string) {
+    this.hit("deleteRepository", name);
+    this.environments.delete(`${name}/production`);
+    return this.repos.delete(name);
+  }
+  async deleteContainerPackage(name: string) {
+    this.hit("deleteContainerPackage", name);
+    return this.packageDeletion;
+  }
   async getRunFailure(repo: string, runId: number) {
     this.hit("getRunFailure", repo, runId);
     return "deploy › Deploy over SSH";
@@ -227,6 +247,15 @@ export class FakeServer extends Faulty implements ServerAdapter {
       port: entry.port,
       certificate: existing ? "existing" : "issued",
       key: publicKey ? "installed" : "kept"
+    };
+  }
+  async uninstallClient(slug: string): Promise<UninstallResult> {
+    this.hit("uninstallClient", slug);
+    const existed = this.clients.delete(slug);
+    return {
+      status: "ok",
+      slug,
+      removed: { container: existed, images: existed ? 1 : 0, network: existed, nginx: existed, certificate: existed, key: existed, port: existed, files: existed }
     };
   }
   async clientStatus(slug: string): Promise<ServerClientStatus> {

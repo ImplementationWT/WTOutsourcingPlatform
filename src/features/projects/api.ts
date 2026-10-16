@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
-import type { ClientDetail, Project, ProjectRepo, RevealedCredentials } from "@/types/project";
-import { mockProjects } from "./data";
+import type { ClientDetail, DashboardData, Deletion, ProjectRepo, RevealedCredentials } from "@/types/project";
 
 /** Lo único que el navegador envía; el resto lo deriva el backend del slug. */
 export interface NewProjectInput {
@@ -26,7 +25,13 @@ export function useClient(slug: string) {
 export function usePlatform() {
   return useQuery({
     queryKey: ["platform"],
-    queryFn: () => apiFetch<{ deployEnabled: boolean; appBaseDomain: string }>("/api/platform"),
+    queryFn: () =>
+      apiFetch<{
+        deployEnabled: boolean;
+        appBaseDomain: string;
+        githubOwner: string;
+        atlas: { clusterName: string; consoleUrl: string | null };
+      }>("/api/platform"),
     staleTime: 5 * 60_000,
   });
 }
@@ -50,13 +55,23 @@ export function useProjects() {
   return useQuery({ queryKey: ["projects"], queryFn: fetchProjects });
 }
 
-// El dashboard sigue con métricas de ejemplo hasta tener una fuente real
-// (uptime, tráfico y costos no salen de GitHub).
-async function fetchDemoProjects(): Promise<Project[]> {
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  return mockProjects;
+/** Panel principal con datos reales: estado, salud en vivo, atención y actividad. */
+export function useDashboard() {
+  return useQuery({
+    queryKey: ["dashboard"],
+    queryFn: () => apiFetch<DashboardData>("/api/dashboard"),
+    refetchInterval: 30_000,
+  });
 }
 
-export function useDemoProjects() {
-  return useQuery({ queryKey: ["demo-projects"], queryFn: fetchDemoProjects });
+/** Borra el proyecto y todo lo relacionado (irreversible). `confirm` debe ser el slug. */
+export function deleteClient(slug: string, confirm: string) {
+  return apiFetch<Deletion>(`/api/clients/${encodeURIComponent(slug)}/delete`, {
+    method: "POST",
+    body: JSON.stringify({ confirm }),
+  });
+}
+
+export function fetchDeletion(slug: string) {
+  return apiFetch<Deletion>(`/api/clients/${encodeURIComponent(slug)}/deletion`);
 }

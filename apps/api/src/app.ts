@@ -2,11 +2,13 @@ import Fastify from "fastify";
 import type { GithubAdapter } from "./adapters/github.js";
 import { type AuthConfig, registerAuth } from "./auth/session.js";
 import { JobEngine } from "./jobs/engine.js";
+import { Teardown } from "./jobs/teardown.js";
 import type { Deps } from "./jobs/types.js";
 import { ProvisioningError } from "./lib/errors.js";
 import { loggerOptions } from "./lib/logger.js";
 import { redact } from "./lib/redact.js";
 import { registerClientRoutes } from "./routes/clients.js";
+import { registerDashboardRoutes } from "./routes/dashboard.js";
 import type { AdminStore } from "./store/admin-store.js";
 
 export interface AppOptions {
@@ -21,6 +23,7 @@ export interface AppOptions {
 export async function buildApp({ store, deps, auth, logLevel, logStream }: AppOptions) {
   const app = Fastify({ logger: loggerOptions({ level: logLevel, stream: logStream }) });
   const engine = new JobEngine(store, deps, app.log.child({ component: "jobs" }));
+  const teardown = new Teardown(store, deps, app.log.child({ component: "teardown" }));
 
   // Última barrera: ninguna respuesta JSON sale sin redactar.
   app.addHook("preSerialization", async (_request, _reply, payload) => redact(payload));
@@ -38,11 +41,12 @@ export async function buildApp({ store, deps, auth, logLevel, logStream }: AppOp
   app.get("/health", async () => ({ status: "ok", service: "provisioning-api" }));
 
   await registerAuth(app, auth);
-  await registerClientRoutes(app, { store, engine, deps });
+  await registerClientRoutes(app, { store, engine, teardown, deps });
+  await registerDashboardRoutes(app, { store, deps });
 
   app.addHook("onClose", async () => {
-    await engine.idle();
+    await Promise.all([engine.idle(), teardown.idle()]);
   });
 
-  return Object.assign(app, { engine });
+  return Object.assign(app, { engine, teardown });
 }

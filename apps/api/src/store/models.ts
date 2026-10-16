@@ -133,3 +133,23 @@ export interface AuditDoc {
   target: string;
   details?: Record<string, string | number | boolean | string[]>;
 }
+
+export type DeletionStepStatus = "pending" | "running" | "done" | "skipped" | "warning" | "failed";
+
+/** Paso del borrado de un cliente (sin secretos: solo nombres y resultados). */
+export interface DeletionStep {
+  id: string;
+  label: string;
+  status: DeletionStepStatus;
+  detail?: string;
+}
+
+export interface DeletionDoc {
+  _id: string; // slug
+  status: "running" | "succeeded" | "failed";
+  steps: DeletionStep[];
+  requestedBy: string;
+  startedAt: Date;
+  finishedAt?: Date;
+  error?: { code: string; message: string };
+}

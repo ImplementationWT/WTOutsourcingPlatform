@@ -3,6 +3,12 @@
 # lo dejaría certbot (/etc/letsencrypt/live/<host>/).
 set -euo pipefail
 printf '%s\n' "$*" >>/var/log/certbot-stub.calls
+if [[ ${1:-} == delete ]]; then
+  [[ ${2:-} == --cert-name && -n ${3:-} ]] || exit 2
+  [[ -d "/etc/letsencrypt/live/$3" ]] || exit 1
+  rm -rf "/etc/letsencrypt/live/$3"
+  exit 0
+fi
 host=""
 while (($#)); do
   [[ $1 == -d ]] && host=$2

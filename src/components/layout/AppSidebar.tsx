@@ -15,7 +15,7 @@ export default function AppSidebar() {
   return (
     <aside className="sticky top-0 z-20 flex h-svh w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground backdrop-blur-xl">
       <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-5">
-        <div className="flex size-9 items-center justify-center rounded-lg border border-white/20 bg-white/10">
+        <div className="flex size-9 items-center justify-center rounded-lg border border-foreground/20 bg-foreground/10">
           <Layers3 className="size-5" />
         </div>
         <div>
