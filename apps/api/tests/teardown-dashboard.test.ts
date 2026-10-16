@@ -122,6 +122,16 @@ describe("borrar un proyecto", () => {
     expect(step.detail).toContain("https://github.com/acme-org?tab=packages");
   });
 
+  it("si GitHub no encuentra la imagen de un proyecto que sí se desplegó, avisa en vez de darlo por borrado", async () => {
+    const ctx = await setup();
+    ctx.github.packageDeletion = "not_found";
+    await ctx.provision();
+    await ctx.remove();
+    const step = (await ctx.deletion()).steps.find((s: { id: string }) => s.id === "container_image");
+    expect(step.status).toBe("warning");
+    expect(step.detail).toContain("No se pudo confirmar");
+  });
+
   it("si el usuario de Atlas no es de este cliente, no borra nada", async () => {
     const ctx = await setup();
     await ctx.provision();

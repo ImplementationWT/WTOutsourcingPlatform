@@ -136,15 +136,16 @@ export class Teardown {
         await this.setStep(slug, current, "skipped", "Sin repositorio de la plataforma: no hay imagen que borrar.");
       } else {
         const result = await deps.github.deleteContainerPackage(names.repository);
-        if (result === "forbidden") {
-          await this.setStep(
-            slug,
-            current,
-            "warning",
-            `GitHub no permite a la App borrar paquetes de esta cuenta. Bórralo a mano: https://github.com/${deps.github.owner}?tab=packages&q=${names.repository}`
-          );
+        const packagesUrl = `https://github.com/${deps.github.owner}?tab=packages&q=${names.repository}`;
+        if (result === "deleted") {
+          await this.setStep(slug, current, "done", `${names.repository} borrada de GHCR.`);
+        } else if (result === "forbidden") {
+          await this.setStep(slug, current, "warning", `GitHub no permite a la App borrar paquetes de esta cuenta. Bórrala a mano: ${packagesUrl}`);
+        } else if (client?.deployment?.image) {
+          // Hubo despliegue, así que la imagen existió: un 404 suele ser que la App no ve los paquetes de la cuenta.
+          await this.setStep(slug, current, "warning", `No se pudo confirmar el borrado (la App no ve el paquete). Revísala y bórrala a mano: ${packagesUrl}`);
         } else {
-          await this.setStep(slug, current, "done", result === "deleted" ? `${names.repository} borrada de GHCR.` : "No había imagen.");
+          await this.setStep(slug, current, "done", "No había imagen: el proyecto nunca se desplegó.");
         }
       }
 
