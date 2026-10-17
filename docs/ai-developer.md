@@ -122,6 +122,7 @@ El entorno `production` de los repos no debe restringir ramas de despliegue
 | "A la GitHub App le faltan permisos" | Paso 2: cambiar los permisos y aceptarlos en la instalación |
 | "El AI Developer no está configurado" | Falta el secret `ANTHROPIC_API_KEY` o no se ha relanzado el despliegue |
 | "Anthropic rechazó la clave" | Clave revocada o de otra organización |
+| "Anthropic rechazó la petición: …" | El texto tras los dos puntos es el motivo que da Anthropic (p. ej. Managed Agents o el modelo no habilitados en la cuenta). También queda en el log de la API con su `requestId` |
 | "La cuenta de Anthropic no tiene saldo" (en el chat) | Facturación de la cuenta empresarial |
 | Vista previa: "no tiene el workflow" | Repo con plantilla < 1.5.0 (ver paso 3) |
 | Vista previa fallida | El enlace *Ver el log en GitHub Actions* muestra el paso; a menudo es el build: pide a Claude que lo arregle |

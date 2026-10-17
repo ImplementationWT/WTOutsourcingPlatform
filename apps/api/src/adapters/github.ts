@@ -406,7 +406,9 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
     getInstallationPermissions: () =>
       call("consultar los permisos de la GitHub App", async () => {
         const { data } = await octokit.rest.apps.getInstallation({ installation_id: config.installationId });
-        return Object.fromEntries(Object.entries(data.permissions ?? {}).filter((e): e is [string, string] => typeof e[1] === "string"));
+        const permissions: Record<string, string> = {};
+        for (const [name, level] of Object.entries(data.permissions ?? {})) if (typeof level === "string") permissions[name] = level;
+        return permissions;
       }),
 
     async createRepoToken(repo) {

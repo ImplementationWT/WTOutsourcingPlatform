@@ -156,6 +156,15 @@ describe("AI Developer: sesiones", () => {
     expect(await store.aiSessions.countDocuments()).toBe(0);
   });
 
+  it("si Anthropic rechaza la petición, el panel muestra su motivo", async () => {
+    const { api, agent } = await setup();
+    const body = { type: "error", error: { type: "invalid_request_error", message: "model: claude-x is not available" } };
+    agent.failCreate = new Anthropic.BadRequestError(400, body, "400", new Headers());
+    const response = await api("POST", "/api/clients/acme-crm/ai/sessions", { title: "Prueba" });
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe("Anthropic rechazó la petición: model: claude-x is not available");
+  });
+
   it("retransmite historial y eventos en vivo sin duplicados, y pide confirmación de herramientas", async () => {
     const { app, api, agent } = await setup();
     const session = await startSession(api, "Hola");

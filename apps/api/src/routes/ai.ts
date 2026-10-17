@@ -23,6 +23,13 @@ const messageSchema = z.object({ text: z.string().trim().min(1).max(20_000) }).s
 const confirmSchema = z.object({ toolUseId: z.string().min(1).max(200), allow: z.boolean() }).strict();
 const mergeSchema = z.object({ confirm: z.literal(true) }).strict();
 
+/** Motivo que da Anthropic en el cuerpo del error (describe la petición, no la cuenta). */
+function anthropicDetail(error: InstanceType<typeof Anthropic.APIError>): string | null {
+  const body = error.error as { error?: { message?: unknown } } | undefined;
+  const message = body?.error?.message;
+  return typeof message === "string" && message.trim() ? redact(message.trim()).slice(0, 500) : null;
+}
+
 /** Errores del SDK de Anthropic → respuesta para el panel (sin detalles de la cuenta). */
 function anthropicError(error: unknown): { status: number; message: string } | null {
   if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError) {
@@ -30,7 +37,10 @@ function anthropicError(error: unknown): { status: number; message: string } | n
   }
   if (error instanceof Anthropic.RateLimitError) return { status: 429, message: "Anthropic limitó las peticiones. Espera un momento." };
   if (error instanceof Anthropic.NotFoundError) return { status: 409, message: "La sesión del agente ya no existe en Anthropic." };
-  if (error instanceof Anthropic.BadRequestError) return { status: 409, message: "Anthropic rechazó la petición en el estado actual de la sesión." };
+  if (error instanceof Anthropic.BadRequestError) {
+    const detail = anthropicDetail(error);
+    return { status: 409, message: `Anthropic rechazó la petición${detail ? `: ${detail}` : "."}` };
+  }
   if (error instanceof Anthropic.APIError) return { status: 502, message: "Anthropic no respondió correctamente. Reintenta en unos segundos." };
   return null;
 }
@@ -77,7 +87,8 @@ export async function registerAiRoutes(
       if (error instanceof AiDeveloperError) return reply.code(error.status).send({ error: error.message });
       const mapped = anthropicError(error);
       if (mapped) {
-        request.log.warn({ status: (error as { status?: number }).status }, "Anthropic request failed");
+        const apiError = error as InstanceType<typeof Anthropic.APIError>;
+        request.log.warn({ status: apiError.status, requestId: apiError.requestID, detail: anthropicDetail(apiError) }, "Anthropic request failed");
         return reply.code(mapped.status).send({ error: mapped.message });
       }
       throw error;
