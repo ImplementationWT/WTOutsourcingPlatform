@@ -5,7 +5,8 @@
 # omite. Solo toca rutas derivadas del slug validado:
 #   contenedor y sus imágenes, red app-<slug>, server de nginx (nginx -t o se
 #   restaura), certificado de <slug>.<APP_BASE_DOMAIN>, clave en ~deploy, puerto
-#   del registro y /srv/customer-apps/<slug>.
+#   del registro y /srv/customer-apps/<slug>; y lo mismo de su vista previa
+#   (preview-<slug>: contenedores y base temporal, nginx, certificado y puerto).
 # Salida: una última línea JSON {"status":"ok","removed":{…}}.
 set -euo pipefail
 
@@ -23,13 +24,27 @@ network=$(client_network "$slug")
 conf="$NGINX_APPS_DIR/$slug.conf"
 project="app-$slug"
 
-container=false images=0 net=false nginx=false certificate=false key=false port=false files=false
+container=false images=0 net=false nginx=false certificate=false key=false port=false files=false preview=false
+preview_project="preview-$slug"
+preview_conf="$NGINX_APPS_DIR/preview-$slug.conf"
+preview_cert_host=$(preview_host "$slug")
+preview_port=$(preview_port_key "$slug")
 
 # Sin despliegues a medias mientras se retira.
 if [[ -d $dir ]]; then
   exec 9>"$dir/.deploy.lock"
   flock -w 900 9 || die "hay un despliegue en curso para $slug"
 fi
+
+# 0. Vista previa: contenedores y su base temporal (volúmenes).
+if [[ -n $(docker ps --all --quiet --filter "label=com.docker.compose.project=$preview_project") ]]; then
+  if [[ -f "$dir/preview/compose.yaml" ]]; then
+    docker compose --project-name "$preview_project" --file "$dir/preview/compose.yaml" down --volumes --remove-orphans >/dev/null 2>&1 || true
+  fi
+  docker ps --all --quiet --filter "label=com.docker.compose.project=$preview_project" | xargs -r docker rm -f --volumes >/dev/null
+  preview=true
+fi
+if docker network inspect "$preview_project" >/dev/null 2>&1; then docker network rm "$preview_project" >/dev/null || true; fi
 
 # 1. Contenedor e imágenes.
 if [[ -n $(docker ps --all --quiet --filter "label=com.docker.compose.project=$project") ]]; then
@@ -52,27 +67,39 @@ if docker network inspect "$network" >/dev/null 2>&1; then
   net=true
 fi
 
-# 3. Server de nginx: se quita, nginx -t y recarga; si fallara, se restaura.
-if [[ -e $conf ]]; then
+# 3. Servers de nginx (app y vista previa): se quitan, nginx -t y recarga; si fallara, se restaura.
+remove_nginx_conf() {
+  local target=$1 backup output
   exec {nginx_lock}>"$NGINX_APPS_DIR/.lock"
   flock -w 120 "$nginx_lock" || die "no se pudo bloquear la configuración de nginx"
-  backup=$(mktemp "$conf.bak.XXXXXX")
-  mv -f "$conf" "$backup"
+  backup=$(mktemp "$target.bak.XXXXXX")
+  mv -f "$target" "$backup"
   if ! output=$(nginx -t 2>&1); then
-    mv -f "$backup" "$conf"
+    mv -f "$backup" "$target"
     printf '%s\n' "$output" >&2
-    die "nginx -t falló al quitar $slug.conf; se restauró"
+    die "nginx -t falló al quitar $(basename "$target"); se restauró"
   fi
   rm -f "$backup"
   nginx_reload
   flock -u "$nginx_lock"
+}
+if [[ -e $conf ]]; then
+  remove_nginx_conf "$conf"
   nginx=true
+fi
+if [[ -e $preview_conf ]]; then
+  remove_nginx_conf "$preview_conf"
+  preview=true
 fi
 
 # 4. Certificado del subdominio (solo el de este host).
 if [[ -d "$LETSENCRYPT_LIVE/$host" ]]; then
   certbot delete --cert-name "$host" --non-interactive >&2
   certificate=true
+fi
+if [[ -d "$LETSENCRYPT_LIVE/$preview_cert_host" ]]; then
+  certbot delete --cert-name "$preview_cert_host" --non-interactive >&2
+  preview=true
 fi
 
 # 5. Clave del cliente en ~deploy.
@@ -90,17 +117,18 @@ if [[ -n $deploy_home && -f $keys ]] && awk -v m="$KEY_MARKER_PREFIX$slug" '$NF 
   key=true
 fi
 
-# 6. Puerto del registro.
+# 6. Puertos del registro (app y vista previa).
 ports=$(ports_file)
-if [[ -f $ports ]] && awk -v s="$slug" '$1 == s { f = 1 } END { exit !f }' "$ports"; then
+if [[ -f $ports ]] && awk -v s="$slug" -v p="$preview_port" '$1 == s || $1 == p { f = 1 } END { exit !f }' "$ports"; then
   exec {ports_lock}>"$ports.lock"
   flock -w 60 "$ports_lock" || die "no se pudo bloquear el registro de puertos"
+  awk -v s="$slug" '$1 == s { f = 1 } END { exit !f }' "$ports" && port=true
+  awk -v p="$preview_port" '$1 == p { f = 1 } END { exit !f }' "$ports" && preview=true
   tmp=$(mktemp "$ports.XXXXXX")
-  awk -v s="$slug" '$1 != s' "$ports" >"$tmp"
+  awk -v s="$slug" -v p="$preview_port" '$1 != s && $1 != p' "$ports" >"$tmp"
   chmod 600 "$tmp"
   mv -f "$tmp" "$ports"
   flock -u "$ports_lock"
-  port=true
 fi
 
 # 7. Carpeta del cliente (.env, compose, estado y log).
@@ -112,4 +140,5 @@ fi
 
 jq -cn --arg slug "$slug" --argjson container "$container" --argjson images "$images" --argjson network "$net" \
   --argjson nginx "$nginx" --argjson certificate "$certificate" --argjson key "$key" --argjson port "$port" --argjson files "$files" \
-  '{status: "ok", slug: $slug, removed: {container: $container, images: $images, network: $network, nginx: $nginx, certificate: $certificate, key: $key, port: $port, files: $files}}'
+  --argjson preview "$preview" \
+  '{status: "ok", slug: $slug, removed: {container: $container, images: $images, network: $network, nginx: $nginx, certificate: $certificate, key: $key, port: $port, files: $files, preview: $preview}}'

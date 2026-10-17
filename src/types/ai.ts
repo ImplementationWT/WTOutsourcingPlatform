@@ -61,3 +61,20 @@ export interface AiReview {
   checks: { total: number; pending: number; failed: number; checks: { name: string; status: string; conclusion: string | null; url: string | null }[] } | null;
   mainTouched: boolean;
 }
+
+export type AiPreviewStatus = "installing" | "building" | "ready" | "failed" | "stopped";
+
+export interface AiPreview {
+  status: AiPreviewStatus;
+  url: string;
+  /** URL del iframe con un pase de un solo uso (solo con status ready). */
+  frameUrl: string | null;
+  sha: string | null;
+  /** La rama tiene commits más nuevos que los de la vista previa. */
+  outdated: boolean;
+  runUrl: string | null;
+  requestedAt: string;
+  readyAt: string | null;
+  expiresAt: string | null;
+  error: string | null;
+}

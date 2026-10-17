@@ -7,17 +7,48 @@ el template espera recibir, lo que expone y lo que deliberadamente no hace.
 
 | Campo | Valor |
 | --- | --- |
-| Template | `node-typescript@1.3.0` |
+| Template | `node-typescript@1.5.0` |
 | Dónde se define | `package.json` → `template.name` y `template.version` |
 
 ```json
-"template": { "name": "node-typescript", "version": "1.3.0" }
+"template": { "name": "node-typescript", "version": "1.5.0" }
 ```
 
 `template.version` sigue SemVer y es independiente de `version` de
 `package.json`. El aprovisionador lo escribe como `templateVersion` en el
 documento de bootstrap (§8). Los repos ya generados quedan fijados a la versión
 con la que se crearon: este cambio no les afecta.
+
+### Cambios en 1.5.0 (respecto a 1.4.0): vista previa del AI Developer
+
+La app no cambia (esquema 3, mismas variables). Cambia lo que el repo trae para
+que la plataforma enseñe una rama antes de fusionarla:
+
+- Workflow nuevo `.github/workflows/preview.yml` (§4): lo lanza la plataforma
+  con `workflow_dispatch` sobre una rama de trabajo; construye esa rama y la
+  arranca como vista previa con su propia base temporal. Nunca despliega a
+  producción ni lee los secrets de la app.
+- `.github/scripts/deploy.sh` acepta `DEPLOY_TARGET=preview` y envía el
+  documento de §5.2 (sin `env`).
+- El comando del servidor debe aceptar `"target": "preview"` (§5.2).
+- La plataforma detecta la vista previa por la existencia de `preview.yml`:
+  un repo 1.4.0 la obtiene copiando ese workflow y el `deploy.sh` de 1.5.0.
+- Ejecución local en un comando: `docker compose up --build` (§10).
+
+### Cambios en 1.4.0 (respecto a 1.3.0): integraciones externas
+
+- Capa genérica de integraciones (`src/integrations`) con un registro de
+  proveedores. Primer proveedor: **Monday.com**, **opcional**: sin credencial
+  la app funciona igual.
+- Variable/secreto opcional `MONDAY_API_TOKEN` (§2, §3). El servidor debe
+  aceptarla en `env` (§5).
+- Permisos `integrations.read`, `integrations.manage` y `monday.read`;
+  **migración 3** (esquema 3) que los añade al catálogo y al rol `admin`.
+- Endpoints `GET /api/integrations`, `POST /api/integrations/:provider/test`,
+  `GET /api/monday/boards`; `/api/auth/me` y el login devuelven `features`.
+- Interfaz: pantalla **Integraciones** (Configuración) y tab **Monday**
+  (grupo Integraciones) visible solo si `features` incluye `monday`.
+- Ninguna credencial ni dato de Monday se guarda en la base de la app.
 
 ### Cambios en 1.3.0 (respecto a 1.2.0): protocolo de despliegue
 
@@ -82,6 +113,8 @@ cuenta como no definida.
 | `INITIAL_ADMIN_PASSWORD` | No (recomendada) | 10–128 caracteres. Solo se usa si el usuario `admin` no existe. | `admin123` |
 | `FORCE_ADMIN_PASSWORD_CHANGE` | No | `true` · `false` (`false` prohibido con `NODE_ENV=production`) | `true` |
 | `APP_DISPLAY_NAME` | No | Una línea, ≤ 80 caracteres. Se muestra en la UI vía `/api/meta`. | `Aplicación` |
+| `MONDAY_API_TOKEN` | No | Token de la API de Monday.com (sin espacios). Activa la integración. Nunca se registra ni se devuelve | — |
+| `MONDAY_MAX_BOARDS` | No | Máximo de tableros que se listan (1–5000; se piden de 100 en 100) | `500` |
 | `SESSION_TTL_HOURS` | No | Expiración absoluta de la sesión (1–720) | `12` |
 | `SESSION_IDLE_MINUTES` | No | Expiración por inactividad (1–1440) | `30` |
 | `LOGIN_MAX_ATTEMPTS` | No | Intentos fallidos antes del bloqueo temporal | `5` |
@@ -113,6 +146,7 @@ Environments). Nombres exactos, sensibles a mayúsculas:
 | `MONGODB_DB` | Sí | `client_<slug>` |
 | `SESSION_SECRET` | Sí | ≥ 32 caracteres aleatorios, generado por cliente (p. ej. 32 bytes en base64url) |
 | `INITIAL_ADMIN_PASSWORD` | No, **muy recomendado** | Contraseña inicial del `admin` (≥ 10 caracteres). Entregarla al cliente por un canal seguro |
+| `MONDAY_API_TOKEN` | No | Token de la API de Monday.com del cliente. Hereda los permisos de su dueño: la app solo ve los tableros que esa persona ve. Mejor un usuario de servicio con acceso de solo lectura a los tableros que deban mostrarse |
 
 ### Variables del entorno `production`
 
@@ -137,6 +171,7 @@ El workflow usa además el `GITHUB_TOKEN` automático del job (no hay que crearl
 | --- | --- | --- | --- |
 | `.github/workflows/ci.yml` | `CI` | `pull_request`, `push` a `main` | No |
 | `.github/workflows/deploy.yml` | `Deploy` | `workflow_dispatch`, `push` a `main` | Sí (entorno `production`) |
+| `.github/workflows/preview.yml` | `Preview` | `workflow_dispatch` en una rama distinta de `main` | Solo `DEPLOY_SSH_KEY` y las variables del servidor |
 
 `CI` ejecuta lint, typecheck, tests (backend con `mongodb-memory-server`,
 frontend con Testing Library y la simulación del deploy) y build de ambos, y
@@ -172,6 +207,22 @@ gh workflow run deploy.yml --repo <owner>/<repo> --ref main
 La lógica del envío está en `.github/scripts/deploy.sh` (el job la ejecuta) y
 se prueba sin credenciales en `tests/deploy-workflow.test.ts`.
 
+`Preview` (desde 1.5.0) también tiene dos jobs y parte de `permissions: {}`:
+
+| Job | Permisos | Entorno | Qué hace |
+| --- | --- | --- | --- |
+| `build` | `contents: read`, `packages: write` | — | Construye la rama y publica `ghcr.io/<owner>/<repo>:preview-<commit>`; expone el **digest**. Nunca en `main` |
+| `preview` | `contents: read`, `packages: read` | `production` | Saca `.github/scripts` de la **rama por defecto** (el código en revisión no puede cambiar lo que se ejecuta con la clave) y envía el documento de §5.2 con `DEPLOY_TARGET=preview` |
+
+El entorno `production` no debe restringir ramas de despliegue: el job
+`preview` corre en la rama de trabajo. Solo lee `DEPLOY_SSH_KEY`,
+`DEPLOY_HOST` y `DEPLOY_KNOWN_HOSTS`. `concurrency: preview-<owner>/<repo>`
+cancela la vista previa anterior que siga en curso.
+
+```bash
+gh workflow run preview.yml --repo <owner>/<repo> --ref ai/<rama>
+```
+
 ## 5. Protocolo con el servidor
 
 **Conexión.** `ssh -T -i <clave> deploy@$DEPLOY_HOST` (puerto 22) con
@@ -200,14 +251,15 @@ ese comando, y el comando sabe por su argumento a qué cliente corresponde.
     "MONGODB_DB": "client_<slug>",
     "SESSION_SECRET": "…",
     "INITIAL_ADMIN_PASSWORD": "…",
-    "APP_DISPLAY_NAME": "…"
+    "APP_DISPLAY_NAME": "…",
+    "MONDAY_API_TOKEN": "…"
   },
   "registryToken": "<GITHUB_TOKEN del job>"
 }
 ```
 
-- `env` contiene **solo las variables definidas**: `INITIAL_ADMIN_PASSWORD` y
-  `APP_DISPLAY_NAME` no aparecen si no existen. El JSON se construye con `jq`
+- `env` contiene **solo las variables definidas**: `INITIAL_ADMIN_PASSWORD`,
+  `APP_DISPLAY_NAME` y `MONDAY_API_TOKEN` no aparecen si no existen. El JSON se construye con `jq`
   leyendo el entorno (los secretos no pasan por argumentos) y cada valor se
   enmascara con `::add-mask::` antes de usarse; nunca se imprime.
 - `registryToken` caduca cuando termina el job: el servidor debe hacer
@@ -217,7 +269,9 @@ ese comando, y el comando sabe por su argumento a qué cliente corresponde.
 **Qué debe hacer el comando del servidor:**
 
 1. Leer stdin completo y parsearlo como JSON; rechazar claves desconocidas en
-   `env` (aceptar solo las de esta tabla y las opcionales de §2).
+   `env`. Lista de claves aceptadas: `MONGODB_URI`, `MONGODB_DB`,
+   `SESSION_SECRET`, `INITIAL_ADMIN_PASSWORD`, `APP_DISPLAY_NAME` y
+   **`MONDAY_API_TOKEN`** (desde 1.4.0).
 2. Validar `image` contra `^ghcr\.io/<owner>/<repo>@sha256:[a-f0-9]{64}$`
    (el repo de **ese** cliente) y `env.MONGODB_DB` contra `^client_[a-z0-9_]+$`.
 3. Escribir `env` en un archivo de entorno con permisos `0600` (más
@@ -237,6 +291,37 @@ ese comando, y el comando sabe por su argumento a qué cliente corresponde.
 El workflow falla si la última línea no es `DEPLOY_OK`, aunque `ssh` termine
 con código 0. Después comprueba `https://$APP_HOSTNAME/health/ready` desde el
 runner, a través de nginx.
+
+### 5.2 Vista previa (desde 1.5.0)
+
+Misma conexión, misma clave y mismo comando forzado. Documento:
+
+```json
+{ "target": "preview", "image": "ghcr.io/<owner>/<repo>@sha256:<64 hex>", "registryToken": "<GITHUB_TOKEN del job>" }
+```
+
+Sin `target` el documento es el de producción. Con `"target": "preview"` el
+comando del servidor:
+
+1. Rechaza el documento si trae `env` (`DEPLOY_FAILED preview takes no env`)
+   o un `target` distinto (`invalid target`). La imagen se valida igual que en
+   producción (repo de **ese** cliente, por digest).
+2. Exige que la plataforma haya preparado antes la vista previa (puerto,
+   certificado y `server` de nginx de `preview-<slug>.<dominio>`); si no,
+   `DEPLOY_FAILED preview not installed`.
+3. Genera él mismo el entorno: una MongoDB temporal propia (replica set de un
+   nodo, borrada en cada arranque), `MONGODB_DB=client_<slug>_preview` y un
+   `SESSION_SECRET` aleatorio. Nunca usa la base ni los secrets de producción.
+   Sin `INITIAL_ADMIN_PASSWORD`: se entra con `admin` / `admin123` y la app
+   obliga a cambiarla.
+4. Descarga la imagen con `registryToken` como en producción y arranca la app
+   en un puerto de loopback distinto del de producción, esperando a que esté
+   sana. Responde `DEPLOY_OK` o `DEPLOY_FAILED <motivo>`.
+
+La vista previa es privada: nginx solo la sirve a quien trae un pase firmado
+por el panel de la plataforma (validado en cada petición), solo el panel puede
+mostrarla embebida (`frame-ancestors`) y responde con `X-Robots-Tag: noindex`.
+`/health` queda libre para comprobar que el contenedor vive.
 
 ## 6. Contenedor, nginx y compose
 
@@ -297,9 +382,9 @@ es `httpOnly`, `SameSite=Strict`, y en producción `Secure` con nombre `__Host-s
 | `GET /health` | — | Liveness: `200 {"status":"ok"}` |
 | `GET /health/ready` | — | `200 {"status":"ok"}` · `503 {"status":"unavailable"}` |
 | `GET /api/meta` | — | `{ appName, clientId, templateVersion, schemaVersion }` |
-| `POST /api/auth/login` | — | `{ username, password }` → `{ user, permissions }` + cookie. Rate limit: 10 por IP cada 5 min |
+| `POST /api/auth/login` | — | `{ username, password }` → `{ user, permissions, features }` + cookie. Rate limit: 10 por IP cada 5 min |
 | `POST /api/auth/logout` | — | Cierra la sesión actual |
-| `GET /api/auth/me` | sesión | `{ user, permissions }` |
+| `GET /api/auth/me` | sesión | `{ user, permissions, features }`. `features: string[]` contiene `"monday"` solo si `MONDAY_API_TOKEN` está configurado **y** el usuario tiene `monday.read` |
 | `POST /api/auth/change-password` | sesión | `{ currentPassword, newPassword }`. Cierra las demás sesiones |
 | `GET /api/users` | `users.read` | Paginado; `q`, `sort` (`username`, `displayName`, `email`, `status`, `createdAt`, `lastLoginAt`), `status` |
 | `POST /api/users` | `users.create` | `{ username, displayName, password, email?, roleIds?, status? }` → `201` |
@@ -320,6 +405,9 @@ es `httpOnly`, `SameSite=Strict`, y en producción `Secure` con nombre `__Host-s
 | `POST /api/notifications/read-all` | `notifications.read` | |
 | `POST /api/notifications` | `notifications.manage` | `{ userIds[], title, body?, type? }` |
 | `GET /api/audit` | `audit.read` | Paginado; `action`, `entityType`, `actorId`, `from`, `to`, `sort` (`createdAt`, `action`) |
+| `GET /api/integrations` | `integrations.read` | `{ items: [{ id, label, configured }] }`, sin valores de credenciales |
+| `POST /api/integrations/:provider/test` | `integrations.manage` | Prueba de conexión (Monday: consulta `me`). `:provider` debe existir en el registro (si no, 404); 409 `not_configured` si falta la credencial. → `200 { ok: true }` o `200 { ok: false, error }`. Rate limit 10/min por IP. Auditada (`integration.test`) sin valores |
+| `GET /api/monday/boards` | `monday.read` | `{ items: [{ id, name, workspaceName, url }], total }`. 404 si Monday no está configurado. Errores: `502 auth_failed`, `504 timeout`, `503 rate_limited`, `503 unavailable` (nunca el mensaje del proveedor). Rate limit 30/min por IP. Auditada (`integration.monday.boards`) solo con el número de tableros |
 | `GET /api/dashboard` | `dashboard.read` | `?days=7\|14\|30` (14 por defecto) y `?tz=<zona IANA>` (UTC por defecto) → `{ range, kpis: { activeUsers, disabledUsers, roles, logins, failedLogins, uniqueUsers }, series: [{ date, logins, failures }] }`. Solo conteos agregados; días sin actividad en 0 |
 
 **Paginación**: `?page=&pageSize=&q=&sort=` (`pageSize` ≤ 100; `sort=-campo`
@@ -373,6 +461,12 @@ Migración 2: añade `dashboard.read` al catálogo (13 permisos) y al rol
 `admin`. No toca el rol `user` ni otros roles. Las migraciones aplicadas no se
 editan: el catálogo de la migración 1 está congelado en su archivo.
 
+Migración 3 (esquema **3**): añade `integrations.read`,
+`integrations.manage` y `monday.read` al catálogo (16 permisos) y al rol
+`admin` con `$addToSet` (sin duplicar ni tocar roles editados). `app_metadata`
+queda en `{ key: "schema", version: 3 }` y `/api/meta` devuelve
+`schemaVersion: 3`.
+
 ## 9. Responsabilidades
 
 ### Lo hace el aprovisionador
@@ -385,7 +479,7 @@ editan: el catálogo de la migración 1 está congelado en su archivo.
   db.app_metadata.insertOne({
     key: "bootstrap",
     clientId: "<slug>",            // string no vacío
-    templateVersion: "1.3.0"       // template.version de package.json
+    templateVersion: "1.5.0"       // template.version de package.json
   })
   ```
 
@@ -397,13 +491,26 @@ editan: el catálogo de la migración 1 está congelado en su archivo.
 - En el VPS: el comando de despliegue (§5), el compose de producción que
   publica en `127.0.0.1`, el `server` de nginx con TLS para
   `<slug>.apps.<dominio>` y las cabeceras de §6, y el DNS del subdominio.
+- Opcional: si el cliente usa Monday.com, guardar su token como secret
+  `MONDAY_API_TOKEN` del entorno `production` y aceptar esa clave en el
+  comando del servidor (§5). Para quitar la integración, borrar el secret y
+  redesplegar.
 - Disparar el primer `Deploy`.
+- Vista previa (opcional, desde 1.5.0): preparar `preview-<slug>.<dominio>`
+  en el VPS (puerto, certificado y nginx con acceso solo desde el panel),
+  lanzar `Preview` sobre la rama de trabajo, aceptar `"target": "preview"` en
+  el comando del servidor (§5.2) y apagar la vista previa cuando ya no se use.
 
 ### Lo hace el template
 
 - Migraciones, catálogo de permisos, roles de sistema y usuario `admin`.
 - Login, sesiones, autorización, dashboard de actividad y registro de auditoría.
 - Las APIs de notificaciones y auditoría existen aunque la interfaz no las muestre.
+- Integraciones (hoy Monday.com): estado, prueba de conexión y lista de
+  tableros con enlace. Peticiones solo a `https://api.monday.com/v2`, sin
+  seguir redirecciones, con timeout de 10 s y caché en memoria de 60 s. Nada se
+  conecta al arrancar: un token inválido no impide arrancar. Los enlaces se
+  validan (https y host `*.monday.com`) en el servidor y en el navegador.
 
 ### NO lo hace el template
 
@@ -411,20 +518,24 @@ editan: el catálogo de la migración 1 está congelado en su archivo.
 - No contiene secretos, URIs ni dominios.
 - El frontend nunca se conecta a MongoDB ni recibe variables del servidor:
   solo consume la API del mismo origen.
+- Integraciones: no hay lógica de negocio sobre los datos del proveedor, no se
+  guardan credenciales ni datos de Monday en la base de la app, y ningún
+  endpoint recibe o devuelve credenciales (solo se configuran por entorno).
 
 ## 10. Ejecución local
 
-```bash
-docker run -d --name mongo-local -p 27017:27017 mongo:8
-cp .env.example .env
-# MONGODB_URI=mongodb://localhost:27017
-# MONGODB_DB=client_local
-# SESSION_SECRET=<32+ caracteres aleatorios>
+Solo con Docker (MongoDB incluida, sin `.env`):
 
-pnpm install
-pnpm dev        # API en http://localhost:3000
-pnpm dev:web    # SPA en http://localhost:5173 (proxy de /api al backend)
+```bash
+docker compose up --build      # http://localhost:3000
 ```
 
+Para desarrollar (Node 24 y pnpm), con recarga en caliente:
+
+```bash
+pnpm dev:local                 # crea .env si falta, arranca MongoDB y lanza API + SPA (http://localhost:5173)
+```
+
+La MongoDB local es un replica set de un nodo (como Atlas) en `127.0.0.1:27027`.
 Entrar con `admin` / `admin123` (solo desarrollo) y cambiar la contraseña.
 Comprobaciones sin credenciales: `pnpm lint && pnpm typecheck && pnpm test && pnpm build`.

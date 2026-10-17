@@ -199,4 +199,24 @@ export interface AiSessionDoc {
   merge?: { sha: string; at: Date; by: string };
   closedAt?: Date;
   closedBy?: string;
+  /** Vista previa de la rama en preview-<slug>.<dominio> (una por proyecto a la vez). */
+  preview?: AiPreviewState;
+}
+
+export type AiPreviewStatus = "installing" | "building" | "ready" | "failed" | "stopped";
+
+export interface AiPreviewState {
+  status: AiPreviewStatus;
+  host: string;
+  /** Commit de la rama que se está construyendo o se muestra. */
+  sha: string | null;
+  requestedAt: Date;
+  requestedBy: string;
+  runId?: number;
+  runUrl?: string;
+  readyAt?: Date;
+  /** Se apaga sola tras este momento si nadie la abre (se alarga con cada visita). */
+  expiresAt?: Date;
+  stoppedAt?: Date;
+  error?: string;
 }

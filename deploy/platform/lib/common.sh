@@ -52,6 +52,10 @@ config_defaults() {
   APP_MEMORY=512m
   DEPLOY_WAIT_SECONDS=180
   REGISTRY_HOST=ghcr.io
+  # Vistas previas del AI Developer: origen del panel (frame-ancestors) y su API en loopback.
+  PANEL_ORIGIN=""
+  PANEL_UPSTREAM=http://127.0.0.1:3001
+  PREVIEW_MONGO_IMAGE=mongo:8
 }
 
 # Lee KEY=valor línea a línea (sin source/eval) y valida cada clave conocida.
@@ -67,7 +71,7 @@ load_config() {
     case $key in
       GHCR_ORG | APP_BASE_DOMAIN | ACME_EMAIL | ACME_CA | NGINX_APPS_DIR | NGINX_CONF | NGINX_RELOAD | \
         CERTBOT_WEBROOT | LETSENCRYPT_LIVE | CUSTOMER_APPS_DIR | PORT_RANGE_START | PORT_RANGE_END | \
-        APP_CPUS | APP_MEMORY | DEPLOY_WAIT_SECONDS | REGISTRY_HOST)
+        APP_CPUS | APP_MEMORY | DEPLOY_WAIT_SECONDS | REGISTRY_HOST | PANEL_ORIGIN | PANEL_UPSTREAM | PREVIEW_MONGO_IMAGE)
         printf -v "$key" '%s' "$value"
         ;;
       *) die "clave desconocida en $file: $key" ;;
@@ -93,11 +97,22 @@ validate_config() {
   [[ $APP_MEMORY =~ ^[0-9]+[kmg]$ ]] || die "APP_MEMORY inválido (p. ej. 512m)"
   [[ $DEPLOY_WAIT_SECONDS =~ ^[0-9]+$ ]] || die "DEPLOY_WAIT_SECONDS inválido"
   [[ $REGISTRY_HOST =~ ^[a-z0-9.-]+(:[0-9]+)?$ ]] || die "REGISTRY_HOST inválido"
+  [[ -z $PANEL_ORIGIN || $PANEL_ORIGIN =~ ^https://([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}(:[0-9]+)?$ ]] ||
+    die "PANEL_ORIGIN debe ser el origen https del panel, sin ruta (p. ej. https://launchpad.example.com)"
+  # Solo loopback: nginx consulta a Launchpad en el mismo servidor.
+  [[ $PANEL_UPSTREAM =~ ^http://(127\.0\.0\.1|localhost):[0-9]+$ ]] || die "PANEL_UPSTREAM debe ser http://127.0.0.1:<puerto>"
+  [[ $PREVIEW_MONGO_IMAGE =~ ^[a-z0-9]([a-z0-9._/:-]*[a-z0-9])?$ ]] || die "PREVIEW_MONGO_IMAGE inválida"
 }
 
 client_host() { printf '%s.%s' "$1" "$APP_BASE_DOMAIN"; }
 client_dir() { printf '%s/%s' "$CUSTOMER_APPS_DIR" "$1"; }
 client_network() { printf 'app-%s' "$1"; }
+
+# Vista previa del AI Developer. "preview-" está reservado para slugs, así que ni el host,
+# ni la clave del registro de puertos, ni la config de nginx chocan con los de otro cliente.
+preview_host() { printf 'preview-%s.%s' "$1" "$APP_BASE_DOMAIN"; }
+preview_dir() { printf '%s/%s/preview' "$CUSTOMER_APPS_DIR" "$1"; }
+preview_port_key() { printf 'preview-%s' "$1"; }
 
 # ---- imagen y variables de entorno (contrato §5) --------------------------------
 

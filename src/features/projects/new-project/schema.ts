@@ -11,7 +11,8 @@ export const newProjectSchema = z.object({
     .string()
     .min(3, "El identificador debe tener al menos 3 caracteres")
     .max(30, "Máximo 30 caracteres")
-    .regex(SLUG_PATTERN, "Solo minúsculas, números y guiones (sin guiones al inicio o al final)"),
+    .regex(SLUG_PATTERN, "Solo minúsculas, números y guiones (sin guiones al inicio o al final)")
+    .refine((slug) => !slug.startsWith("preview-"), "«preview-» está reservado para las vistas previas"),
   description: z
     .string()
     .trim()

@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# preview-install <slug>  (root, vía sudo desde provisioner-dispatch)
+#
+# Prepara la vista previa del AI Developer de un cliente ya instalado. Idempotente:
+# reutiliza puerto y certificado.
+#   1. Comprueba nginx, el cliente y PANEL_ORIGIN.
+#   2. Asigna (o reutiliza) el puerto "preview-<slug>" del registro.
+#   3. Crea /srv/customer-apps/<slug>/preview.
+#   4. Si no existe, emite el certificado de preview-<slug>.<APP_BASE_DOMAIN>.
+#   5. Escribe su server de nginx: acceso solo con pase de Launchpad (auth_request) y
+#      enmarcable solo desde PANEL_ORIGIN.
+# La app la arranca después deploy-client (JSON con "target": "preview").
+# Salida: una última línea JSON {"status":"ok",...}; si falla, código ≠ 0 y el motivo en stderr.
+set -euo pipefail
+
+# shellcheck source=../lib/common.sh
+source /opt/platform/lib/common.sh
+
+[[ $# -eq 1 ]] || die "uso: preview-install <slug>"
+slug=$1
+require_slug "$slug"
+load_config
+
+[[ -n $PANEL_ORIGIN ]] || die "PANEL_ORIGIN no está configurado en $PLATFORM_CONF (origen https del panel, p. ej. https://launchpad.example.com)"
+[[ -d $(client_dir "$slug") && -n $(port_of "$slug") ]] || die "el cliente $slug no está instalado (install-client)"
+
+host=$(preview_host "$slug")
+dir=$(preview_dir "$slug")
+conf="$NGINX_APPS_DIR/preview-$slug.conf"
+
+nginx -t >/dev/null 2>&1 || die "la configuración actual de nginx no es válida (nginx -t); corrígela antes de continuar"
+nginx_include_active || die "nginx no incluye $NGINX_APPS_DIR (ejecuta bootstrap-vps.sh --wire-nginx)"
+
+port=$(assign_port "$(preview_port_key "$slug")")
+install -d -m 700 -o root -g root "$dir"
+
+# Certificado: nunca se reemite si ya existe (límites de Let's Encrypt por host y semana).
+certificate=existing
+if [[ ! -s "$LETSENCRYPT_LIVE/$host/fullchain.pem" ]]; then
+  [[ -n $ACME_EMAIL ]] || die "ACME_EMAIL no está configurado en $PLATFORM_CONF"
+  install -d -m 755 "$CERTBOT_WEBROOT"
+  nginx_apply "$conf" "$(render_template "$PLATFORM_DIR/templates/nginx-acme.conf" "HOST=$host" "WEBROOT=$CERTBOT_WEBROOT")"
+  certbot_args=(certonly --webroot -w "$CERTBOT_WEBROOT" -d "$host" --non-interactive --agree-tos -m "$ACME_EMAIL" --keep-until-expiring)
+  [[ -z $ACME_CA ]] || certbot_args+=(--server "$ACME_CA")
+  if ! certbot "${certbot_args[@]}" >&2; then
+    die "certbot no pudo emitir el certificado de $host. Comprueba que el DNS comodín resuelve a este servidor."
+  fi
+  [[ -s "$LETSENCRYPT_LIVE/$host/fullchain.pem" ]] || die "certbot terminó sin dejar el certificado en $LETSENCRYPT_LIVE/$host"
+  certificate=issued
+fi
+
+nginx_apply "$conf" "$(render_template "$PLATFORM_DIR/templates/nginx-preview.conf" \
+  "HOST=$host" "SLUG=$slug" "PORT=$port" "WEBROOT=$CERTBOT_WEBROOT" "LIVE=$LETSENCRYPT_LIVE" \
+  "PANEL_UPSTREAM=$PANEL_UPSTREAM" "PANEL_ORIGIN=$PANEL_ORIGIN")"
+
+jq -cn --arg slug "$slug" --arg host "$host" --argjson port "$port" --arg certificate "$certificate" \
+  '{status: "ok", slug: $slug, host: $host, port: $port, certificate: $certificate}'

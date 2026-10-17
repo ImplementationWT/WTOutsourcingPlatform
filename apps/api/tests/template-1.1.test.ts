@@ -125,30 +125,31 @@ describe("verificación de la versión del template", () => {
     const job = await createClient(store);
     const result = await engine.run(job._id, "admin");
     expect(result?.stages[0].steps?.find((s) => s.id === "version")).toMatchObject({ status: "done" });
-    expect(result?.stages[0].steps?.find((s) => s.id === "version")?.label).toContain("node-typescript@1.4.0");
-    expect((await store.getClient("acme-crm"))?.template).toMatchObject({ name: "node-typescript", version: "1.4.0", schemaVersion: 1 });
+    expect(result?.stages[0].steps?.find((s) => s.id === "version")?.label).toContain("node-typescript@1.5.0");
+    expect((await store.getClient("acme-crm"))?.template).toMatchObject({ name: "node-typescript", version: "1.5.0", schemaVersion: 1 });
   });
 
   it("otra versión detiene el trabajo indicando la esperada, la encontrada y dónde cambiar la configuración", async () => {
     const { store, engine, github, atlas } = await setup();
-    github.templateVersion = "1.5.0";
+    github.templateVersion = "1.6.0";
     const job = await createClient(store);
 
     const result = await engine.run(job._id, "admin");
     expect(result?.status).toBe("failed");
     const error = result?.stages[0].error;
     expect(error).toMatchObject({ code: "template_version_mismatch", retryable: false });
-    expect(error?.message).toContain("node-typescript@1.5.0");
-    expect(error?.message).toContain("espera 1.4.0");
+    expect(error?.message).toContain("node-typescript@1.6.0");
+    expect(error?.message).toContain("espera 1.5.0");
     expect(error?.message).toContain("TEMPLATE_VERSION");
     expect(error?.message).toContain("Environments → production");
-    expect((await store.getClient("acme-crm"))?.template?.version).toBe("1.5.0");
+    expect((await store.getClient("acme-crm"))?.template?.version).toBe("1.6.0");
     expect(atlas.count("createDatabaseUser")).toBe(0);
   });
 
   it("TEMPLATE_VERSION es configurable", async () => {
-    const { store, engine, github } = await setup({ template: { ...TEST_CONFIG.template, expectedVersion: "1.5.0" } });
-    github.templateVersion = "1.5.0";
+    // Aceptar repos de una versión anterior (1.4.0) cambiando solo la configuración.
+    const { store, engine, github } = await setup({ template: { ...TEST_CONFIG.template, expectedVersion: "1.4.0" } });
+    github.templateVersion = "1.4.0";
     const job = await createClient(store);
     expect((await engine.run(job._id, "admin"))?.status).toBe("succeeded");
   });

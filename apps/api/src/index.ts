@@ -73,7 +73,9 @@ const app = await buildApp({
       : {
           installClient: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
           clientStatus: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
-          uninstallClient: () => Promise.reject(new Error("Servidor de despliegue no configurado."))
+          uninstallClient: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
+          installPreview: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
+          stopPreview: () => Promise.reject(new Error("Servidor de despliegue no configurado."))
         },
     resolver: { resolve4: (host) => dns.resolve4(host) },
     vault,

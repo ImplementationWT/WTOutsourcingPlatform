@@ -203,7 +203,7 @@ describe("dashboard con datos reales", () => {
     const data = (await ctx.app.inject({ method: "GET", url: "/api/dashboard", headers: ctx.headers })).json();
     expect(data.totals).toMatchObject({ projects: 2, ready: 1, failed: 1, online: 1 });
     const acme = data.projects.find((p: { id: string }) => p.id === "acme-crm");
-    expect(acme).toMatchObject({ live: "online", templateVersion: "1.4.0", appUrl: "https://acme-crm.apps.example.test" });
+    expect(acme).toMatchObject({ live: "online", templateVersion: "1.5.0", appUrl: "https://acme-crm.apps.example.test" });
     expect(acme.image.digest).toMatch(/^sha256:[a-f0-9]{12}$/);
     expect(data.attention).toEqual(
       expect.arrayContaining([expect.objectContaining({ clientId: "beta-shop", kind: "job_failed" })])

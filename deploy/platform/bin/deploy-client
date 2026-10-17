@@ -7,6 +7,11 @@
 # escribe el .env (0600), genera el compose y lo arranca esperando a que esté sano.
 # Si no queda sano, vuelve al despliegue anterior.
 #
+# Vista previa del AI Developer (contrato 1.5.0, §5.2):
+#   { "target": "preview", "image": "…@sha256:…", "registryToken": "…" }   (sin "env")
+# La levanta en su carpeta y puerto propios (preview-install) con una MongoDB temporal
+# y un SESSION_SECRET generados aquí: nunca recibe ni usa los secrets de producción.
+#
 # Stdout: una única línea, "DEPLOY_OK" o "DEPLOY_FAILED <motivo>" (sin secretos).
 # El detalle técnico va a /srv/customer-apps/<slug>/deploy.log (solo root).
 set -euo pipefail
@@ -41,45 +46,59 @@ die() {
 slug=$1
 valid_slug "$slug" || fail "invalid slug"
 load_config
-
-dir=$(client_dir "$slug")
-port=$(port_of "$slug")
-[[ -d $dir && -n $port ]] || fail "client not installed"
-log="$dir/deploy.log"
 umask 077
-
-# Un despliegue por cliente a la vez.
-exec 9>"$dir/.deploy.lock"
-flock -w 900 9 || fail "another deployment in progress"
 
 # ---- entrada -----------------------------------------------------------------------
 payload=$(head -c 65537)
 ((${#payload} <= 65536)) || fail "payload too large"
 jq -e 'type == "object"' >/dev/null 2>&1 <<<"$payload" || fail "invalid payload"
-jq -e 'keys - ["image", "env", "registryToken"] | length == 0' >/dev/null <<<"$payload" || fail "invalid payload"
+jq -e 'keys - ["image", "env", "registryToken", "target"] | length == 0' >/dev/null <<<"$payload" || fail "invalid payload"
+target=$(jq -r 'if has("target") then (if (.target | type) == "string" then .target else "" end) else "production" end' <<<"$payload")
+[[ $target == production || $target == preview ]] || fail "invalid target"
+
+if [[ $target == preview ]]; then
+  dir=$(preview_dir "$slug")
+  port=$(port_of "$(preview_port_key "$slug")")
+  [[ -d $dir && -n $port ]] || fail "preview not installed"
+else
+  dir=$(client_dir "$slug")
+  port=$(port_of "$slug")
+  [[ -d $dir && -n $port ]] || fail "client not installed"
+fi
+log="$dir/deploy.log"
+
+# Un despliegue por cliente (y por vista previa) a la vez.
+exec 9>"$dir/.deploy.lock"
+flock -w 900 9 || fail "another deployment in progress"
 
 image=$(jq -r 'if (.image | type) == "string" then .image else "" end' <<<"$payload")
 valid_image "$slug" "$image" || fail "invalid image"
 
 jq -e '(.registryToken | type) == "string" and (.registryToken | length) > 0' >/dev/null <<<"$payload" ||
   fail "missing registryToken"
-jq -e '(.env | type) == "object" and (.env | to_entries | all(.value | type == "string"))' >/dev/null <<<"$payload" ||
-  fail "invalid env"
 
-while IFS= read -r key; do
-  env_key_allowed "$key" || fail "env key not allowed: $key"
-done < <(jq -r '.env | keys[] | select(test("^[A-Z][A-Z0-9_]*$"))' <<<"$payload")
-jq -e '.env | keys | all(test("^[A-Z][A-Z0-9_]*$"))' >/dev/null <<<"$payload" || fail "env key not allowed"
+if [[ $target == preview ]]; then
+  # La vista previa no acepta variables: todo lo genera el servidor.
+  jq -e 'has("env") | not' >/dev/null <<<"$payload" || fail "preview takes no env"
+else
+  jq -e '(.env | type) == "object" and (.env | to_entries | all(.value | type == "string"))' >/dev/null <<<"$payload" ||
+    fail "invalid env"
 
-for required in MONGODB_URI MONGODB_DB SESSION_SECRET; do
-  jq -e --arg k "$required" '.env[$k] | type == "string" and length > 0' >/dev/null <<<"$payload" ||
-    fail "missing env $required"
-done
-jq -e '.env.MONGODB_DB | test("^client_[a-z0-9_]+$")' >/dev/null <<<"$payload" || fail "invalid MONGODB_DB"
-jq -e '.env.SESSION_SECRET | length >= 32' >/dev/null <<<"$payload" || fail "invalid SESSION_SECRET"
-# Un valor con saltos de línea rompería el archivo de entorno.
-jq -e '.env | to_entries | all(.value | explode | all(. != 0 and . != 10 and . != 13))' >/dev/null <<<"$payload" ||
-  fail "invalid env value"
+  while IFS= read -r key; do
+    env_key_allowed "$key" || fail "env key not allowed: $key"
+  done < <(jq -r '.env | keys[] | select(test("^[A-Z][A-Z0-9_]*$"))' <<<"$payload")
+  jq -e '.env | keys | all(test("^[A-Z][A-Z0-9_]*$"))' >/dev/null <<<"$payload" || fail "env key not allowed"
+
+  for required in MONGODB_URI MONGODB_DB SESSION_SECRET; do
+    jq -e --arg k "$required" '.env[$k] | type == "string" and length > 0' >/dev/null <<<"$payload" ||
+      fail "missing env $required"
+  done
+  jq -e '.env.MONGODB_DB | test("^client_[a-z0-9_]+$")' >/dev/null <<<"$payload" || fail "invalid MONGODB_DB"
+  jq -e '.env.SESSION_SECRET | length >= 32' >/dev/null <<<"$payload" || fail "invalid SESSION_SECRET"
+  # Un valor con saltos de línea rompería el archivo de entorno.
+  jq -e '.env | to_entries | all(.value | explode | all(. != 0 and . != 10 and . != 13))' >/dev/null <<<"$payload" ||
+    fail "invalid env value"
+fi
 
 # ---- imagen --------------------------------------------------------------------------
 # Credenciales en un directorio temporal que se borra al terminar (finish).
@@ -94,6 +113,37 @@ fi
 docker --config "$docker_config" logout "$REGISTRY_HOST" >/dev/null 2>&1 || true
 rm -rf "$docker_config"
 docker_config=""
+
+# ---- vista previa ------------------------------------------------------------------------
+if [[ $target == preview ]]; then
+  env_file="$dir/.env"
+  compose="$dir/compose.yaml"
+  project="preview-$slug"
+  tmp=$(mktemp "$dir/.env.XXXXXX")
+  {
+    printf 'MONGODB_URI=mongodb://mongo:27017/?replicaSet=rs0&directConnection=true\n'
+    printf 'MONGODB_DB=client_%s_preview\n' "${slug//-/_}"
+    printf 'SESSION_SECRET=%s\n' "$(openssl rand -hex 32)"
+  } >"$tmp"
+  chmod 600 "$tmp"
+  mv -f "$tmp" "$env_file"
+  render_template "$PLATFORM_DIR/templates/compose-preview.yaml" \
+    "SLUG=$slug" "IMAGE=$image" "MONGO_IMAGE=$PREVIEW_MONGO_IMAGE" "ENV_FILE=$env_file" "PORT=$port" \
+    "INTERNAL_PORT=$APP_INTERNAL_PORT" "CPUS=$APP_CPUS" "MEMORY=$APP_MEMORY" "HOST=$(preview_host "$slug")" >"$compose"
+  chmod 600 "$compose"
+
+  # Base vacía en cada vista previa: se tira la anterior con sus volúmenes.
+  docker compose --project-name "$project" --file "$compose" down --volumes --remove-orphans >>"$log" 2>&1 || true
+  if docker compose --project-name "$project" --file "$compose" up --detach --remove-orphans \
+    --wait --wait-timeout "$DEPLOY_WAIT_SECONDS" >>"$log" 2>&1; then
+    jq -cn --arg image "$image" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{image: $image, deployedAt: $at}' >"$dir/state.json"
+    result=ok
+    printf 'DEPLOY_OK\n'
+    exit 0
+  fi
+  docker compose --project-name "$project" --file "$compose" down --volumes --remove-orphans >>"$log" 2>&1 || true
+  fail "preview unhealthy"
+fi
 
 # ---- entorno y compose -----------------------------------------------------------------
 env_file="$dir/.env"

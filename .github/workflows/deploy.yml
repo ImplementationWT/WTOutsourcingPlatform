@@ -56,9 +56,13 @@ jobs:
           ADMIN_MONGODB_URI: ${{ secrets.ADMIN_MONGODB_URI }}
           PANEL_ADMIN_PASSWORD_HASH: ${{ secrets.PANEL_ADMIN_PASSWORD_HASH }}
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          # AI Developer (opcional): clave de la API de la cuenta de Anthropic de la empresa.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           umask 077
           printf '%s\n' "$GH_APP_PRIVATE_KEY" > github-app.pem
+          # Vacío si no hay clave: la API arranca con el AI Developer desactivado.
+          printf '%s' "$ANTHROPIC_API_KEY" > anthropic.key
           # Formato --env-file de Docker: KEY=valor literal, sin comillas.
           cat > api.env <<EOF
           NODE_ENV=production
@@ -93,7 +97,12 @@ jobs:
           PANEL_ADMIN_USERNAME=${{ vars.PANEL_ADMIN_USERNAME }}
           PANEL_ADMIN_PASSWORD_HASH=$PANEL_ADMIN_PASSWORD_HASH
           SESSION_SECRET=$SESSION_SECRET
+          ANTHROPIC_WORKSPACE=${{ vars.ANTHROPIC_WORKSPACE }}
+          AI_SESSION_BUDGET_USD=${{ vars.AI_SESSION_BUDGET_USD }}
           EOF
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY_SECRET_REF=/run/secrets/anthropic.key" >> api.env
+          fi
 
       - name: Configurar SSH
         env:
@@ -110,7 +119,7 @@ jobs:
           SSH="ssh -p $SSH_PORT -o BatchMode=yes"
           rsync -az --delete --chmod=D755,F644 --chown=root:root -e "$SSH" dist/ "$SSH_TARGET:/var/www/launchpad/releases/$RELEASE/"
           rsync -az --chmod=F600 --chown=root:root -e "$SSH" \
-            api-image.tar.gz api.env github-app.pem deploy/activate.sh \
+            api-image.tar.gz api.env github-app.pem anthropic.key deploy/activate.sh \
             "$SSH_TARGET:/opt/wt-launchpad/incoming/"
 
       - name: Activar release
@@ -121,4 +130,4 @@ jobs:
 
       - name: Limpiar credenciales del runner
         if: always()
-        run: rm -f github-app.pem api.env ~/.ssh/id_ed25519
+        run: rm -f github-app.pem anthropic.key api.env ~/.ssh/id_ed25519

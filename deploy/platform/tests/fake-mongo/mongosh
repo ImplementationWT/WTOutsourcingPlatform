@@ -1,0 +1,3 @@
+#!/bin/sh
+# Simula mongosh: el replica set siempre está listo.
+exit 0

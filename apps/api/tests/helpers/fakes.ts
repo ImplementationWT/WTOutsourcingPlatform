@@ -122,7 +122,7 @@ export class FakeGithub extends Faulty implements GithubAdapter {
   readonly topics = new Map<string, string[]>();
   /** Conclusión del próximo run lanzado. */
   nextRunConclusion: "success" | "failure" = "success";
-  templateVersion = "1.4.0";
+  templateVersion = "1.5.0";
 
   async getRepository(name: string) {
     this.hit("getRepository", name);
@@ -175,12 +175,29 @@ export class FakeGithub extends Faulty implements GithubAdapter {
     this.hit("setEnvironmentVariable", repo, name);
     this.env(repo, environment).variables.set(name, value);
   }
-  async getWorkflow(repo: string) {
-    this.hit("getWorkflow", repo);
-    return this.repos.has(repo) ? { id: 1, state: "active" } : null;
+  /** Workflows que no existen en el repo ("repo/archivo"), p. ej. preview.yml en repos 1.4.0. */
+  readonly missingWorkflows = new Set<string>();
+  /** Conclusión de los runs de vista previa (null: siguen en curso). */
+  nextPreviewConclusion: "success" | "failure" | null = "success";
+  /** deploy.yml usa la clave del repo (compatibilidad con los tests de despliegue); el resto, "repo:archivo". */
+  private runKey(repo: string, file = "deploy.yml") {
+    return file === "deploy.yml" ? repo : `${repo}:${file}`;
   }
-  async dispatchWorkflow(repo: string) {
-    this.hit("dispatchWorkflow", repo);
+  async getWorkflow(repo: string, file = "deploy.yml") {
+    this.hit("getWorkflow", repo);
+    return this.repos.has(repo) && !this.missingWorkflows.has(`${repo}/${file}`) ? { id: 1, state: "active" } : null;
+  }
+  async dispatchWorkflow(repo: string, file = "deploy.yml", ref = "main") {
+    this.hit("dispatchWorkflow", repo, file, ref);
+    if (file !== "deploy.yml") {
+      const key = this.runKey(repo, file);
+      const list = this.runs.get(key) ?? [];
+      const id = 5000 + list.length;
+      const conclusion = this.nextPreviewConclusion;
+      list.unshift({ id, status: conclusion ? "completed" : "in_progress", conclusion, url: `https://github.com/${this.owner}/${repo}/actions/runs/${id}`, createdAt: new Date().toISOString() });
+      this.runs.set(key, list);
+      return;
+    }
     const list = this.runs.get(repo) ?? [];
     const id = 1000 + list.length;
     list.unshift({
@@ -192,13 +209,13 @@ export class FakeGithub extends Faulty implements GithubAdapter {
     });
     this.runs.set(repo, list);
   }
-  async listDispatchRuns(repo: string) {
-    this.hit("listDispatchRuns", repo);
-    return this.runs.get(repo) ?? [];
+  async listDispatchRuns(repo: string, file = "deploy.yml") {
+    this.hit("listDispatchRuns", repo, file);
+    return this.runs.get(this.runKey(repo, file)) ?? [];
   }
   async getRun(repo: string, runId: number) {
     this.hit("getRun", repo, runId);
-    const run = (this.runs.get(repo) ?? []).find((r) => r.id === runId);
+    const run = [...this.runs.entries()].filter(([k]) => k === repo || k.startsWith(`${repo}:`)).flatMap(([, list]) => list).find((r) => r.id === runId);
     if (!run) throw new Error("run not found");
     return run;
   }
@@ -357,6 +374,22 @@ export class FakeServer extends Faulty implements ServerAdapter {
       removed: { container: existed, images: existed ? 1 : 0, network: existed, nginx: existed, certificate: existed, key: existed, port: existed, files: existed }
     };
   }
+  readonly previews = new Map<string, { port: number; running: boolean; certificates: number }>();
+  async installPreview(slug: string) {
+    this.hit("installPreview", slug);
+    if (!this.clients.has(slug)) throw new FatalError("server_command_failed", `${slug} no está instalado`);
+    const existing = this.previews.get(slug);
+    const entry = existing ?? { port: this.nextPort++, running: false, certificates: 1 };
+    this.previews.set(slug, entry);
+    return { status: "ok" as const, slug, host: `preview-${slug}.${this.appsDomain}`, port: entry.port, certificate: existing ? ("existing" as const) : ("issued" as const) };
+  }
+  async stopPreview(slug: string) {
+    this.hit("stopPreview", slug);
+    const entry = this.previews.get(slug);
+    const stopped = Boolean(entry?.running);
+    if (entry) entry.running = false;
+    return { stopped };
+  }
   async clientStatus(slug: string): Promise<ServerClientStatus> {
     this.hit("clientStatus", slug);
     const entry = this.clients.get(slug);
@@ -463,7 +496,7 @@ export const TEST_CONFIG: ProvisioningConfig = {
     deployWorkflow: "deploy.yml",
     ref: "main",
     schemaVersion: 1,
-    expectedVersion: "1.4.0",
+    expectedVersion: "1.5.0",
     minSchemaVersion: 1
   },
   initialAdmin: { mode: "random", revealTtlMs: 30 * 60_000 },

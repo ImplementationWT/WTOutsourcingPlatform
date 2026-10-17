@@ -9,7 +9,7 @@ setup() { write_test_config; }
   run /opt/platform/bin/uninstall-client beta
   [ "$status" -eq 0 ]
   result=$(tail -n 1 <<<"$output")
-  [ "$(jq -c .removed <<<"$result")" = '{"container":true,"images":1,"network":true,"nginx":true,"certificate":true,"key":true,"port":true,"files":true}' ]
+  [ "$(jq -c .removed <<<"$result")" = '{"container":true,"images":1,"network":true,"nginx":true,"certificate":true,"key":true,"port":true,"files":true,"preview":false}' ]
 
   [ -z "$(docker ps -aq --filter label=com.docker.compose.project=app-beta)" ]
   ! docker network inspect app-beta >/dev/null 2>&1
@@ -31,7 +31,7 @@ setup() { write_test_config; }
 @test "repetirlo no falla y no toca nada más" {
   run /opt/platform/bin/uninstall-client beta
   [ "$status" -eq 0 ]
-  [ "$(tail -n 1 <<<"$output" | jq -c .removed)" = '{"container":false,"images":0,"network":false,"nginx":false,"certificate":false,"key":false,"port":false,"files":false}' ]
+  [ "$(tail -n 1 <<<"$output" | jq -c .removed)" = '{"container":false,"images":0,"network":false,"nginx":false,"certificate":false,"key":false,"port":false,"files":false,"preview":false}' ]
 }
 
 @test "el puerto liberado se puede reasignar a otro cliente" {

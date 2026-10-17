@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# preview-stop <slug>  (root, vía sudo desde provisioner-dispatch)
+#
+# Para la vista previa del AI Developer y borra su base temporal (volúmenes del
+# compose). Conserva nginx (responde "detenida") y el certificado, para no
+# reemitirlo en la siguiente vista previa. Idempotente.
+# Salida: una última línea JSON {"status":"ok","slug":…,"stopped":true|false}.
+set -euo pipefail
+
+# shellcheck source=../lib/common.sh
+source /opt/platform/lib/common.sh
+
+[[ $# -eq 1 ]] || die "uso: preview-stop <slug>"
+slug=$1
+require_slug "$slug"
+load_config
+
+dir=$(preview_dir "$slug")
+project="preview-$slug"
+stopped=false
+
+if [[ -d $dir ]]; then
+  exec 9>"$dir/.deploy.lock"
+  flock -w 900 9 || die "hay un despliegue de vista previa en curso para $slug"
+fi
+
+if [[ -n $(docker ps --all --quiet --filter "label=com.docker.compose.project=$project") ]]; then
+  if [[ -f "$dir/compose.yaml" ]]; then
+    docker compose --project-name "$project" --file "$dir/compose.yaml" down --volumes --remove-orphans >/dev/null 2>&1 || true
+  fi
+  docker ps --all --quiet --filter "label=com.docker.compose.project=$project" | xargs -r docker rm -f --volumes >/dev/null
+  stopped=true
+fi
+if docker network inspect "$project" >/dev/null 2>&1; then docker network rm "$project" >/dev/null || true; fi
+[[ ! -d $dir ]] || rm -f "$dir/compose.yaml" "$dir/.env" "$dir/state.json"
+
+jq -cn --arg slug "$slug" --argjson stopped "$stopped" '{status: "ok", slug: $slug, stopped: $stopped}'

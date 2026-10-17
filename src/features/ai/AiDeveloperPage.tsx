@@ -13,6 +13,7 @@ import { useClient } from "@/features/projects/api";
 import type { AiSession } from "@/types/ai";
 import ChangesPanel from "./ChangesPanel";
 import ChatPanel, { textareaClass } from "./ChatPanel";
+import PreviewPanel from "./PreviewPanel";
 import PublishPanel from "./PublishPanel";
 import { closeAiSession, formatUsd, raiseAiBudget, startAiSession, useAiSession, useAiSessions, useAiStatus } from "./api";
 import { useAiEvents } from "./useAiEvents";
@@ -80,13 +81,13 @@ function NewSession({ slug, onStarted }: { slug: string; onStarted: (session: Ai
   );
 }
 
-type Tab = "changes" | "publish";
+type Tab = "preview" | "changes" | "publish";
 
 function Workspace({ session }: { session: AiSession }) {
   const queryClient = useQueryClient();
   const { data } = useAiSession(session.id);
   const chat = useAiEvents(session.id);
-  const [tab, setTab] = useState<Tab>("changes");
+  const [tab, setTab] = useState<Tab>("preview");
   const [closing, setClosing] = useState(false);
   const current = data?.session ?? session;
   const cost = chat.costCents ?? data?.agent?.costCents ?? null;
@@ -111,6 +112,7 @@ function Workspace({ session }: { session: AiSession }) {
   }
 
   const tabs: [Tab, string][] = [
+    ["preview", "Vista previa"],
     ["changes", "Cambios"],
     ["publish", "Publicar"],
   ];
@@ -173,6 +175,7 @@ function Workspace({ session }: { session: AiSession }) {
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
+          {tab === "preview" && <PreviewPanel session={current} agentBusy={chat.state === "running"} />}
           {tab === "changes" && <ChangesPanel session={current} />}
           {tab === "publish" && <PublishPanel session={current} agentBusy={chat.state === "running"} />}
         </div>

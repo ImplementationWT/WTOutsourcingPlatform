@@ -27,4 +27,11 @@ GOOD_IMAGE_BETA=$(build_push beta-app good 0)
 docker rmi -f "localhost:5000/testorg/acme-app:good" "localhost:5000/testorg/acme-app:bad" "localhost:5000/testorg/beta-app:good" >/dev/null
 export GOOD_IMAGE_ACME BAD_IMAGE_ACME GOOD_IMAGE_BETA
 
+# Vistas previas: MongoDB simulada en el registro local y API del panel en 127.0.0.1:3001.
+docker build -q -t localhost:5000/fake-mongo:8 "$tests/fake-mongo" >/dev/null
+docker push -q localhost:5000/fake-mongo:8 >/dev/null
+docker rmi -f localhost:5000/fake-mongo:8 >/dev/null
+docker build -q -t fake-panel "$tests/fake-panel" >/dev/null
+docker run -d --name fake-panel --network host fake-panel >/dev/null
+
 bats --print-output-on-failure "$tests"/*.bats

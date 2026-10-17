@@ -1,0 +1,80 @@
+# Generado por /opt/platform/bin/deploy-client para la vista previa de @@SLUG@@. No editar a
+# mano. Su MongoDB es propia y temporal: se borra en cada arranque y al pararla. Nunca usa
+# la base ni los secrets de producción.
+name: preview-@@SLUG@@
+
+services:
+  mongo:
+    image: @@MONGO_IMAGE@@
+    # Replica set de un nodo, como Atlas, para que funcionen las transacciones.
+    command: ["--replSet", "rs0", "--bind_ip_all", "--wiredTigerCacheSizeGB", "0.25"]
+    restart: unless-stopped
+    cpus: "0.5"
+    mem_limit: 768m
+    networks:
+      - preview
+    healthcheck:
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - "try { rs.status() } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }) } quit(db.hello().isWritablePrimary ? 0 : 1)"
+      interval: 3s
+      timeout: 10s
+      start_period: 60s
+      retries: 30
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  app:
+    image: @@IMAGE@@
+    pull_policy: never
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file:
+      - path: @@ENV_FILE@@
+        format: raw
+    environment:
+      NODE_ENV: production
+      TRUST_PROXY_HOPS: "1"
+      PORT: "@@INTERNAL_PORT@@"
+      HOST: 0.0.0.0
+    user: node
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: "@@CPUS@@"
+    mem_limit: @@MEMORY@@
+    pids_limit: 256
+    # Solo en loopback: nginx la publica en https://@@HOST@@ (con pase de Launchpad).
+    ports:
+      - "127.0.0.1:@@PORT@@:@@INTERNAL_PORT@@"
+    networks:
+      - preview
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:@@INTERNAL_PORT@@/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+networks:
+  preview:
+    name: preview-@@SLUG@@
+    labels:
+      platform.client: "@@SLUG@@"

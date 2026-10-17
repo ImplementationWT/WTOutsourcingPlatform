@@ -19,7 +19,8 @@ import type { ClientDoc } from "../store/models.js";
  */
 const createClientSchema = z.object({
   name: z.string().trim().min(3).max(60),
-  slug: slugSchema,
+  // "preview-" está reservado: preview-<slug>.<dominio> es la vista previa del AI Developer.
+  slug: slugSchema.refine((slug) => !slug.startsWith("preview-")),
   description: z.string().trim().min(10).max(280),
   // Integraciones opcionales: estricto (solo proveedores del catálogo y sus campos).
   integrations: integrationsInputSchema.optional()

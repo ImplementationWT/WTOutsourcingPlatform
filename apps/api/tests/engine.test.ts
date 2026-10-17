@@ -45,7 +45,7 @@ describe("motor de etapas", () => {
     // Estado final en los servicios.
     expect(github.repos.has("acme-crm-app")).toBe(true);
     expect(atlas.users.get("app_acme_crm")?.user.roles).toEqual([{ roleName: "readWrite", databaseName: "client_acme_crm" }]);
-    expect(mongo.databases.get("client_acme_crm")).toEqual({ clientId: "acme-crm", templateVersion: "1.4.0", schemaVersion: 1 });
+    expect(mongo.databases.get("client_acme_crm")).toEqual({ clientId: "acme-crm", templateVersion: "1.5.0", schemaVersion: 1 });
     // Solo los nombres del contrato 1.3.0 (§3).
     const env = github.env("acme-crm-app");
     expect([...env.secrets.keys()].sort()).toEqual([

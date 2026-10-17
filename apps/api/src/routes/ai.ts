@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { AI_MODEL } from "../ai/agent-definition.js";
+import { PREVIEW_COOKIE } from "../ai/preview-pass.js";
 import { AiDeveloper, AiDeveloperError } from "../ai/service.js";
 import { requireAdmin } from "../auth/session.js";
 import { slugSchema } from "../domain/naming.js";
@@ -38,7 +39,15 @@ function anthropicError(error: unknown): { status: number; message: string } | n
  * AI Developer (solo con sesión de administrador). Claude edita el repo del
  * cliente en un sandbox de Anthropic; aquí se crean rama y PR y se fusiona.
  */
-export async function registerAiRoutes(app: FastifyInstance, { store, ai }: { store: AdminStore; ai?: AiDeveloper }) {
+export async function registerAiRoutes(
+  app: FastifyInstance,
+  { store, ai, appsDomain, secureCookies }: { store: AdminStore; ai?: AiDeveloper; appsDomain: string; secureCookies: boolean }
+) {
+  const previewHostRe = new RegExp(`^preview-[a-z0-9]+(-[a-z0-9]+)*\\.${appsDomain.replace(/\./g, "\\.")}$`);
+  const previewHost = (request: FastifyRequest) => {
+    const host = request.headers["x-preview-host"];
+    return typeof host === "string" && previewHostRe.test(host) ? host : null;
+  };
   // Cada mensaje cuesta dinero: 20 por minuto por usuario.
   const messageLimiter = createRateLimiter({ limit: 20, windowMs: 60_000 });
 
@@ -216,6 +225,54 @@ export async function registerAiRoutes(app: FastifyInstance, { store, ai }: { st
     if (!session) return reply;
     if (!mergeSchema.safeParse(request.body).success) return reply.code(400).send({ error: "Confirma la fusión." });
     return run(request, reply, (ai) => ai.merge(session, request.user!.username));
+  });
+
+  // ---- vista previa ------------------------------------------------------------
+
+  app.post("/api/ai/sessions/:id/preview", { preHandler: requireAdmin }, async (request, reply) => {
+    const session = await loadSession(request, reply);
+    if (!session) return reply;
+    return run(request, reply, async (ai) => ({ preview: await ai.startPreview(session, request.user!.username) }));
+  });
+
+  app.get("/api/ai/sessions/:id/preview", { preHandler: requireAdmin }, async (request, reply) => {
+    const session = await loadSession(request, reply);
+    if (!session) return reply;
+    return run(request, reply, async (ai) => ({ preview: await ai.previewState(session) }));
+  });
+
+  app.post("/api/ai/sessions/:id/preview/stop", { preHandler: requireAdmin }, async (request, reply) => {
+    const session = await loadSession(request, reply);
+    if (!session) return reply;
+    return run(request, reply, async (ai) => {
+      await ai.stopPreview(session, request.user!.username, "manual");
+      return { ok: true };
+    });
+  });
+
+  /**
+   * Las dos rutas siguientes las llama nginx desde preview-<slug>.<dominio> (sin
+   * sesión del panel): canjear el pase del iframe por una cookie de ese host y
+   * validar esa cookie en cada petición (auth_request).
+   */
+  app.get("/api/ai/preview/auth", async (request, reply) => {
+    const host = previewHost(request);
+    const query = request.query as { t?: unknown; next?: unknown };
+    const pass = typeof query.t === "string" ? query.t : undefined;
+    const redeemed = host && ai ? await ai.redeemPreviewPass(host, pass) : null;
+    if (!redeemed) {
+      return reply.code(401).type("text/plain; charset=utf-8").send("Enlace de vista previa caducado o inválido. Ábrela de nuevo desde Launchpad.");
+    }
+    const next = typeof query.next === "string" && /^\/(?![/\\])[^\s\\]*$/.test(query.next) ? query.next : "/";
+    const cookie = [`${PREVIEW_COOKIE}=${redeemed.cookie}`, "Path=/", `Max-Age=${redeemed.maxAgeSeconds}`, "HttpOnly", "SameSite=Lax", ...(secureCookies ? ["Secure"] : [])];
+    return reply.header("set-cookie", cookie.join("; ")).header("cache-control", "no-store").redirect(next, 302);
+  });
+
+  app.get("/api/ai/preview/check", async (request, reply) => {
+    const host = previewHost(request);
+    const pass = request.headers["x-preview-pass"];
+    const ok = Boolean(host && ai && (await ai.authorizePreview(host, typeof pass === "string" ? pass : undefined)));
+    return reply.code(ok ? 204 : 401).header("cache-control", "no-store").send();
   });
 
   app.post("/api/ai/sessions/:id/close", { preHandler: requireAdmin }, async (request, reply) => {

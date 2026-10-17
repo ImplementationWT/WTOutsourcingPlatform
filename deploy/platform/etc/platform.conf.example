@@ -26,3 +26,11 @@ APP_MEMORY=512m
 
 # Espera máxima a que el contenedor quede sano (segundos).
 DEPLOY_WAIT_SECONDS=180
+
+# Vistas previas del AI Developer (preview-<slug>.<APP_BASE_DOMAIN>).
+# Origen https del panel: el único sitio que puede mostrarlas embebidas.
+PANEL_ORIGIN=
+# API del panel en este servidor (nginx valida ahí el pase de cada visita).
+PANEL_UPSTREAM=http://127.0.0.1:3001
+# Imagen de la MongoDB temporal de cada vista previa.
+PREVIEW_MONGO_IMAGE=mongo:8

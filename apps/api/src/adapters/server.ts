@@ -44,7 +44,20 @@ const uninstallResultSchema = z.object({
   })
 });
 
+/** Respuesta de preview-install: host y puerto de la vista previa (certificado reutilizado si existe). */
+const previewInstallSchema = z.object({
+  status: z.literal("ok"),
+  slug: z.string(),
+  host: z.string(),
+  port: z.number().int(),
+  certificate: z.enum(["issued", "existing"])
+});
+
+/** Respuesta de preview-stop. */
+const previewStopSchema = z.object({ status: z.literal("ok"), slug: z.string(), stopped: z.boolean() });
+
 export type InstallResult = z.infer<typeof installResultSchema>;
+export type PreviewInstallResult = z.infer<typeof previewInstallSchema>;
 export type UninstallResult = z.infer<typeof uninstallResultSchema>;
 export type ServerClientStatus = z.infer<typeof clientStatusSchema>;
 
@@ -58,6 +71,10 @@ export interface ServerAdapter {
   clientStatus(slug: Slug): Promise<ServerClientStatus>;
   /** sudo /opt/platform/bin/uninstall-client <slug>: retira todo lo del cliente (idempotente). */
   uninstallClient(slug: Slug): Promise<UninstallResult>;
+  /** Prepara preview-<slug>.<dominio> (puerto, certificado y nginx con acceso solo desde Launchpad). */
+  installPreview(slug: Slug): Promise<PreviewInstallResult>;
+  /** Para la vista previa y borra su base temporal; nginx y el certificado se conservan. */
+  stopPreview(slug: Slug): Promise<{ stopped: boolean }>;
 }
 
 export interface ServerConnection {
@@ -94,7 +111,7 @@ export function generateClientKeyPair(comment: string) {
 }
 
 /** Únicos comandos que el orquestador puede pedir (provisioner-dispatch aplica la misma lista). */
-type ServerCommand = "install-client" | "client-status" | "uninstall-client";
+type ServerCommand = "install-client" | "client-status" | "uninstall-client" | "preview-install" | "preview-stop";
 
 const INSTALL_TIMEOUT_MS = 10 * 60_000; // incluye la emisión del certificado
 const QUERY_TIMEOUT_MS = 30_000;
@@ -206,6 +223,16 @@ export function createServerAdapter(connection: ServerConnection): ServerAdapter
       const result = await run("uninstall-client", slug, "", INSTALL_TIMEOUT_MS);
       check("uninstall-client", result);
       return parse(uninstallResultSchema, "uninstall-client", result.stdout);
+    },
+    async installPreview(slug) {
+      const result = await run("preview-install", slug, "", INSTALL_TIMEOUT_MS);
+      check("preview-install", result);
+      return parse(previewInstallSchema, "preview-install", result.stdout);
+    },
+    async stopPreview(slug) {
+      const result = await run("preview-stop", slug, "", INSTALL_TIMEOUT_MS);
+      check("preview-stop", result);
+      return { stopped: parse(previewStopSchema, "preview-stop", result.stdout).stopped };
     }
   };
 }

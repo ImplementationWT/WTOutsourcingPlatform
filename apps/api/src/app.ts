@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import type { GithubAdapter } from "./adapters/github.js";
+import { PreviewPasses } from "./ai/preview-pass.js";
 import { AiDeveloper } from "./ai/service.js";
 import type { AiAgentAdapter, AiConfig } from "./ai/types.js";
 import { type AuthConfig, registerAuth } from "./auth/session.js";
@@ -31,8 +32,23 @@ export async function buildApp({ store, deps, auth, logLevel, logStream, ai }: A
   const engine = new JobEngine(store, deps, app.log.child({ component: "jobs" }));
   const teardown = new Teardown(store, deps, app.log.child({ component: "teardown" }));
   const aiDeveloper = ai
-    ? new AiDeveloper({ store, github: deps.github, agent: ai.agent, config: ai.config, provisioning: deps.config, log: app.log.child({ component: "ai" }), now: ai.now })
+    ? new AiDeveloper({
+        store,
+        github: deps.github,
+        agent: ai.agent,
+        server: deps.server,
+        passes: new PreviewPasses(auth.sessionSecret, ai.now ? () => ai.now!().getTime() : undefined),
+        config: ai.config,
+        provisioning: deps.config,
+        log: app.log.child({ component: "ai" }),
+        now: ai.now
+      })
     : undefined;
+  // Las vistas previas sin visitas se apagan solas (revisión cada 5 minutos).
+  const previewSweep = aiDeveloper
+    ? setInterval(() => void aiDeveloper.sweepPreviews().catch((error) => app.log.warn({ err: error }, "preview sweep failed")), 5 * 60_000)
+    : undefined;
+  previewSweep?.unref();
 
   // Última barrera: ninguna respuesta JSON sale sin redactar.
   app.addHook("preSerialization", async (_request, _reply, payload) => redact(payload));
@@ -56,9 +72,10 @@ export async function buildApp({ store, deps, auth, logLevel, logStream, ai }: A
   await registerClientRoutes(app, { store, engine, teardown, deps });
   await registerDashboardRoutes(app, { store, deps });
   await registerIntegrationRoutes(app, { store, engine, deps });
-  await registerAiRoutes(app, { store, ai: aiDeveloper });
+  await registerAiRoutes(app, { store, ai: aiDeveloper, appsDomain: deps.config.appsDomain, secureCookies: auth.secureCookies });
 
   app.addHook("onClose", async () => {
+    if (previewSweep) clearInterval(previewSweep);
     await Promise.all([engine.idle(), teardown.idle()]);
   });
 

@@ -12,7 +12,7 @@ load helpers
 }
 
 @test "instala los scripts como root:root 755 y crea rutas propias y registro de puertos" {
-  for f in bootstrap-vps.sh install-client deploy-client client-status provisioner-dispatch uninstall-client; do
+  for f in bootstrap-vps.sh install-client deploy-client client-status provisioner-dispatch uninstall-client preview-install preview-stop; do
     [ "$(stat -c '%U:%G %a' "/opt/platform/bin/$f")" = "root:root 755" ]
   done
   [ "$(stat -c '%U %a' /opt/platform/lib/common.sh)" = "root 644" ]
@@ -34,7 +34,7 @@ load helpers
   visudo -cf /etc/sudoers.d/platform-apps
   [ "$(stat -c '%a' /etc/sudoers.d/platform-apps)" = "440" ]
   grep -qx 'deploy ALL=(root) NOPASSWD: /opt/platform/bin/deploy-client' /etc/sudoers.d/platform-apps
-  grep -qx 'provisioner ALL=(root) NOPASSWD: /opt/platform/bin/install-client, /opt/platform/bin/client-status, /opt/platform/bin/uninstall-client' /etc/sudoers.d/platform-apps
+  grep -qx 'provisioner ALL=(root) NOPASSWD: /opt/platform/bin/install-client, /opt/platform/bin/client-status, /opt/platform/bin/uninstall-client, /opt/platform/bin/preview-install, /opt/platform/bin/preview-stop' /etc/sudoers.d/platform-apps
   [ "$(grep -c NOPASSWD /etc/sudoers.d/platform-apps)" -eq 2 ]
 }
 

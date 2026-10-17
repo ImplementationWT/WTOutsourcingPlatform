@@ -79,7 +79,7 @@ describe("credenciales de integraciones en el panel", () => {
     mockFetch({
       "GET /api/projects": () => ({ json: { projects: [] } }),
       "GET /api/platform": () => ({
-        json: { deployEnabled: true, appBaseDomain: "apps.example.test", githubOwner: "Acme", templateVersion: "1.4.0", integrationsAvailable: true, atlas: { clusterName: "c", consoleUrl: null } },
+        json: { deployEnabled: true, appBaseDomain: "apps.example.test", githubOwner: "Acme", templateVersion: "1.5.0", integrationsAvailable: true, atlas: { clusterName: "c", consoleUrl: null } },
       }),
       "GET /api/integrations/catalog": () => ({ json: catalog }),
       "POST /api/clients": () => ({ status: 202, json: { clientId: "acme-crm", jobId: "11111111-1111-4111-8111-111111111111" } }),
