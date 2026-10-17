@@ -172,3 +172,31 @@ export interface DeletionDoc {
   finishedAt?: Date;
   error?: { code: string; message: string };
 }
+
+// ---- AI Developer ------------------------------------------------------------
+
+export type AiSessionStatus = "active" | "merged" | "closed";
+
+/** Una sesión del AI Developer sobre el repo de un cliente (sin secretos ni transcripción). */
+export interface AiSessionDoc {
+  _id: string; // uuid
+  clientId: string;
+  title: string;
+  status: AiSessionStatus;
+  /** Sesión de Claude Managed Agents y recurso del repo montado (para renovar su token). */
+  agentSessionId: string;
+  repoResourceId: string;
+  repository: string;
+  branch: string;
+  baseBranch: string;
+  /** Commit de main del que partió la rama. */
+  baseSha: string;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+  lastMessageAt?: Date;
+  pullRequest?: { number: number; url: string; createdAt: Date; createdBy: string };
+  merge?: { sha: string; at: Date; by: string };
+  closedAt?: Date;
+  closedBy?: string;
+}

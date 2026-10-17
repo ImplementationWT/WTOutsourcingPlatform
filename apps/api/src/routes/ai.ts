@@ -1,0 +1,229 @@
+import Anthropic from "@anthropic-ai/sdk";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { z } from "zod";
+import { AI_MODEL } from "../ai/agent-definition.js";
+import { AiDeveloper, AiDeveloperError } from "../ai/service.js";
+import { requireAdmin } from "../auth/session.js";
+import { slugSchema } from "../domain/naming.js";
+import { createRateLimiter } from "../lib/rate-limit.js";
+import { redact } from "../lib/redact.js";
+import type { AdminStore } from "../store/admin-store.js";
+import type { AiSessionDoc } from "../store/models.js";
+
+const slugParams = z.object({ slug: slugSchema });
+const idParams = z.object({ id: z.string().uuid() });
+const startSchema = z
+  .object({
+    title: z.string().trim().min(3).max(120),
+    message: z.string().trim().min(1).max(20_000).optional()
+  })
+  .strict();
+const messageSchema = z.object({ text: z.string().trim().min(1).max(20_000) }).strict();
+const confirmSchema = z.object({ toolUseId: z.string().min(1).max(200), allow: z.boolean() }).strict();
+const mergeSchema = z.object({ confirm: z.literal(true) }).strict();
+
+/** Errores del SDK de Anthropic → respuesta para el panel (sin detalles de la cuenta). */
+function anthropicError(error: unknown): { status: number; message: string } | null {
+  if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError) {
+    return { status: 503, message: "Anthropic rechazó la clave de la API. Revisa la clave de la cuenta empresarial." };
+  }
+  if (error instanceof Anthropic.RateLimitError) return { status: 429, message: "Anthropic limitó las peticiones. Espera un momento." };
+  if (error instanceof Anthropic.NotFoundError) return { status: 409, message: "La sesión del agente ya no existe en Anthropic." };
+  if (error instanceof Anthropic.BadRequestError) return { status: 409, message: "Anthropic rechazó la petición en el estado actual de la sesión." };
+  if (error instanceof Anthropic.APIError) return { status: 502, message: "Anthropic no respondió correctamente. Reintenta en unos segundos." };
+  return null;
+}
+
+/**
+ * AI Developer (solo con sesión de administrador). Claude edita el repo del
+ * cliente en un sandbox de Anthropic; aquí se crean rama y PR y se fusiona.
+ */
+export async function registerAiRoutes(app: FastifyInstance, { store, ai }: { store: AdminStore; ai?: AiDeveloper }) {
+  // Cada mensaje cuesta dinero: 20 por minuto por usuario.
+  const messageLimiter = createRateLimiter({ limit: 20, windowMs: 60_000 });
+
+  const publicSession = (session: AiSessionDoc) => ({
+    id: session._id,
+    clientId: session.clientId,
+    title: session.title,
+    status: session.status,
+    branch: session.branch,
+    baseBranch: session.baseBranch,
+    repository: session.repository,
+    createdBy: session.createdBy,
+    createdAt: session.createdAt,
+    lastMessageAt: session.lastMessageAt ?? null,
+    pullRequest: session.pullRequest ?? null,
+    merge: session.merge ?? null,
+    closedAt: session.closedAt ?? null,
+    consoleUrl: ai?.consoleUrl(session) ?? null
+  });
+
+  /** Ejecuta una acción del AI Developer traduciendo sus errores a respuestas. */
+  async function run<T>(request: FastifyRequest, reply: FastifyReply, fn: (ai: AiDeveloper) => Promise<T>) {
+    if (!ai) return reply.code(503).send({ error: "El AI Developer no está configurado: falta la clave de la API de Anthropic." });
+    try {
+      return await fn(ai);
+    } catch (error) {
+      if (error instanceof AiDeveloperError) return reply.code(error.status).send({ error: error.message });
+      const mapped = anthropicError(error);
+      if (mapped) {
+        request.log.warn({ status: (error as { status?: number }).status }, "Anthropic request failed");
+        return reply.code(mapped.status).send({ error: mapped.message });
+      }
+      throw error;
+    }
+  }
+
+  async function loadSession(request: FastifyRequest, reply: FastifyReply) {
+    const params = idParams.safeParse(request.params);
+    if (!params.success) {
+      void reply.code(400).send({ error: "Id inválido." });
+      return null;
+    }
+    const session = await store.aiSessions.findOne({ _id: params.data.id });
+    if (!session) void reply.code(404).send({ error: "Sesión no encontrada." });
+    return session;
+  }
+
+  app.get("/api/ai/status", { preHandler: requireAdmin }, async () => ({ enabled: Boolean(ai), model: AI_MODEL }));
+
+  app.get("/api/clients/:slug/ai/sessions", { preHandler: requireAdmin }, async (request, reply) => {
+    const params = slugParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
+    const sessions = await store.aiSessions.find({ clientId: params.data.slug }).sort({ createdAt: -1 }).limit(20).toArray();
+    return { sessions: sessions.map(publicSession) };
+  });
+
+  app.post("/api/clients/:slug/ai/sessions", { preHandler: requireAdmin }, async (request, reply) => {
+    const params = slugParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
+    const body = startSchema.safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ error: "Indica un título (3-120 caracteres) y, opcionalmente, la primera instrucción." });
+    const actor = request.user!.username;
+    if (!messageLimiter.take(actor)) return reply.code(429).send({ error: "Demasiados mensajes. Espera un minuto." });
+    return run(request, reply, async (ai) => {
+      const session = await ai.start({ clientId: params.data.slug, title: body.data.title, message: body.data.message, actor });
+      return reply.code(201).send({ session: publicSession(session) });
+    });
+  });
+
+  app.get("/api/ai/sessions/:id", { preHandler: requireAdmin }, async (request, reply) => {
+    const session = await loadSession(request, reply);
+    if (!session) return reply;
+    return run(request, reply, async (ai) => {
+      // El estado del agente es informativo: si Anthropic no responde, se muestra la sesión igualmente.
+      const usage = await ai.usage(session).catch(() => null);
+      return { session: publicSession(session), agent: usage };
+    });
+  });
+
+  app.get("/api/ai/sessions/:id/events", { preHandler: requireAdmin }, async (request, reply) => {
+    const session = await loadSession(request, reply);
+    if (!session) return reply;
+    if (!ai) return reply.code(503).send({ error: "El AI Developer no está configurado." });
+
+    reply.hijack();
+    const res = reply.raw;
+    res.writeHead(200, {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache",
+      "X-Accel-Buffering": "no",
+      Connection: "keep-alive"
+    });
+    const controller = new AbortController();
+    const keepAlive = setInterval(() => !res.writableEnded && res.write("\n"), 15_000);
+    const close = () => {
+      controller.abort();
+      clearInterval(keepAlive);
+      if (!res.writableEnded) res.end();
+    };
+    request.raw.on("close", close);
+    try {
+      for await (const event of ai.events(session, controller.signal)) {
+        if (res.destroyed) break;
+        res.write(`${JSON.stringify(redact(event))}\n`);
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        request.log.warn({ status: (error as { status?: number }).status }, "AI event stream failed");
+        if (!res.writableEnded) res.write(`${JSON.stringify({ id: "stream-error", at: null, kind: "error", message: "Se perdió la conexión con el agente; recarga para reconectar." })}\n`);
+      }
+    } finally {
+      close();
+    }
+  });
+
+  app.post("/api/ai/sessions/:id/messages", { preHandler: requireAdmin }, async (request, reply) => {
+    const session = await loadSession(request, reply);
+    if (!session) return reply;
+    const body = messageSchema.safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ error: "Escribe una instrucción (máximo 20.000 caracteres)." });
+    const actor = request.user!.username;
+    if (!messageLimiter.take(actor)) return reply.code(429).send({ error: "Demasiados mensajes. Espera un minuto." });
+    return run(request, reply, async (ai) => {
+      await ai.send(session, body.data.text, actor);
+      return reply.code(202).send({ ok: true });
+    });
+  });
+
+  app.post("/api/ai/sessions/:id/confirm", { preHandler: requireAdmin }, async (request, reply) => {
+    const session = await loadSession(request, reply);
+    if (!session) return reply;
+    const body = confirmSchema.safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ error: "Confirmación inválida." });
+    return run(request, reply, async (ai) => {
+      await ai.confirm(session, body.data.toolUseId, body.data.allow, request.user!.username);
+      return { ok: true };
+    });
+  });
+
+  app.post("/api/ai/sessions/:id/interrupt", { preHandler: requireAdmin }, async (request, reply) => {
+    const session = await loadSession(request, reply);
+    if (!session) return reply;
+    return run(request, reply, async (ai) => {
+      await ai.interrupt(session, request.user!.username);
+      return { ok: true };
+    });
+  });
+
+  app.post("/api/ai/sessions/:id/budget", { preHandler: requireAdmin }, async (request, reply) => {
+    const session = await loadSession(request, reply);
+    if (!session) return reply;
+    return run(request, reply, (ai) => ai.raiseBudget(session, request.user!.username));
+  });
+
+  app.get("/api/ai/sessions/:id/diff", { preHandler: requireAdmin }, async (request, reply) => {
+    const session = await loadSession(request, reply);
+    if (!session) return reply;
+    return run(request, reply, (ai) => ai.diff(session));
+  });
+
+  app.post("/api/ai/sessions/:id/pull-request", { preHandler: requireAdmin }, async (request, reply) => {
+    const session = await loadSession(request, reply);
+    if (!session) return reply;
+    return run(request, reply, async (ai) => ({ pullRequest: await ai.createPullRequest(session, request.user!.username) }));
+  });
+
+  app.get("/api/ai/sessions/:id/review", { preHandler: requireAdmin }, async (request, reply) => {
+    const session = await loadSession(request, reply);
+    if (!session) return reply;
+    return run(request, reply, (ai) => ai.review(session));
+  });
+
+  app.post("/api/ai/sessions/:id/merge", { preHandler: requireAdmin }, async (request, reply) => {
+    const session = await loadSession(request, reply);
+    if (!session) return reply;
+    if (!mergeSchema.safeParse(request.body).success) return reply.code(400).send({ error: "Confirma la fusión." });
+    return run(request, reply, (ai) => ai.merge(session, request.user!.username));
+  });
+
+  app.post("/api/ai/sessions/:id/close", { preHandler: requireAdmin }, async (request, reply) => {
+    const session = await loadSession(request, reply);
+    if (!session) return reply;
+    return run(request, reply, async (ai) => {
+      await ai.close(session, request.user!.username);
+      return { ok: true };
+    });
+  });
+}

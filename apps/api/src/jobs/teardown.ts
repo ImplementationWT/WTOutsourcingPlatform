@@ -58,6 +58,9 @@ export class Teardown {
     if (this.running.has(slug)) throw new ActiveWorkError("El borrado de este proyecto ya está en curso.");
     const active = await this.store.jobs.findOne({ clientId: slug, active: true });
     if (active) throw new ActiveWorkError("El proyecto tiene un aprovisionamiento en curso; espera a que termine.");
+    if (await this.store.aiSessions.findOne({ clientId: slug, status: "active" })) {
+      throw new ActiveWorkError("El proyecto tiene una sesión activa del AI Developer; ciérrala o fusiónala antes de borrarlo.");
+    }
 
     const doc: DeletionDoc = {
       _id: slug,
@@ -196,10 +199,11 @@ export class Teardown {
         store.jobs.deleteMany({ clientId: slug }),
         store.resources.deleteMany({ clientId: slug }),
         store.initialPasswords.deleteOne({ _id: slug }),
+        store.aiSessions.deleteMany({ clientId: slug }),
         deps.secrets.deleteAll(slug)
       ]);
       await store.audit({ actor, action: "client.deleted", clientId: slug, target: slug });
-      await this.setStep(slug, current, "done", "Cliente, trabajos y recursos borrados; la auditoría se conserva.");
+      await this.setStep(slug, current, "done", "Cliente, trabajos, recursos y sesiones del AI Developer borrados; la auditoría se conserva.");
 
       await store.deletions.updateOne({ _id: slug }, { $set: { status: "succeeded", finishedAt: new Date() }, $unset: { error: "" } });
     } catch (error) {

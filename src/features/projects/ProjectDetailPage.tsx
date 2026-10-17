@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowLeft,
+  Bot,
   CheckCircle2,
   Database,
   ExternalLink,
@@ -91,9 +92,17 @@ export default function ProjectDetailPage() {
         </Card>
       ) : (
         <>
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight">{data.client.name}</h1>
-            <p className="mt-2 text-muted-foreground">{data.client.description}</p>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight">{data.client.name}</h1>
+              <p className="mt-2 text-muted-foreground">{data.client.description}</p>
+            </div>
+            {data.client.status === "ready" && (
+              <Button render={<Link to={`/projects/${slug}/ai`} />} nativeButton={false}>
+                <Bot />
+                AI Developer
+              </Button>
+            )}
           </div>
 
           <div className="grid gap-6 lg:grid-cols-5">

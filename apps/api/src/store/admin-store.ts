@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { type Db, MongoServerError } from "mongodb";
 import { OwnershipError } from "../lib/errors.js";
 import { redact } from "../lib/redact.js";
+import type { AiAgentSettingsDoc } from "../ai/anthropic-adapter.js";
 import type { InitialPasswordDoc } from "./initial-password-vault.js";
 import type { ProvisioningSecretDoc } from "./provisioning-secrets.js";
-import type { DeletionDoc } from "./models.js";
+import type { AiSessionDoc, DeletionDoc } from "./models.js";
 import {
   type AuditDoc,
   type ClientDoc,
@@ -41,6 +42,10 @@ export class AdminStore {
   readonly deletions;
   /** Credenciales de integraciones en tránsito (cifradas; las gestiona ProvisioningSecrets). */
   readonly provisioningSecrets;
+  /** Sesiones del AI Developer. */
+  readonly aiSessions;
+  /** IDs del agente y del entorno en Anthropic (los crea la plataforma la primera vez). */
+  readonly aiAgentSettings;
 
   constructor(db: Db, private readonly now: () => Date = () => new Date()) {
     this.clients = db.collection<ClientDoc>("clients");
@@ -50,6 +55,8 @@ export class AdminStore {
     this.initialPasswords = db.collection<InitialPasswordDoc>("initial_password_reveals");
     this.deletions = db.collection<DeletionDoc>("deletions");
     this.provisioningSecrets = db.collection<ProvisioningSecretDoc>("provisioning_secrets");
+    this.aiSessions = db.collection<AiSessionDoc>("ai_sessions");
+    this.aiAgentSettings = db.collection<AiAgentSettingsDoc>("settings");
   }
 
   async init() {
@@ -58,7 +65,10 @@ export class AdminStore {
       this.jobs.createIndex({ clientId: 1 }, { unique: true, partialFilterExpression: { active: true }, name: "one_active_job" }),
       this.jobs.createIndex({ clientId: 1, createdAt: -1 }),
       this.resources.createIndex({ clientId: 1 }),
-      this.auditLog.createIndex({ clientId: 1, at: -1 })
+      this.auditLog.createIndex({ clientId: 1, at: -1 }),
+      // Una sola sesión activa del AI Developer por cliente (una rama y una vista previa a la vez).
+      this.aiSessions.createIndex({ clientId: 1 }, { unique: true, partialFilterExpression: { status: "active" }, name: "one_active_ai_session" }),
+      this.aiSessions.createIndex({ clientId: 1, createdAt: -1 })
     ]);
   }
 

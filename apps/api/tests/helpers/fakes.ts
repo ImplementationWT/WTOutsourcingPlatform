@@ -1,5 +1,12 @@
 import { AtlasUserExistsError, type AtlasAdapter, type AtlasDatabaseUser, type DatabaseUserSpec } from "../../src/adapters/atlas.js";
-import { GithubRepoExistsError, type GithubAdapter, type RepoInfo, type WorkflowRun } from "../../src/adapters/github.js";
+import {
+  type CheckSummary,
+  GithubRepoExistsError,
+  type GithubAdapter,
+  type PullRequestInfo,
+  type RepoInfo,
+  type WorkflowRun
+} from "../../src/adapters/github.js";
 import type { HttpProbe } from "../../src/adapters/http-probe.js";
 import type { InstallResult, ServerAdapter, ServerClientStatus, UninstallResult } from "../../src/adapters/server.js";
 import { randomBytes } from "node:crypto";
@@ -221,6 +228,92 @@ export class FakeGithub extends Faulty implements GithubAdapter {
       pushedAt: null,
       topics: this.topics.get(r.name) ?? []
     }));
+  }
+  // ---- ramas, PR y validaciones (AI Developer) ----
+  /** "repo/rama" → commits (el último es la cabeza). main empieza con un commit. */
+  readonly branches = new Map<string, { sha: string; message: string; email: string }[]>();
+  readonly pulls = new Map<string, PullRequestInfo & { head: string; base: string; title: string; body: string }>();
+  /** Validaciones por sha (por defecto, un check de CI en verde). */
+  readonly checks = new Map<string, CheckSummary>();
+  readonly issuedTokens: string[] = [];
+  mergeable: boolean | null = true;
+
+  private commitsOf(repo: string, branch: string) {
+    if (branch === "main" && !this.branches.has(`${repo}/main`) && this.repos.has(repo)) {
+      this.branches.set(`${repo}/main`, [{ sha: `main-${repo}-0`, message: "Initial commit", email: "template@example.com" }]);
+    }
+    return this.branches.get(`${repo}/${branch}`);
+  }
+  /** Simula un push del agente a la rama. */
+  pushCommit(repo: string, branch: string, message: string, email = "ai-developer@launchpad.invalid") {
+    const commits = this.commitsOf(repo, branch);
+    if (!commits) throw new Error(`no existe ${repo}/${branch}`);
+    const sha = `sha-${randomBytes(4).toString("hex")}`;
+    commits.push({ sha, message, email });
+    return sha;
+  }
+  async createRepoToken(repo: string) {
+    this.hit("createRepoToken", repo);
+    const token = `ghs_${randomBytes(18).toString("hex")}`;
+    this.issuedTokens.push(token);
+    return token;
+  }
+  async getBranchSha(repo: string, branch: string) {
+    this.hit("getBranchSha", repo, branch);
+    return this.commitsOf(repo, branch)?.at(-1)?.sha ?? null;
+  }
+  async createBranch(repo: string, branch: string, sha: string) {
+    this.hit("createBranch", repo, branch);
+    const base = this.commitsOf(repo, "main") ?? [];
+    const upTo = base.findIndex((c) => c.sha === sha);
+    this.branches.set(`${repo}/${branch}`, base.slice(0, upTo + 1));
+  }
+  async deleteBranch(repo: string, branch: string) {
+    this.hit("deleteBranch", repo, branch);
+    return this.branches.delete(`${repo}/${branch}`);
+  }
+  async compareBranches(repo: string, base: string, head: string) {
+    this.hit("compareBranches", repo, base, head);
+    const baseCommits = this.commitsOf(repo, base) ?? [];
+    const headCommits = this.commitsOf(repo, head) ?? [];
+    const ahead = headCommits.filter((c) => !baseCommits.some((b) => b.sha === c.sha));
+    return {
+      aheadBy: ahead.length,
+      behindBy: 0,
+      url: `https://github.com/${this.owner}/${repo}/compare/${base}...${head}`,
+      commits: ahead.map((c) => ({ sha: c.sha, message: c.message, author: "Launchpad AI Developer", date: null })),
+      files: ahead.map((c, i) => ({ filename: `web/src/file-${i}.tsx`, status: "modified", additions: 3, deletions: 1, patch: `@@ -1 +1 @@\n-old\n+${c.message}` }))
+    };
+  }
+  async createPullRequest(repo: string, input: { head: string; base: string; title: string; body: string }) {
+    this.hit("createPullRequest", repo, input.head);
+    const number = this.pulls.size + 1;
+    const pr = { number, url: `https://github.com/${this.owner}/${repo}/pull/${number}`, state: "open" as const, merged: false, mergeable: this.mergeable, headSha: this.commitsOf(repo, input.head)!.at(-1)!.sha, ...input };
+    this.pulls.set(`${repo}#${number}`, pr);
+    return pr;
+  }
+  async getPullRequest(repo: string, number: number) {
+    this.hit("getPullRequest", repo, number);
+    const pr = this.pulls.get(`${repo}#${number}`)!;
+    return { ...pr, mergeable: pr.merged ? null : this.mergeable, headSha: this.commitsOf(repo, pr.head)?.at(-1)?.sha ?? pr.headSha };
+  }
+  async getChecks(repo: string, sha: string) {
+    this.hit("getChecks", repo, sha);
+    return this.checks.get(sha) ?? { total: 1, pending: 0, failed: 0, checks: [{ name: "validate", status: "completed", conclusion: "success", url: null }] };
+  }
+  async mergePullRequest(repo: string, number: number, input: { sha: string; title: string }) {
+    this.hit("mergePullRequest", repo, number, input.sha);
+    const pr = this.pulls.get(`${repo}#${number}`)!;
+    const head = this.commitsOf(repo, pr.head)!;
+    if (head.at(-1)!.sha !== input.sha) throw new FatalError("github_rejected", "head cambió");
+    pr.merged = true;
+    pr.state = "closed";
+    const sha = this.pushCommit(repo, "main", input.title, "platform@example.com");
+    return sha;
+  }
+  async countCommitsByAuthor(repo: string, branch: string, email: string, since: Date) {
+    this.hit("countCommitsByAuthor", repo, branch, email, since.toISOString());
+    return (this.commitsOf(repo, branch) ?? []).filter((c) => c.email === email).length;
   }
   async setRepositoryTopics(name: string, topics: string[]) {
     this.hit("setRepositoryTopics", name, topics.join(","));

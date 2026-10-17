@@ -33,6 +33,31 @@ export interface ProjectRepo extends RepoInfo {
   topics: string[];
 }
 
+export interface BranchComparison {
+  aheadBy: number;
+  behindBy: number;
+  commits: { sha: string; message: string; author: string | null; date: string | null }[];
+  files: { filename: string; status: string; additions: number; deletions: number; patch: string | null }[];
+  url: string;
+}
+
+export interface PullRequestInfo {
+  number: number;
+  url: string;
+  state: "open" | "closed";
+  merged: boolean;
+  /** null mientras GitHub lo calcula. */
+  mergeable: boolean | null;
+  headSha: string;
+}
+
+export interface CheckSummary {
+  total: number;
+  pending: number;
+  failed: number;
+  checks: { name: string; status: string; conclusion: string | null; url: string | null }[];
+}
+
 /** Topic que la plataforma pone a los repos que crea (visible y buscable en GitHub). */
 export const PLATFORM_TOPIC = "launchpad";
 
@@ -73,6 +98,23 @@ export interface GithubAdapter {
   /** "Job › paso" del primer paso fallido de un run, o null. */
   getRunFailure(repo: string, runId: number): Promise<string | null>;
   listProjectRepos(): Promise<ProjectRepo[]>;
+  /**
+   * Token de instalación limitado a un repo y a Contents (lectura/escritura): lo usa
+   * el agente de IA para clonar y hacer push de su rama. Sin permiso de workflows.
+   */
+  createRepoToken(repo: string): Promise<string>;
+  getBranchSha(repo: string, branch: string): Promise<string | null>;
+  createBranch(repo: string, branch: string, sha: string): Promise<void>;
+  /** Borra la rama. false si ya no existía. */
+  deleteBranch(repo: string, branch: string): Promise<boolean>;
+  compareBranches(repo: string, base: string, head: string): Promise<BranchComparison>;
+  createPullRequest(repo: string, input: { head: string; base: string; title: string; body: string }): Promise<PullRequestInfo>;
+  getPullRequest(repo: string, number: number): Promise<PullRequestInfo>;
+  getChecks(repo: string, sha: string): Promise<CheckSummary>;
+  /** Fusiona (squash) solo si la cabeza sigue siendo `sha`. Devuelve el commit resultante. */
+  mergePullRequest(repo: string, number: number, input: { sha: string; title: string }): Promise<string>;
+  /** Commits de `branch` con ese email de autor desde `since`. */
+  countCommitsByAuthor(repo: string, branch: string, email: string, since: Date): Promise<number>;
   /** Reemplaza los topics del repositorio (ya validados). */
   setRepositoryTopics(name: string, topics: string[]): Promise<void>;
   /** Borra el repositorio. false si ya no existía. */
@@ -176,6 +218,15 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
     url: data.html_url,
     private: data.private,
     defaultBranch: data.default_branch ?? "main"
+  });
+
+  const toPull = (pr: { number: number; html_url: string; state: string; merged?: boolean | null; merged_at?: string | null; mergeable?: boolean | null; head: { sha: string } }): PullRequestInfo => ({
+    number: pr.number,
+    url: pr.html_url,
+    state: pr.state === "closed" ? "closed" : "open",
+    merged: Boolean(pr.merged ?? pr.merged_at),
+    mergeable: pr.mergeable ?? null,
+    headSha: pr.head.sha
   });
 
   const toRun = (run: { id: number; status: string | null; conclusion: string | null; html_url: string; created_at: string }): WorkflowRun => ({
@@ -336,6 +387,100 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
         if (!job) return null;
         const step = job.steps?.find((st) => st.conclusion === "failure");
         return step ? `${job.name} › ${step.name}` : job.name;
+      }),
+
+    async createRepoToken(repo) {
+      try {
+        const auth = (await octokit.auth({
+          type: "installation",
+          repositoryNames: [repo],
+          permissions: { contents: "write", metadata: "read" },
+          refresh: true
+        })) as { token: string };
+        registerSecret(auth.token);
+        return auth.token;
+      } catch (error) {
+        return classifyGithubError(error, "crear el token del repositorio para el agente");
+      }
+    },
+
+    getBranchSha: (repo, branch) =>
+      find("consultar la rama", async () => (await octokit.rest.git.getRef({ owner, repo, ref: `heads/${branch}` })).data.object.sha),
+
+    createBranch: (repo, branch, sha) =>
+      call("crear la rama", async () => {
+        await octokit.rest.git.createRef({ owner, repo, ref: `refs/heads/${branch}`, sha });
+      }),
+
+    async deleteBranch(repo, branch) {
+      try {
+        await octokit.rest.git.deleteRef({ owner, repo, ref: `heads/${branch}` });
+        return true;
+      } catch (error) {
+        if (statusOf(error) === 404 || statusOf(error) === 422) return false;
+        return classifyGithubError(error, "borrar la rama");
+      }
+    },
+
+    compareBranches: (repo, base, head) =>
+      call("comparar la rama con main", async () => {
+        const { data } = await octokit.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${base}...${head}`, per_page: 100 });
+        return {
+          aheadBy: data.ahead_by,
+          behindBy: data.behind_by,
+          url: data.html_url,
+          commits: data.commits.map((c) => ({
+            sha: c.sha,
+            message: c.commit.message,
+            author: c.commit.author?.name ?? null,
+            date: c.commit.author?.date ?? null
+          })),
+          files: (data.files ?? []).map((f) => ({
+            filename: f.filename,
+            status: f.status,
+            additions: f.additions,
+            deletions: f.deletions,
+            patch: f.patch ?? null
+          }))
+        };
+      }),
+
+    createPullRequest: (repo, input) =>
+      call("crear el Pull Request", async () => toPull((await octokit.rest.pulls.create({ owner, repo, ...input })).data)),
+
+    getPullRequest: (repo, number) =>
+      call("consultar el Pull Request", async () => toPull((await octokit.rest.pulls.get({ owner, repo, pull_number: number })).data)),
+
+    getChecks: (repo, sha) =>
+      call("consultar las validaciones", async () => {
+        const runs = await octokit.paginate(octokit.rest.checks.listForRef, { owner, repo, ref: sha, per_page: 100 });
+        const checks = runs.map((r) => ({ name: r.name, status: r.status, conclusion: r.conclusion, url: r.html_url }));
+        const okConclusions = new Set(["success", "skipped", "neutral"]);
+        return {
+          total: checks.length,
+          pending: checks.filter((c) => c.status !== "completed").length,
+          failed: checks.filter((c) => c.status === "completed" && !okConclusions.has(c.conclusion ?? "")).length,
+          checks
+        };
+      }),
+
+    mergePullRequest: (repo, number, input) =>
+      call("fusionar el Pull Request", async () => {
+        const { data } = await octokit.rest.pulls.merge({
+          owner,
+          repo,
+          pull_number: number,
+          sha: input.sha,
+          merge_method: "squash",
+          commit_title: input.title
+        });
+        return data.sha;
+      }),
+
+    countCommitsByAuthor: (repo, branch, email, since) =>
+      call("consultar los commits", async () => {
+        const { data } = await octokit.rest.repos.listCommits({ owner, repo, sha: branch, author: email, since: since.toISOString(), per_page: 100 });
+        return data.length;
       }),
 
     setRepositoryTopics: (name, topics) =>

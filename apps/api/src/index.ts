@@ -1,12 +1,13 @@
 import { promises as dns } from "node:dns";
 import { MongoClient } from "mongodb";
 import { createAtlasAdapter } from "./adapters/atlas.js";
+import { createAnthropicAgentAdapter } from "./ai/anthropic-adapter.js";
 import { createGithubAdapter } from "./adapters/github.js";
 import { createHttpProbe } from "./adapters/http-probe.js";
 import { createMongoBootstrapAdapter } from "./adapters/mongo-bootstrap.js";
 import { createServerAdapter } from "./adapters/server.js";
 import { buildApp } from "./app.js";
-import { appBaseDomain, loadEnv, loadInitialPasswordKey, loadIntegrationKey, loadServerConfig } from "./config/env.js";
+import { appBaseDomain, loadAnthropicKey, loadEnv, loadInitialPasswordKey, loadIntegrationKey, loadServerConfig } from "./config/env.js";
 import { getProvider } from "./integrations/catalog.js";
 import { DEFAULT_TIMING } from "./jobs/types.js";
 import { registerSecret } from "./lib/redact.js";
@@ -22,6 +23,8 @@ const server = loadServerConfig(env);
 // Antes de conectar: una clave mal configurada detiene el arranque con un mensaje claro.
 const initialPasswordKey = loadInitialPasswordKey(env);
 const integrationKey = loadIntegrationKey(env);
+const anthropicKey = loadAnthropicKey(env);
+registerSecret(anthropicKey);
 if (server) registerSecret(server.provisionerKey);
 
 const adminClient = new MongoClient(env.ADMIN_MONGODB_URI, { appName: "provisioning-platform" });
@@ -36,6 +39,12 @@ await secrets.init();
 const app = await buildApp({
   store,
   logLevel: env.LOG_LEVEL,
+  ai: anthropicKey
+    ? {
+        agent: createAnthropicAgentAdapter(anthropicKey, store.aiAgentSettings),
+        config: { sessionBudgetCents: env.AI_SESSION_BUDGET_USD * 100, workspace: env.ANTHROPIC_WORKSPACE }
+      }
+    : undefined,
   auth: {
     adminUsername: env.PANEL_ADMIN_USERNAME,
     adminPasswordHash: env.PANEL_ADMIN_PASSWORD_HASH,
@@ -104,7 +113,7 @@ const app = await buildApp({
 const abandoned = await store.failAbandonedJobs();
 if (abandoned) app.log.warn({ abandoned }, "Marked interrupted jobs as failed");
 app.log.info(
-  { deployEnabled: env.DEPLOY_ENABLED, templateVersion: env.TEMPLATE_VERSION, integrations: secrets.available, minSchemaVersion: env.MIN_SCHEMA_VERSION, initialAdminMode: env.INITIAL_ADMIN_MODE },
+  { deployEnabled: env.DEPLOY_ENABLED, aiDeveloper: Boolean(anthropicKey), templateVersion: env.TEMPLATE_VERSION, integrations: secrets.available, minSchemaVersion: env.MIN_SCHEMA_VERSION, initialAdminMode: env.INITIAL_ADMIN_MODE },
   env.DEPLOY_ENABLED ? "Pipeline completo (con despliegue)" : "Fase 1: repo + MongoDB + secrets (despliegue deshabilitado)"
 );
 

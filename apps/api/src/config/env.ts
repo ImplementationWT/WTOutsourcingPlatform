@@ -79,6 +79,14 @@ export const envSchema = z.object({
   INTEGRATION_ENCRYPTION_KEY_SECRET_REF: optional(z.string().min(1)),
   INTEGRATION_SECRET_TTL_HOURS: optional(z.coerce.number().int().min(1).max(168)).default(24),
 
+  // AI Developer (Claude Managed Agents): ruta al archivo con la clave de la API de la cuenta
+  // de Anthropic (no el valor). Sin ella, el AI Developer queda desactivado.
+  ANTHROPIC_API_KEY_SECRET_REF: optional(z.string().min(1)),
+  // Workspace de esa clave en la consola de Anthropic (para enlazar las sesiones).
+  ANTHROPIC_WORKSPACE: optional(z.string().regex(/^[A-Za-z0-9_-]+$/)).default("default"),
+  // Tope de gasto por sesión, en USD a precio de lista (cada "Ampliar" suma otro tramo igual).
+  AI_SESSION_BUDGET_USD: optional(z.coerce.number().int().min(1).max(500)).default(10),
+
   // Contraseña inicial del admin de cada app (contrato §3).
   // random: se genera y se escribe INITIAL_ADMIN_PASSWORD. default: el template usa la suya y obliga a cambiarla.
   INITIAL_ADMIN_MODE: optional(z.enum(["random", "default"])).default("random"),
@@ -168,6 +176,16 @@ export function loadInitialPasswordKey(env: Env) {
 /** Clave AES-256 de las credenciales de integraciones en tránsito. */
 export function loadIntegrationKey(env: Env) {
   return readAesKey(env.INTEGRATION_ENCRYPTION_KEY_SECRET_REF, "INTEGRATION_ENCRYPTION_KEY_SECRET_REF");
+}
+
+/** Clave de la API de Anthropic (archivo), o undefined si el AI Developer no está configurado. */
+export function loadAnthropicKey(env: Env) {
+  if (!env.ANTHROPIC_API_KEY_SECRET_REF) return undefined;
+  const key = readFileSync(env.ANTHROPIC_API_KEY_SECRET_REF, "utf8").trim();
+  if (!/^sk-ant-[A-Za-z0-9_-]{20,}$/.test(key)) {
+    throw new Error("Configuración inválida:\n  - ANTHROPIC_API_KEY_SECRET_REF: el archivo debe contener una clave de la API de Anthropic (sk-ant-…)");
+  }
+  return key;
 }
 
 export function loadServerConfig(env: Env) {

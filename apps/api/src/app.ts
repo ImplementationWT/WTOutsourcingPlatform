@@ -1,5 +1,7 @@
 import Fastify from "fastify";
 import type { GithubAdapter } from "./adapters/github.js";
+import { AiDeveloper } from "./ai/service.js";
+import type { AiAgentAdapter, AiConfig } from "./ai/types.js";
 import { type AuthConfig, registerAuth } from "./auth/session.js";
 import { JobEngine } from "./jobs/engine.js";
 import { Teardown } from "./jobs/teardown.js";
@@ -7,6 +9,7 @@ import type { Deps } from "./jobs/types.js";
 import { ProvisioningError } from "./lib/errors.js";
 import { loggerOptions } from "./lib/logger.js";
 import { redact } from "./lib/redact.js";
+import { registerAiRoutes } from "./routes/ai.js";
 import { registerClientRoutes } from "./routes/clients.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerIntegrationRoutes } from "./routes/integrations.js";
@@ -19,12 +22,17 @@ export interface AppOptions {
   logLevel?: string;
   /** Destino de los logs (tests: para verificar la redacción). */
   logStream?: NodeJS.WritableStream;
+  /** AI Developer (Claude Managed Agents); sin él, sus rutas responden 503. */
+  ai?: { agent: AiAgentAdapter; config: AiConfig; now?: () => Date };
 }
 
-export async function buildApp({ store, deps, auth, logLevel, logStream }: AppOptions) {
+export async function buildApp({ store, deps, auth, logLevel, logStream, ai }: AppOptions) {
   const app = Fastify({ logger: loggerOptions({ level: logLevel, stream: logStream }) });
   const engine = new JobEngine(store, deps, app.log.child({ component: "jobs" }));
   const teardown = new Teardown(store, deps, app.log.child({ component: "teardown" }));
+  const aiDeveloper = ai
+    ? new AiDeveloper({ store, github: deps.github, agent: ai.agent, config: ai.config, provisioning: deps.config, log: app.log.child({ component: "ai" }), now: ai.now })
+    : undefined;
 
   // Última barrera: ninguna respuesta JSON sale sin redactar.
   app.addHook("preSerialization", async (_request, _reply, payload) => redact(payload));
@@ -48,10 +56,11 @@ export async function buildApp({ store, deps, auth, logLevel, logStream }: AppOp
   await registerClientRoutes(app, { store, engine, teardown, deps });
   await registerDashboardRoutes(app, { store, deps });
   await registerIntegrationRoutes(app, { store, engine, deps });
+  await registerAiRoutes(app, { store, ai: aiDeveloper });
 
   app.addHook("onClose", async () => {
     await Promise.all([engine.idle(), teardown.idle()]);
   });
 
-  return Object.assign(app, { engine, teardown });
+  return Object.assign(app, { engine, teardown, store, aiDeveloper });
 }

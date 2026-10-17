@@ -28,6 +28,8 @@ const PATTERNS: [RegExp, string][] = [
   [/mongodb(\+srv)?:\/\/[^\s"'`<>]+/gi, `mongodb$1://${REDACTED}`],
   // Tokens de GitHub (instalación, PAT clásicos y fine-grained, OAuth, refresh).
   [/\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, REDACTED],
+  // Claves de la API de Anthropic.
+  [/\bsk-ant-[A-Za-z0-9_-]{20,}/g, REDACTED],
   // Cabeceras Authorization.
   [/\b(Bearer|Basic|token)\s+[A-Za-z0-9._~+/=-]{8,}/gi, `$1 ${REDACTED}`],
   // Claves privadas.

@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 import AppLayout from "@/components/layout/AppLayout";
 import LoginPage from "@/features/auth/LoginPage";
 import RequireAuth from "@/features/auth/RequireAuth";
+import AiDeveloperPage from "@/features/ai/AiDeveloperPage";
 import DashboardPage from "@/features/dashboard/DashboardPage";
 import NewProjectPage from "@/features/projects/NewProjectPage";
 import ProjectDetailPage from "@/features/projects/ProjectDetailPage";
@@ -21,6 +22,7 @@ export const router = createBrowserRouter([
           { path: "/projects", element: <ProjectsPage /> },
           { path: "/projects/new", element: <NewProjectPage /> },
           { path: "/projects/:slug", element: <ProjectDetailPage /> },
+          { path: "/projects/:slug/ai", element: <AiDeveloperPage /> },
           { path: "/settings", element: <SettingsPage /> },
         ],
       },
