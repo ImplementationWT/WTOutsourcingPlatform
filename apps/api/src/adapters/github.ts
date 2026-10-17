@@ -115,6 +115,8 @@ export interface GithubAdapter {
   mergePullRequest(repo: string, number: number, input: { sha: string; title: string }): Promise<string>;
   /** Commits de `branch` con ese email de autor desde `since`. */
   countCommitsByAuthor(repo: string, branch: string, email: string, since: Date): Promise<number>;
+  /** Permisos concedidos a la instalación de la App ({ contents: "write", … }). */
+  getInstallationPermissions(): Promise<Record<string, string>>;
   /** Reemplaza los topics del repositorio (ya validados). */
   setRepositoryTopics(name: string, topics: string[]): Promise<void>;
   /** Borra el repositorio. false si ya no existía. */
@@ -141,8 +143,18 @@ function isRateLimited(error: unknown) {
   return headers["x-ratelimit-remaining"] === "0" || /rate limit/i.test(message);
 }
 
-/** Traduce errores de Octokit a Transient/Fatal con mensajes accionables. */
-export function classifyGithubError(error: unknown, action: string): never {
+/** Permisos de la GitHub App que usa el AI Developer (además de los del aprovisionamiento). */
+export const AI_PERMISSIONS = {
+  contents: "Contents: Read and write",
+  pulls: "Pull requests: Read and write",
+  checks: "Checks: Read-only"
+} as const;
+
+/**
+ * Traduce errores de Octokit a Transient/Fatal con mensajes accionables. `permission`
+ * nombra el permiso de la App que necesita esta operación (para el mensaje de 403).
+ */
+export function classifyGithubError(error: unknown, action: string, permission?: string): never {
   if (error instanceof ProvisioningError) throw error;
   const status = statusOf(error);
 
@@ -164,7 +176,9 @@ export function classifyGithubError(error: unknown, action: string): never {
   if (status === 403) {
     throw new FatalError(
       "github_forbidden",
-      `La GitHub App no tiene permisos para ${action}. Necesita Administration, Contents (lectura), Environments, Secrets, Variables y Actions (escritura).`
+      permission
+        ? `La GitHub App no tiene permiso para ${action}: necesita «${permission}». Añádelo en GitHub → Settings → Developer settings → GitHub Apps → la App → Permissions y acepta el cambio en la instalación.`
+        : `La GitHub App no tiene permisos para ${action}. Necesita Administration, Contents (lectura), Environments, Secrets, Variables y Actions (escritura).`
     );
   }
   if (status === 404) {
@@ -187,21 +201,21 @@ export function createOctokit(config: GithubConfig) {
 export function createGithubAdapter(config: GithubConfig, octokit: Octokit = createOctokit(config)): GithubAdapter {
   const owner = config.targetOwner;
 
-  async function call<T>(action: string, fn: () => Promise<T>): Promise<T> {
+  async function call<T>(action: string, fn: () => Promise<T>, permission?: string): Promise<T> {
     try {
       return await fn();
     } catch (error) {
-      return classifyGithubError(error, action);
+      return classifyGithubError(error, action, permission);
     }
   }
 
   /** Igual que `call`, pero un 404 se devuelve como null. */
-  async function find<T>(action: string, fn: () => Promise<T>): Promise<T | null> {
+  async function find<T>(action: string, fn: () => Promise<T>, permission?: string): Promise<T | null> {
     try {
       return await fn();
     } catch (error) {
       if (statusOf(error) === 404) return null;
-      return classifyGithubError(error, action);
+      return classifyGithubError(error, action, permission);
     }
   }
 
@@ -389,6 +403,12 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
         return step ? `${job.name} › ${step.name}` : job.name;
       }),
 
+    getInstallationPermissions: () =>
+      call("consultar los permisos de la GitHub App", async () => {
+        const { data } = await octokit.rest.apps.getInstallation({ installation_id: config.installationId });
+        return Object.fromEntries(Object.entries(data.permissions ?? {}).filter((e): e is [string, string] => typeof e[1] === "string"));
+      }),
+
     async createRepoToken(repo) {
       try {
         const auth = (await octokit.auth({
@@ -400,7 +420,9 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
         registerSecret(auth.token);
         return auth.token;
       } catch (error) {
-        return classifyGithubError(error, "crear el token del repositorio para el agente");
+        // Si la App no tiene el permiso pedido, GitHub responde 422 al emitir el token.
+        if (statusOf(error) === 422) return classifyGithubError(Object.assign(new Error(), { status: 403 }), "dar acceso al agente al repositorio", AI_PERMISSIONS.contents);
+        return classifyGithubError(error, "dar acceso al agente al repositorio", AI_PERMISSIONS.contents);
       }
     },
 
@@ -408,9 +430,13 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
       find("consultar la rama", async () => (await octokit.rest.git.getRef({ owner, repo, ref: `heads/${branch}` })).data.object.sha),
 
     createBranch: (repo, branch, sha) =>
-      call("crear la rama", async () => {
-        await octokit.rest.git.createRef({ owner, repo, ref: `refs/heads/${branch}`, sha });
-      }),
+      call(
+        "crear la rama",
+        async () => {
+          await octokit.rest.git.createRef({ owner, repo, ref: `refs/heads/${branch}`, sha });
+        },
+        AI_PERMISSIONS.contents
+      ),
 
     async deleteBranch(repo, branch) {
       try {
@@ -418,7 +444,7 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
         return true;
       } catch (error) {
         if (statusOf(error) === 404 || statusOf(error) === 422) return false;
-        return classifyGithubError(error, "borrar la rama");
+        return classifyGithubError(error, "borrar la rama", AI_PERMISSIONS.contents);
       }
     },
 
@@ -446,13 +472,13 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
       }),
 
     createPullRequest: (repo, input) =>
-      call("crear el Pull Request", async () => toPull((await octokit.rest.pulls.create({ owner, repo, ...input })).data)),
+      call("crear el Pull Request", async () => toPull((await octokit.rest.pulls.create({ owner, repo, ...input })).data), AI_PERMISSIONS.pulls),
 
     getPullRequest: (repo, number) =>
-      call("consultar el Pull Request", async () => toPull((await octokit.rest.pulls.get({ owner, repo, pull_number: number })).data)),
+      call("consultar el Pull Request", async () => toPull((await octokit.rest.pulls.get({ owner, repo, pull_number: number })).data), AI_PERMISSIONS.pulls),
 
     getChecks: (repo, sha) =>
-      call("consultar las validaciones", async () => {
+      call("consultar las validaciones del CI", async () => {
         const runs = await octokit.paginate(octokit.rest.checks.listForRef, { owner, repo, ref: sha, per_page: 100 });
         const checks = runs.map((r) => ({ name: r.name, status: r.status, conclusion: r.conclusion, url: r.html_url }));
         const okConclusions = new Set(["success", "skipped", "neutral"]);
@@ -462,7 +488,7 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
           failed: checks.filter((c) => c.status === "completed" && !okConclusions.has(c.conclusion ?? "")).length,
           checks
         };
-      }),
+      }, AI_PERMISSIONS.checks),
 
     mergePullRequest: (repo, number, input) =>
       call("fusionar el Pull Request", async () => {
@@ -475,7 +501,7 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
           commit_title: input.title
         });
         return data.sha;
-      }),
+      }, AI_PERMISSIONS.contents),
 
     countCommitsByAuthor: (repo, branch, email, since) =>
       call("consultar los commits", async () => {

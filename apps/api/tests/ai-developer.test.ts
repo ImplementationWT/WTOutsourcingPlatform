@@ -121,6 +121,21 @@ describe("AI Developer: sesiones", () => {
     for (const token of github.issuedTokens) expect(outputs).not.toContain(token);
   });
 
+  it("si a la GitHub App le faltan permisos lo dice antes de crear nada", async () => {
+    const { api, github, agent } = await setup();
+    github.installationPermissions = { administration: "write", contents: "read", actions: "write" };
+    expect((await api("GET", "/api/ai/status")).body.missingPermissions).toEqual([
+      "Contents: Read and write",
+      "Pull requests: Read and write",
+      "Checks: Read-only"
+    ]);
+    const response = await api("POST", "/api/clients/acme-crm/ai/sessions", { title: "Prueba" });
+    expect(response.status).toBe(409);
+    expect(response.body.error).toContain("Contents: Read and write");
+    expect(github.count("createBranch")).toBe(0);
+    expect(agent.sessions.size).toBe(0);
+  });
+
   it("una sola sesión activa por proyecto, y solo con el proyecto listo", async () => {
     const { api, store } = await setup();
     await startSession(api);

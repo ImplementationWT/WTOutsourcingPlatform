@@ -263,6 +263,21 @@ export default function AiDeveloperPage() {
           El AI Developer no está configurado: falta la clave de la API de Anthropic de la cuenta empresarial en el servidor de la plataforma
           (<code className="font-mono">ANTHROPIC_API_KEY_SECRET_REF</code>). Ver <code className="font-mono">docs/ai-developer.md</code>.
         </Notice>
+      ) : status.data.missingPermissions?.length ? (
+        <Notice>
+          <p className="font-medium">A la GitHub App le faltan permisos para el AI Developer</p>
+          <ul className="mt-1 list-disc pl-5">
+            {status.data.missingPermissions.map((permission) => (
+              <li key={permission}>
+                <code className="font-mono">{permission}</code>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-muted-foreground">
+            Añádelos en GitHub → Settings → Developer settings → GitHub Apps → la App → Permissions & events, guarda y acepta la solicitud de
+            permisos en la instalación (Settings → Applications). Después recarga esta página.
+          </p>
+        </Notice>
       ) : client.data?.client.status !== "ready" ? (
         <Notice>El proyecto debe terminar de aprovisionarse antes de usar el AI Developer.</Notice>
       ) : selected ? (

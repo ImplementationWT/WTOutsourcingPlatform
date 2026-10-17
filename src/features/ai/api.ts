@@ -9,7 +9,7 @@ const post = <T>(url: string, body?: unknown) =>
 export function useAiStatus() {
   return useQuery({
     queryKey: ["ai-status"],
-    queryFn: () => apiFetch<{ enabled: boolean; model: string }>("/api/ai/status"),
+    queryFn: () => apiFetch<{ enabled: boolean; model: string; missingPermissions: string[] | null }>("/api/ai/status"),
     staleTime: 5 * 60_000,
   });
 }

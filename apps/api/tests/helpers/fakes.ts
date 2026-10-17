@@ -269,6 +269,12 @@ export class FakeGithub extends Faulty implements GithubAdapter {
     commits.push({ sha, message, email });
     return sha;
   }
+  /** Permisos de la instalación (por defecto, todo lo que necesita el AI Developer). */
+  installationPermissions: Record<string, string> = { administration: "write", contents: "write", pull_requests: "write", checks: "read", actions: "write" };
+  async getInstallationPermissions() {
+    this.hit("getInstallationPermissions");
+    return this.installationPermissions;
+  }
   async createRepoToken(repo: string) {
     this.hit("createRepoToken", repo);
     const token = `ghs_${randomBytes(18).toString("hex")}`;

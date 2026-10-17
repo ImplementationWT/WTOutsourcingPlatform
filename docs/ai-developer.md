@@ -79,7 +79,22 @@ el agente y su entorno se crean solos la primera vez que se abre una sesión
 (sus IDs quedan en la colección `settings`) y se actualizan si cambia su
 definición.
 
-### 2. Vista previa en el VPS
+### 2. Permisos de la GitHub App
+
+Además de los del aprovisionamiento, el AI Developer necesita:
+
+| Permiso | Nivel | Para qué |
+| --- | --- | --- |
+| Contents | **Read and write** | Crear la rama, que Claude haga push y fusionar el PR |
+| Pull requests | **Read and write** | Crear y consultar el Pull Request |
+| Checks | **Read-only** | Ver las validaciones del CI antes de fusionar |
+
+GitHub → *Settings → Developer settings → GitHub Apps* → la App → *Permissions
+& events* → cambia esos tres y guarda. Después acepta la solicitud de permisos
+en la instalación (*Settings → Applications → Installed GitHub Apps* → la App →
+*Review request*). El panel del AI Developer avisa mientras falte alguno.
+
+### 3. Vista previa en el VPS
 
 Requiere los scripts del servidor actualizados y una línea en
 `/opt/platform/etc/platform.conf`:
@@ -90,7 +105,7 @@ bash /root/platform-src/bin/bootstrap-vps.sh                           # en el V
 echo 'PANEL_ORIGIN=https://launchpad.whatever.tech' >> /opt/platform/etc/platform.conf
 ```
 
-### 3. Repos de clientes
+### 4. Repos de clientes
 
 La vista previa necesita `.github/workflows/preview.yml` y el
 `.github/scripts/deploy.sh` de la plantilla **1.5.0**. Los proyectos nuevos ya
@@ -104,6 +119,7 @@ El entorno `production` de los repos no debe restringir ramas de despliegue
 
 | Síntoma | Causa |
 | --- | --- |
+| "A la GitHub App le faltan permisos" | Paso 2: cambiar los permisos y aceptarlos en la instalación |
 | "El AI Developer no está configurado" | Falta el secret `ANTHROPIC_API_KEY` o no se ha relanzado el despliegue |
 | "Anthropic rechazó la clave" | Clave revocada o de otra organización |
 | "La cuenta de Anthropic no tiene saldo" (en el chat) | Facturación de la cuenta empresarial |

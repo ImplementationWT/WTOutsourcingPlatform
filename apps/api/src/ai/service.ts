@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { BranchComparison, GithubAdapter } from "../adapters/github.js";
+import { AI_PERMISSIONS, type BranchComparison, type GithubAdapter } from "../adapters/github.js";
 import type { ServerAdapter } from "../adapters/server.js";
 import { deriveNames, parseSlug } from "../domain/naming.js";
 import type { Logger, ProvisioningConfig } from "../jobs/types.js";
@@ -57,6 +57,23 @@ export class AiDeveloper {
     this.now = deps.now ?? (() => new Date());
   }
 
+  private permissionsCache?: { missing: string[]; until: number };
+
+  /** Permisos de la GitHub App que le faltan al AI Developer (caché de 5 minutos). */
+  async missingGithubPermissions() {
+    const t = this.now().getTime();
+    if (this.permissionsCache && this.permissionsCache.until > t) return this.permissionsCache.missing;
+    const granted = await this.deps.github.getInstallationPermissions();
+    const missing = [
+      granted.contents !== "write" && AI_PERMISSIONS.contents,
+      granted.pull_requests !== "write" && AI_PERMISSIONS.pulls,
+      !granted.checks && AI_PERMISSIONS.checks
+    ].filter((p): p is (typeof AI_PERMISSIONS)[keyof typeof AI_PERMISSIONS] => Boolean(p));
+    // Se recuerda solo un rato: al conceder los permisos, el aviso desaparece sin reiniciar.
+    this.permissionsCache = { missing, until: t + (missing.length ? 60_000 : 5 * 60_000) };
+    return missing;
+  }
+
   private names(clientId: string) {
     return deriveNames(parseSlug(clientId), { targetOwner: this.deps.github.owner, appsDomain: this.deps.provisioning.appsDomain });
   }
@@ -87,6 +104,11 @@ export class AiDeveloper {
     if (client.status !== "ready") throw new AiDeveloperError(409, "El proyecto debe estar listo (aprovisionado) para usar el AI Developer.");
     if (await store.aiSessions.findOne({ clientId: client._id, status: "active" })) {
       throw new AiDeveloperError(409, "Ya hay una sesión activa para este proyecto. Ciérrala o fusiónala antes de abrir otra.");
+    }
+
+    const missing = await this.missingGithubPermissions().catch(() => []);
+    if (missing.length) {
+      throw new AiDeveloperError(409, `A la GitHub App le faltan permisos para el AI Developer: ${missing.join(", ")}. Ver docs/ai-developer.md.`);
     }
 
     const names = this.names(client._id);

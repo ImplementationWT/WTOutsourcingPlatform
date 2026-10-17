@@ -95,7 +95,12 @@ export async function registerAiRoutes(
     return session;
   }
 
-  app.get("/api/ai/status", { preHandler: requireAdmin }, async () => ({ enabled: Boolean(ai), model: AI_MODEL }));
+  app.get("/api/ai/status", { preHandler: requireAdmin }, async () => ({
+    enabled: Boolean(ai),
+    model: AI_MODEL,
+    // null si no se pudo consultar (la sesión lo volverá a intentar al empezar).
+    missingPermissions: ai ? await ai.missingGithubPermissions().catch(() => null) : null
+  }));
 
   app.get("/api/clients/:slug/ai/sessions", { preHandler: requireAdmin }, async (request, reply) => {
     const params = slugParams.safeParse(request.params);
