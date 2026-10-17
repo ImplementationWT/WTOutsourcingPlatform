@@ -155,27 +155,32 @@ export class AiDeveloper {
     await store.aiSessions.insertOne(doc);
     await this.audit(input.actor, "ai.session_started", doc, { agentSession: agentSession.id });
 
-    await agent.sendSystemMessage(
-      agentSession.id,
-      [
-        "Contexto de esta sesión:",
-        `- Cliente: ${client.name} (${client._id}). App en producción: ${names.baseUrl}`,
-        `- Repositorio: ${names.repositoryFullName}, montado en ${REPO_MOUNT_PATH}.`,
-        `- Rama de trabajo: ${branch} (creada desde main en ${baseSha.slice(0, 7)}). Haz commit y push solo a esta rama.`,
-        `- Te escribe ${input.actor}, administrador de la plataforma. Los cambios se revisan en una vista previa y como Pull Request antes de desplegarse.`
-      ].join("\n")
-    );
     if (input.message) await this.send(doc, input.message, input.actor);
     return doc;
+  }
+
+  /** Contexto de la sesión para el agente; acompaña al primer mensaje. */
+  private async sessionContext(session: AiSessionDoc) {
+    const client = await this.deps.store.getClient(session.clientId);
+    const names = this.names(session.clientId);
+    return [
+      "Contexto de esta sesión:",
+      `- Cliente: ${client?.name ?? session.clientId} (${session.clientId}). App en producción: ${names.baseUrl}`,
+      `- Repositorio: ${names.repositoryFullName}, montado en ${REPO_MOUNT_PATH}.`,
+      `- Rama de trabajo: ${session.branch} (creada desde main en ${session.baseSha.slice(0, 7)}). Haz commit y push solo a esta rama.`,
+      `- Te escribe ${session.createdBy}, administrador de la plataforma. Los cambios se revisan en una vista previa y como Pull Request antes de desplegarse.`
+    ].join("\n");
   }
 
   async send(session: AiSessionDoc, text: string, actor: string) {
     this.requireActive(session);
     const { agent, store } = this.deps;
     await agent.rotateRepoToken(session.agentSessionId, session.repoResourceId, await this.freshRepoToken(session.repository));
-    await agent.sendMessage(session.agentSessionId, text);
+    const context = session.contextSent ? undefined : await this.sessionContext(session);
+    await agent.sendMessage(session.agentSessionId, text, context);
+    session.contextSent = true;
     const now = this.now();
-    await store.aiSessions.updateOne({ _id: session._id }, { $set: { lastMessageAt: now, updatedAt: now } });
+    await store.aiSessions.updateOne({ _id: session._id }, { $set: { lastMessageAt: now, updatedAt: now, contextSent: true } });
     await this.audit(actor, "ai.message_sent", session, { length: text.length });
   }
 

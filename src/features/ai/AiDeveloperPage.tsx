@@ -21,6 +21,7 @@ import { useAiEvents } from "./useAiEvents";
 const STATUS_BADGE: Record<AiSession["status"], string> = { active: "Activa", merged: "Desplegada", closed: "Cerrada" };
 
 function NewSession({ slug, onStarted }: { slug: string; onStarted: (session: AiSession) => void }) {
+  const queryClient = useQueryClient();
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -34,6 +35,8 @@ function NewSession({ slug, onStarted }: { slug: string; onStarted: (session: Ai
       onStarted(session);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo iniciar la sesión.");
+      // Si falló el primer mensaje, la sesión ya existe: aparece y se reintenta desde el chat.
+      await queryClient.invalidateQueries({ queryKey: ["ai-sessions", slug] });
     } finally {
       setBusy(false);
     }

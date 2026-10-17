@@ -45,11 +45,9 @@ export class FakeAgent implements AiAgentAdapter {
     this.sessions.set(id, { input, events: [], listeners: new Set(), status: "idle", costCents: 0, budgetCents: input.budgetCents, repoToken: input.repoToken });
     return { id, repoResourceId: `res_${id}` };
   }
-  async sendSystemMessage(sessionId: string, text: string) {
-    this.systemMessages.push({ sessionId, text });
-  }
-  async sendMessage(sessionId: string, text: string) {
+  async sendMessage(sessionId: string, text: string, context?: string) {
     this.calls.push("sendMessage");
+    if (context) this.systemMessages.push({ sessionId, text: context });
     this.emit(sessionId, { type: "user.message", content: [{ type: "text", text }] });
     this.onMessage(sessionId, text);
   }

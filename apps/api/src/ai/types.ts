@@ -24,9 +24,11 @@ export interface CreateAgentSessionInput {
  */
 export interface AiAgentAdapter {
   createSession(input: CreateAgentSessionInput): Promise<{ id: string; repoResourceId: string }>;
-  /** Instrucción del operador (contexto de la sesión), con autoridad de sistema. */
-  sendSystemMessage(sessionId: string, text: string): Promise<void>;
-  sendMessage(sessionId: string, text: string): Promise<void>;
+  /**
+   * Mensaje del usuario. `context` (contexto de la sesión, con autoridad de sistema) va como
+   * system.message justo detrás y en la misma petición: Anthropic no lo acepta suelto.
+   */
+  sendMessage(sessionId: string, text: string, context?: string): Promise<void>;
   confirmTool(sessionId: string, toolUseEventId: string, allow: boolean, denyMessage?: string): Promise<void>;
   interrupt(sessionId: string): Promise<void>;
   /** Los tokens de instalación caducan en 1 h: se renuevan antes de cada mensaje. */

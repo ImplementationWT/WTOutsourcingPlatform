@@ -195,6 +195,8 @@ export interface AiSessionDoc {
   createdAt: Date;
   updatedAt: Date;
   lastMessageAt?: Date;
+  /** El contexto de la sesión ya acompañó a un mensaje (va con el primero). */
+  contextSent?: boolean;
   pullRequest?: { number: number; url: string; createdAt: Date; createdBy: string };
   merge?: { sha: string; at: Date; by: string };
   closedAt?: Date;

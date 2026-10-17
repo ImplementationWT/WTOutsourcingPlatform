@@ -93,12 +93,13 @@ export function createAnthropicAgentAdapter(apiKey: string, settings: Collection
       return { id: session.id, repoResourceId: repo.id };
     },
 
-    async sendSystemMessage(sessionId, text) {
-      await sessions.events.send(sessionId, { events: [{ type: "system.message", content: [{ type: "text", text }] }] });
-    },
-
-    async sendMessage(sessionId, text) {
-      await sessions.events.send(sessionId, { events: [{ type: "user.message", content: [{ type: "text", text }] }] });
+    async sendMessage(sessionId, text, context) {
+      await sessions.events.send(sessionId, {
+        events: [
+          { type: "user.message", content: [{ type: "text", text }] },
+          ...(context ? [{ type: "system.message" as const, content: [{ type: "text" as const, text: context }] }] : [])
+        ]
+      });
     },
 
     async confirmTool(sessionId, toolUseEventId, allow, denyMessage) {

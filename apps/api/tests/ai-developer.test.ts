@@ -108,7 +108,7 @@ describe("AI Developer: sesiones", () => {
     expect(agent.systemMessages[0].text).toContain(`Rama de trabajo: ${session.branch}`);
 
     const doc = await store.aiSessions.findOne({ _id: session.id });
-    expect(doc).toMatchObject({ clientId: "acme-crm", status: "active", repository: REPO, baseBranch: "main" });
+    expect(doc).toMatchObject({ clientId: "acme-crm", status: "active", repository: REPO, baseBranch: "main", contextSent: true });
     expect(await store.auditLog.countDocuments({ action: "ai.session_started" })).toBe(1);
 
     // Ningún token del repo sale en respuestas, base o auditoría.
@@ -154,6 +154,18 @@ describe("AI Developer: sesiones", () => {
     expect(response.body.error).toContain("clave de la API");
     expect([...github.branches.keys()].filter((k) => k.includes("/ai/"))).toEqual([]);
     expect(await store.aiSessions.countDocuments()).toBe(0);
+  });
+
+  it("el contexto de la sesión acompaña solo al primer mensaje, aunque se empiece sin instrucciones", async () => {
+    const { api, agent } = await setup();
+    const started = await api("POST", "/api/clients/acme-crm/ai/sessions", { title: "Sin mensaje" });
+    expect(started.status).toBe(201);
+    expect(agent.calls).toEqual(["createSession"]);
+    const id = started.body.session.id;
+    expect((await api("POST", `/api/ai/sessions/${id}/messages`, { text: "Primero" })).status).toBe(202);
+    expect((await api("POST", `/api/ai/sessions/${id}/messages`, { text: "Segundo" })).status).toBe(202);
+    expect(agent.systemMessages).toHaveLength(1);
+    expect(agent.systemMessages[0].text).toContain(`Rama de trabajo: ${started.body.session.branch}`);
   });
 
   it("si Anthropic rechaza la petición, el panel muestra su motivo", async () => {
