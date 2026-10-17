@@ -71,7 +71,7 @@ Environments → production*:
 | Tipo | Nombre | Valor |
 | --- | --- | --- |
 | Secret | `ANTHROPIC_API_KEY` | La clave (`sk-ant-…`) |
-| Variable (opcional) | `ANTHROPIC_WORKSPACE` | ID del workspace de la clave, si no es el *Default* (para los enlaces de *Rastro*) |
+| Variable | `ANTHROPIC_WORKSPACE` | ID del workspace (`wrkspc_…`, en *Settings → Workspaces*). **Obligatoria** si la clave no está ligada a un workspace (claves de organización); opcional si la clave es del workspace *Default* |
 | Variable (opcional) | `AI_SESSION_BUDGET_USD` | Tope por sesión en USD (por defecto 10) |
 
 Relanza el despliegue de la plataforma. No hay que crear nada más en Anthropic:
@@ -122,6 +122,7 @@ El entorno `production` de los repos no debe restringir ramas de despliegue
 | "A la GitHub App le faltan permisos" | Paso 2: cambiar los permisos y aceptarlos en la instalación |
 | "El AI Developer no está configurado" | Falta el secret `ANTHROPIC_API_KEY` o no se ha relanzado el despliegue |
 | "Anthropic rechazó la clave" | Clave revocada o de otra organización |
+| "…not scoped to a workspace…anthropic-workspace-id…" | Clave de organización: define la variable `ANTHROPIC_WORKSPACE` (paso 1) y relanza el despliegue |
 | "Anthropic rechazó la petición: …" | El texto tras los dos puntos es el motivo que da Anthropic (p. ej. Managed Agents o el modelo no habilitados en la cuenta). También queda en el log de la API con su `requestId` |
 | "La cuenta de Anthropic no tiene saldo" (en el chat) | Facturación de la cuenta empresarial |
 | Vista previa: "no tiene el workflow" | Repo con plantilla < 1.5.0 (ver paso 3) |

@@ -82,7 +82,7 @@ export const envSchema = z.object({
   // AI Developer (Claude Managed Agents): ruta al archivo con la clave de la API de la cuenta
   // de Anthropic (no el valor). Sin ella, el AI Developer queda desactivado.
   ANTHROPIC_API_KEY_SECRET_REF: optional(z.string().min(1)),
-  // Workspace de esa clave en la consola de Anthropic (para enlazar las sesiones).
+  // Workspace de Anthropic (wrkspc_…): obligatorio si la clave no está ligada a uno; también enlaza las sesiones.
   ANTHROPIC_WORKSPACE: optional(z.string().regex(/^[A-Za-z0-9_-]+$/)).default("default"),
   // Tope de gasto por sesión, en USD a precio de lista (cada "Ampliar" suma otro tramo igual).
   AI_SESSION_BUDGET_USD: optional(z.coerce.number().int().min(1).max(500)).default(10),

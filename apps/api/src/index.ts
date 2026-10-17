@@ -41,7 +41,7 @@ const app = await buildApp({
   logLevel: env.LOG_LEVEL,
   ai: anthropicKey
     ? {
-        agent: createAnthropicAgentAdapter(anthropicKey, store.aiAgentSettings),
+        agent: createAnthropicAgentAdapter(anthropicKey, store.aiAgentSettings, env.ANTHROPIC_WORKSPACE),
         config: { sessionBudgetCents: env.AI_SESSION_BUDGET_USD * 100, workspace: env.ANTHROPIC_WORKSPACE }
       }
     : undefined,

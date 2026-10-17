@@ -21,9 +21,12 @@ export interface AiAgentSettingsDoc {
  * Adaptador real: Claude Managed Agents con el SDK oficial. El agente y su entorno
  * se crean en la cuenta de la clave la primera vez que hacen falta (nada que
  * configurar a mano) y el agente se actualiza si cambia su definición.
+ *
+ * Con una clave de organización (sin workspace) Anthropic exige elegirlo con la
+ * cabecera anthropic-workspace-id; con "default" no se envía.
  */
-export function createAnthropicAgentAdapter(apiKey: string, settings: Collection<AiAgentSettingsDoc>): AiAgentAdapter {
-  const client = new Anthropic({ apiKey });
+export function createAnthropicAgentAdapter(apiKey: string, settings: Collection<AiAgentSettingsDoc>, workspace = "default"): AiAgentAdapter {
+  const client = new Anthropic({ apiKey, ...(workspace === "default" ? {} : { defaultHeaders: { "anthropic-workspace-id": workspace } }) });
   const sessions = client.beta.sessions;
   let ready: Promise<{ agentId: string; environmentId: string }> | undefined;
 
