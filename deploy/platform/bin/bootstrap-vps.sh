@@ -155,6 +155,27 @@ else
   printf 'y ejecuta: nginx -t && systemctl reload nginx\n(o vuelve a ejecutar este script con --wire-nginx).\n\n'
 fi
 
+# ---- 7b. nombres de host largos -------------------------------------------------------------------
+# Con el valor por defecto en x86 (64), nginx -t rechaza hosts de más de ~46 caracteres
+# (preview-<slug>.<dominio> llega enseguida). Se sube en un archivo propio del directorio
+# incluido, salvo que la configuración ya lo defina (repetirlo invalidaría nginx).
+http_conf="$NGINX_APPS_DIR/_platform-http.conf"
+# Se lee entera antes de buscar: con pipefail, grep -q cortaría nginx -T (SIGPIPE) y daría falso.
+nginx_dump=$(nginx -T 2>/dev/null || true)
+if [[ ! -f $http_conf ]] && grep -Eq '^[^#]*server_names_hash_bucket_size' <<<"$nginx_dump"; then
+  info "nginx ya define server_names_hash_bucket_size; asegúrate de que sea >= 128 para los hosts de vista previa."
+else
+  printf '# Generado por bootstrap-vps.sh: hosts largos (preview-<slug>.<dominio>).\nserver_names_hash_bucket_size 128;\n' >"$http_conf"
+  chmod 644 "$http_conf"
+  if ! nginx -t >/dev/null 2>&1; then
+    rm -f "$http_conf"
+    info "AVISO: nginx -t rechazó $http_conf; no se aplicó. Sube server_names_hash_bucket_size a 128 en el bloque http de $NGINX_CONF."
+  elif nginx_include_active; then
+    nginx_reload
+    info "nginx: server_names_hash_bucket_size 128 ($http_conf)."
+  fi
+fi
+
 # ---- 8. hook de renovación de certbot ------------------------------------------------------------
 hooks=/etc/letsencrypt/renewal-hooks/deploy
 install -d -m 755 "$hooks"

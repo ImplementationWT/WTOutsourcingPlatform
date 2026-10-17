@@ -125,6 +125,7 @@ El entorno `production` de los repos no debe restringir ramas de despliegue
 | "…not scoped to a workspace…anthropic-workspace-id…" | Clave de organización: define la variable `ANTHROPIC_WORKSPACE` (paso 1) y relanza el despliegue |
 | "Anthropic rechazó la petición: …" | El texto tras los dos puntos es el motivo que da Anthropic (p. ej. Managed Agents o el modelo no habilitados en la cuenta). También queda en el log de la API con su `requestId` |
 | "La cuenta de Anthropic no tiene saldo" (en el chat) | Facturación de la cuenta empresarial |
+| Vista previa: "nginx -t falló … server_names_hash_bucket_size" | Host de vista previa largo: vuelve a ejecutar `bootstrap-vps.sh` (paso 3), que lo sube a 128 en `/etc/nginx/platform-apps/_platform-http.conf` |
 | Vista previa: "no tiene el workflow" | Repo con plantilla < 1.5.0 (ver paso 3) |
 | Vista previa fallida | El enlace *Ver el log en GitHub Actions* muestra el paso; a menudo es el build: pide a Claude que lo arregle |
 | Vista previa "privada" al abrirla en otra pestaña | Normal: solo se entra desde el panel (el pase caduca en 2 minutos) |

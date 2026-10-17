@@ -76,6 +76,36 @@ load helpers
   nginx -t
 }
 
+@test "sube server_names_hash_bucket_size para hosts largos (preview-<slug>.<dominio>)" {
+  conf=/etc/nginx/platform-apps/_platform-http.conf
+  grep -qx 'server_names_hash_bucket_size 128;' "$conf"
+  # Un host de 100 caracteres no cabe con el valor por defecto de x86 (64).
+  host="preview-$(printf 'a%.0s' {1..74}).apps.whatever.tech"
+  printf 'server { listen 8089; server_name %s; return 200; }\n' "$host" >/etc/nginx/platform-apps/largo.conf
+  nginx -t
+  # Idempotente: reejecutar no lo duplica.
+  "$SRC/bin/bootstrap-vps.sh" >/dev/null
+  [ "$(grep -rc server_names_hash_bucket_size /etc/nginx/platform-apps/ | awk -F: '{ s += $2 } END { print s }')" -eq 1 ]
+  nginx -t
+  rm -f /etc/nginx/platform-apps/largo.conf
+}
+
+@test "no repite server_names_hash_bucket_size si nginx.conf ya lo define" {
+  cp -p /etc/nginx/nginx.conf /tmp/nginx.conf.orig
+  rm -f /etc/nginx/platform-apps/_platform-http.conf
+  awk '!done && /^[[:space:]]*http[[:space:]]*\{/ { print; print "\tserver_names_hash_bucket_size 256;"; done = 1; next } { print }' \
+    /tmp/nginx.conf.orig >/etc/nginx/nginx.conf
+  grep -q 'server_names_hash_bucket_size 256;' /etc/nginx/nginx.conf
+  run "$SRC/bin/bootstrap-vps.sh"
+  [ "$status" -eq 0 ]
+  [[ $output == *"ya define server_names_hash_bucket_size"* ]]
+  [ ! -e /etc/nginx/platform-apps/_platform-http.conf ]
+  nginx -t
+  cp -p /tmp/nginx.conf.orig /etc/nginx/nginx.conf
+  "$SRC/bin/bootstrap-vps.sh" >/dev/null
+  [ -f /etc/nginx/platform-apps/_platform-http.conf ]
+}
+
 @test "clave del orquestador con comando forzado; reejecutar la reemplaza sin duplicar" {
   key_dir=$(mktemp -d)
   ssh-keygen -q -t ed25519 -N "" -f "$key_dir/prov"

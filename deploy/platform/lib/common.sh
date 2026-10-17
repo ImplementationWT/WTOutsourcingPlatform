@@ -222,8 +222,10 @@ nginx_reload() {
 nginx_include_line() { printf 'include %s/*.conf;' "$NGINX_APPS_DIR"; }
 
 nginx_include_active() {
-  local dir=${NGINX_APPS_DIR//./\\.}
-  nginx -T 2>/dev/null | grep -Eq "^[[:space:]]*include[[:space:]]+${dir}/\*\.conf;"
+  local dir=${NGINX_APPS_DIR//./\\.} dump
+  # Entera antes de buscar: con pipefail, grep -q cortaría nginx -T (SIGPIPE) con muchos sitios.
+  dump=$(nginx -T 2>/dev/null) || return 1
+  grep -Eq "^[[:space:]]*include[[:space:]]+${dir}/\*\.conf;" <<<"$dump"
 }
 
 # Escribe la config de un cliente de forma segura: copia de la anterior, nginx -t
@@ -244,7 +246,9 @@ nginx_apply() {
     if [[ -n $backup ]]; then mv -f "$backup" "$target"; else rm -f "$target"; fi
     printf '%s\n' "$output" >&2
     flock -u "$nginx_lock"
-    die "nginx -t falló con la nueva configuración de $(basename "$target"); se restauró la anterior"
+    local reason
+    reason=$(grep -m1 -E '\[(emerg|crit|alert)\]' <<<"$output" | sed -E 's/^nginx: //' || true)
+    die "nginx -t falló con la nueva configuración de $(basename "$target"); se restauró la anterior${reason:+ ($reason)}"
   fi
   [[ -z $backup ]] || rm -f "$backup"
   nginx_reload
