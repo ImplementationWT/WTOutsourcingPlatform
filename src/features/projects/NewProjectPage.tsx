@@ -66,6 +66,7 @@ export default function NewProjectPage() {
       name: data.name,
       slug: data.slug,
       description: data.description,
+      ...(data.serverId ? { serverId: data.serverId } : {}),
       ...(enabled.length ? { integrations: Object.fromEntries(enabled.map(([id, state]) => [id, state.credentials])) } : {}),
     });
     // Enviadas una vez: se borran del formulario (si se vuelve atrás habrá que escribirlas de nuevo).

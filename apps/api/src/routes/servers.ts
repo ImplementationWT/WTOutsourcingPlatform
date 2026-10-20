@@ -47,7 +47,11 @@ export async function registerServerRoutes(app: FastifyInstance, { store, server
     return parsed.success ? parsed.data.id : null;
   };
 
-  app.get("/api/servers", { preHandler: requireAdmin }, async () => ({ available: servers.available, servers: await servers.list() }));
+  app.get("/api/servers", { preHandler: requireAdmin }, async () => ({
+    available: servers.available,
+    ghcrOrg: servers.ghcrOrg,
+    servers: await servers.list()
+  }));
 
   app.post("/api/servers", { preHandler: requireAdmin }, async (request, reply) => {
     const body = createSchema.safeParse(request.body);

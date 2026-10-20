@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useIntegrationCatalog, usePlatform } from "../api";
 import { deriveResources, STACK } from "../config";
+import { useSelectedServer } from "./useSelectedServer";
 import { Code } from "./parts";
 import type { NewProjectValues } from "./schema";
 
@@ -58,7 +59,8 @@ export default function SummaryStep({
   const platform = usePlatform().data;
   const catalog = useIntegrationCatalog().data;
   const DEPLOY_ENABLED = platform?.deployEnabled ?? false;
-  const resources = deriveResources(values.slug, platform?.appBaseDomain);
+  const { selected } = useSelectedServer();
+  const resources = deriveResources(values.slug, selected?.appsDomain ?? platform?.appBaseDomain);
   // Solo el estado: los valores de las credenciales nunca se muestran.
   const enabledIntegrations = (catalog?.providers ?? []).filter((p) => values.integrations?.[p.id]?.enabled);
 
@@ -105,8 +107,9 @@ export default function SummaryStep({
         title="Despliegue"
         description={DEPLOY_ENABLED ? "Dónde y cómo se publicará." : "Próxima fase: no se ejecuta todavía."}
       >
-        <Row label="Entorno">
-          {STACK.environment} <span className="text-muted-foreground">· {STACK.environmentDetail}</span>
+        <Row label="Servidor">
+          {selected ? selected.name : STACK.environment}{" "}
+          <span className="text-muted-foreground">· {STACK.environmentDetail} · no se podrá cambiar</span>
         </Row>
         <Row label="URL pública">
           <Code>https://{resources.subdomain}</Code>

@@ -98,6 +98,9 @@ y, solo para pruebas, `ACME_CA`.
 `DEPLOY_WAIT_SECONDS`. Estos valores viven en el servidor porque los scripts calculan
 host, puerto y rutas allí, nunca a partir de lo que envía el orquestador.
 
+Más servidores, cada uno con su dominio: **Integraciones → Servidores** en el panel
+([servers.md](servers.md)). Allí se generan la clave y los comandos de cada uno.
+
 ## Instalación (una vez)
 
 1. Copia los scripts al VPS desde la raíz del repo:

@@ -76,6 +76,8 @@ export interface ClientDetail {
       redeployRequestedBy: string | null;
     };
     deployEnabled: boolean;
+    /** Servidor donde se despliega (fijado al crear el proyecto). */
+    server: { id: string; name: string; appsDomain: string };
     /** Estado y fechas por proveedor; nunca valores. */
     integrations: ClientIntegration[];
     createdAt: string;

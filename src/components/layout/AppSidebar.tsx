@@ -4,11 +4,13 @@ import {
   Activity,
   FolderKanban,
   Layers3,
+  Plug,
 } from "lucide-react";
 
 const links = [
   { to: "/dashboard", label: "Dashboard", icon: Activity },
   { to: "/projects", label: "Proyectos", icon: FolderKanban },
+  { to: "/integrations", label: "Integraciones", icon: Plug },
 ];
 
 export default function AppSidebar() {

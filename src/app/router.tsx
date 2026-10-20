@@ -7,6 +7,7 @@ import DashboardPage from "@/features/dashboard/DashboardPage";
 import NewProjectPage from "@/features/projects/NewProjectPage";
 import ProjectDetailPage from "@/features/projects/ProjectDetailPage";
 import ProjectsPage from "@/features/projects/ProjectsPage";
+import IntegrationsPage from "@/features/servers/IntegrationsPage";
 import SettingsPage from "@/features/settings/SettingsPage";
 
 export const router = createBrowserRouter([
@@ -23,6 +24,7 @@ export const router = createBrowserRouter([
           { path: "/projects/new", element: <NewProjectPage /> },
           { path: "/projects/:slug", element: <ProjectDetailPage /> },
           { path: "/projects/:slug/ai", element: <AiDeveloperPage /> },
+          { path: "/integrations", element: <IntegrationsPage /> },
           { path: "/settings", element: <SettingsPage /> },
         ],
       },

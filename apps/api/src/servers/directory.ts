@@ -94,6 +94,11 @@ export class ServerDirectory implements ServerTargets {
     return Boolean(this.deps.key);
   }
 
+  /** GHCR_ORG que debe tener el platform.conf de cada servidor. */
+  get ghcrOrg() {
+    return this.deps.ghcrOrg ?? null;
+  }
+
   private async projectCounts() {
     const rows = await this.deps.clients.aggregate<{ _id: string | null; count: number }>([{ $group: { _id: "$server.id", count: { $sum: 1 } } }]).toArray();
     return new Map(rows.map((row) => [row._id ?? PRIMARY_SERVER_ID, row.count]));

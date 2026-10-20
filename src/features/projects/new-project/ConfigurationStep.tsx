@@ -9,16 +9,29 @@ import {
   Tag,
   Workflow,
 } from "lucide-react";
+import { useEffect } from "react";
+import { Link } from "react-router-dom";
+import { useFormContext } from "react-hook-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { usePlatform } from "../api";
 import { DEPLOY_DOMAIN, deriveResources, STACK } from "../config";
 import IntegrationsSection from "../integrations/IntegrationsSection";
 import { Code, InfoRow, Pill } from "./parts";
+import type { NewProjectValues } from "./schema";
+import { useSelectedServer } from "./useSelectedServer";
 
 export default function ConfigurationStep({ slug }: { slug: string }) {
   const platform = usePlatform().data;
+  const { setValue } = useFormContext<NewProjectValues>();
+  const { ready, selected } = useSelectedServer();
   const DEPLOY_ENABLED = platform?.deployEnabled ?? false;
-  const domain = platform?.appBaseDomain ?? DEPLOY_DOMAIN;
+  const domain = selected?.appsDomain ?? platform?.appBaseDomain ?? DEPLOY_DOMAIN;
+
+  // Por defecto, el primer servidor listo (el principal, si existe).
+  useEffect(() => {
+    if (!selected && ready[0]) setValue("serverId", ready[0].id);
+  }, [selected, ready, setValue]);
   const resources = deriveResources(slug, domain);
 
   return (
@@ -85,15 +98,51 @@ export default function ConfigurationStep({ slug }: { slug: string }) {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">Entorno de despliegue</p>
-            <div className="flex items-center gap-4 rounded-xl border border-foreground/10 bg-foreground/[0.03] p-4">
-              <Server className="size-6 shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="font-medium">{STACK.environment}</p>
-                <p className="text-sm text-muted-foreground">{STACK.environmentDetail}.</p>
+            <p className="text-sm font-medium text-muted-foreground">Servidor</p>
+            {ready.length ? (
+              <div className="space-y-2" role="radiogroup" aria-label="Servidor">
+                {ready.map((server) => (
+                  <button
+                    key={server.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected?.id === server.id}
+                    onClick={() => setValue("serverId", server.id)}
+                    className={cn(
+                      "flex w-full items-center gap-4 rounded-xl border p-4 text-left transition-colors",
+                      selected?.id === server.id
+                        ? "border-violet-400/60 bg-violet-500/10"
+                        : "border-foreground/10 bg-foreground/[0.03] hover:border-foreground/25",
+                    )}
+                  >
+                    <Server className="size-6 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium">{server.name}</p>
+                      <p className="truncate text-sm text-muted-foreground">
+                        *.{server.appsDomain} · {STACK.environmentDetail}
+                      </p>
+                    </div>
+                    {selected?.id === server.id && <Pill>Elegido</Pill>}
+                  </button>
+                ))}
+                <p className="text-xs text-muted-foreground">
+                  El servidor no se puede cambiar después. Se gestionan en{" "}
+                  <Link to="/integrations" className="underline underline-offset-4">
+                    Integraciones
+                  </Link>
+                  .
+                </p>
               </div>
-              <Pill>Predeterminado</Pill>
-            </div>
+            ) : (
+              <div className="flex items-center gap-4 rounded-xl border border-foreground/10 bg-foreground/[0.03] p-4">
+                <Server className="size-6 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">{STACK.environment}</p>
+                  <p className="text-sm text-muted-foreground">{STACK.environmentDetail}.</p>
+                </div>
+                <Pill>Predeterminado</Pill>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

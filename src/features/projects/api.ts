@@ -17,6 +17,8 @@ export interface NewProjectInput {
   description: string;
   /** Solo las integraciones activadas, con sus credenciales (viajan una vez, por HTTPS). */
   integrations?: Record<string, Record<string, string>>;
+  /** Servidor donde se desplegará (no cambia nunca). */
+  serverId?: string;
 }
 
 async function fetchProjects(): Promise<ProjectRepo[]> {

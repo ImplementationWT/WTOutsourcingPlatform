@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Boxes, ExternalLink, Loader2, Lock, LockOpen, Rocket, RotateCw } from "lucide-react";
+import { Boxes, ExternalLink, Loader2, Lock, LockOpen, Rocket, RotateCw, Server } from "lucide-react";
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -69,6 +69,11 @@ export default function DeploymentCard({ client }: { client: ClientDetail["clien
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="divide-y divide-foreground/10">
+          {client.server && (
+            <Row icon={Server} label="Servidor">
+              {client.server.name} <span className="text-muted-foreground">· *.{client.server.appsDomain}</span>
+            </Row>
+          )}
           <Row icon={ExternalLink} label="Aplicación">
             <a href={deployment.appUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline-offset-4 hover:underline">
               {deployment.appUrl}

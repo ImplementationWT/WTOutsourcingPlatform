@@ -53,6 +53,14 @@ base64, no el valor. En producción la genera `deploy/activate.sh` una sola vez 
 sale del VPS y se monta de solo lectura en `/run/secrets/integration.key`. Sin la clave,
 la plataforma rechaza activar integraciones (503) y el resto sigue funcionando.
 
+## Claves de los servidores de despliegue
+
+`SERVER_KEYS_ENCRYPTION_KEY_SECRET_REF` apunta a `/opt/wt-launchpad/server-keys.key`, que
+genera `deploy/activate.sh` igual que la anterior y se monta en `/run/secrets/server-keys.key`.
+Cifra la clave privada del provisioner de cada servidor dado de alta desde el panel (las genera
+Launchpad; nunca se muestran ni se registran). Detalles, huella fijada y rotación en
+[servers.md](servers.md).
+
 ## Rotación
 
 - **Clave de cifrado:** solo afecta a credenciales en tránsito (minutos). En el VPS:

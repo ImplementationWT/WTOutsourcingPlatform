@@ -18,6 +18,8 @@ export const newProjectSchema = z.object({
     .trim()
     .min(10, "Describe el proyecto en al menos 10 caracteres")
     .max(280, "Máximo 280 caracteres"),
+  /** Servidor donde se desplegará (fijo para siempre); vacío: el que elija la plataforma por defecto. */
+  serverId: z.string().optional(),
   /** Integraciones por proveedor del catálogo. Las credenciales solo viven en el formulario. */
   integrations: z.record(z.string(), z.object({ enabled: z.boolean(), credentials: z.record(z.string(), z.string()) })),
 });
