@@ -87,6 +87,10 @@ https_preview() { # <ruta> [args de curl…]
   [ "$(jq -r .MONGODB_DB <<<"$runtime")" = client_acme_preview ]
   [ "$(jq -r .mongoHost <<<"$runtime")" = mongo:27017 ]
   [ "$(jq -r .NODE_ENV <<<"$runtime")" = production ]
+  # En la vista previa no se obliga a cambiar admin123; en producción sí (no se fija).
+  [ "$(jq -r .FORCE_ADMIN_PASSWORD_CHANGE <<<"$runtime")" = false ]
+  prod_runtime=$(curl -s "http://127.0.0.1:$(port_of_key acme)/runtime")
+  [ "$(jq -r .FORCE_ADMIN_PASSWORD_CHANGE <<<"$prod_runtime")" = null ]
 
   # Producción sigue sana.
   container=$(docker compose -p app-acme ps -q app)

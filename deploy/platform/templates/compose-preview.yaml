@@ -45,6 +45,9 @@ services:
       TRUST_PROXY_HOPS: "1"
       PORT: "@@INTERNAL_PORT@@"
       HOST: 0.0.0.0
+      # Base temporal y acceso solo con pase de Launchpad: admin / admin123 sin cambio obligatorio
+      # (se pediría en cada vista previa nueva). Producción lo sigue exigiendo.
+      FORCE_ADMIN_PASSWORD_CHANGE: "false"
     user: node
     read_only: true
     tmpfs:

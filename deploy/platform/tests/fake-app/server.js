@@ -8,10 +8,10 @@ http
     }
     if (req.url === "/runtime") {
       // Solo para las pruebas: las variables que fija el compose y la cabecera Host que llega de nginx.
-      const { NODE_ENV, TRUST_PROXY_HOPS, PORT, HOST, MONGODB_DB, MONGODB_URI } = process.env;
+      const { NODE_ENV, TRUST_PROXY_HOPS, PORT, HOST, MONGODB_DB, MONGODB_URI, FORCE_ADMIN_PASSWORD_CHANGE } = process.env;
       const mongoHost = MONGODB_URI ? new URL(MONGODB_URI).host : null;
       res.writeHead(200, { "content-type": "application/json" });
-      return res.end(JSON.stringify({ NODE_ENV, TRUST_PROXY_HOPS, PORT, HOST, MONGODB_DB, mongoHost, host: req.headers.host, proto: req.headers["x-forwarded-proto"] }));
+      return res.end(JSON.stringify({ NODE_ENV, TRUST_PROXY_HOPS, PORT, HOST, MONGODB_DB, FORCE_ADMIN_PASSWORD_CHANGE, mongoHost, host: req.headers.host, proto: req.headers["x-forwarded-proto"] }));
     }
     res.writeHead(200, { "content-type": "text/html" });
     res.end("<!doctype html><title>app</title>");

@@ -25,7 +25,8 @@ Se abre desde el detalle de un proyecto listo: **AI Developer**
 4. **Vista previa.** *Ver vista previa* lanza el workflow `preview.yml` del repo
    sobre la rama y la arranca en `https://preview-<slug>.apps.whatever.tech`,
    embebida junto al chat, con una **base de datos vacía y temporal**
-   (`admin` / `admin123`). Se apaga sola tras una hora sin visitas.
+   (`admin` / `admin123`, sin cambio obligatorio: la base se borra y solo se entra
+   desde el panel). Se apaga sola tras una hora sin visitas.
 5. **Publicar.** *Crear Pull Request* → GitHub ejecuta el CI del repo →
    *Aprobar y desplegar* (solo con todas las validaciones en verde) fusiona en
    `main` y el workflow `Deploy` del repo despliega a producción.
