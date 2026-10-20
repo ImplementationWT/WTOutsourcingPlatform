@@ -1,114 +1,97 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, Bot, ExternalLink, GitBranch, Loader2, Plus, Sparkles, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ExternalLink, Loader2, Menu, PanelRightClose, PanelRightOpen, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { applyTheme, useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/features/projects/api";
 import type { AiSession } from "@/types/ai";
 import ChangesPanel from "./ChangesPanel";
-import ChatPanel, { textareaClass } from "./ChatPanel";
-import { AttachButton, AttachmentList } from "./MarkdownAttachments";
-import { useMarkdownAttachments } from "./useMarkdownAttachments";
+import ChatPanel, { ClaudeAvatar } from "./ChatPanel";
 import PreviewPanel from "./PreviewPanel";
 import PublishPanel from "./PublishPanel";
-import { closeAiSession, formatUsd, raiseAiBudget, startAiSession, useAiSession, useAiSessions, useAiStatus } from "./api";
+import SessionSidebar from "./SessionSidebar";
+import Welcome from "./Welcome";
+import { closeAiSession, formatUsd, raiseAiBudget, useAiSession, useAiSessions, useAiStatus } from "./api";
 import { useAiEvents } from "./useAiEvents";
 
-const STATUS_BADGE: Record<AiSession["status"], string> = { active: "Activa", merged: "Desplegada", closed: "Cerrada" };
+const STATUS_BADGE: Record<AiSession["status"], string> = { active: "En curso", merged: "Publicada", closed: "Cerrada" };
+const PANEL_KEY = "ai-console-panel";
 
-function NewSession({ slug, onStarted }: { slug: string; onStarted: (session: AiSession) => void }) {
-  const queryClient = useQueryClient();
-  const [title, setTitle] = useState("");
-  const [message, setMessage] = useState("");
-  const attachments = useMarkdownAttachments();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+type Tab = "preview" | "changes" | "publish";
+const TABS: [Tab, string][] = [
+  ["preview", "Vista previa"],
+  ["changes", "Cambios"],
+  ["publish", "Publicar"],
+];
 
-  async function start() {
-    setBusy(true);
-    setError(null);
+/** Preferencia de este navegador (panel derecho abierto o cerrado); si no hay storage, abierto. */
+function usePanelOpen() {
+  const [open, setOpen] = useState(() => {
     try {
-      const { session } = await startAiSession(slug, {
-        title: title.trim(),
-        message: message.trim() || undefined,
-        ...(attachments.files.length ? { attachments: attachments.files } : {}),
-      });
-      onStarted(session);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo iniciar la sesión.");
-      // Si falló el primer mensaje, la sesión ya existe: aparece y se reintenta desde el chat.
-      await queryClient.invalidateQueries({ queryKey: ["ai-sessions", slug] });
-    } finally {
-      setBusy(false);
+      return localStorage.getItem(PANEL_KEY) !== "closed";
+    } catch {
+      return true;
     }
-  }
+  });
+  const toggle = (value: boolean) => {
+    setOpen(value);
+    try {
+      localStorage.setItem(PANEL_KEY, value ? "open" : "closed");
+    } catch {
+      // sin storage: solo dura esta visita
+    }
+  };
+  return [open, toggle] as const;
+}
 
+/** Panel de trabajo: vista previa, cambios en el código y publicación. */
+function WorkPanel({ session, agentBusy, onClose }: { session: AiSession; agentBusy: boolean; onClose: () => void }) {
+  const [tab, setTab] = useState<Tab>("preview");
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Sparkles className="size-4 text-violet-300" />
-          Nueva sesión
-        </CardTitle>
-        <CardDescription>
-          Claude trabajará en una rama nueva del repositorio, en un entorno aislado. Verás sus cambios en vivo y nada se despliega sin tu aprobación.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="ai-title">Título del cambio</Label>
-          <Input id="ai-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} placeholder="Validaciones en el formulario de registro" />
-        </div>
-        <div className="space-y-1.5" {...attachments.dropZone}>
-          <Label htmlFor="ai-message">Instrucciones para Claude</Label>
-          <textarea
-            id="ai-message"
-            rows={6}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            maxLength={20_000}
-            placeholder="Cambia el formulario de registro: agrega validaciones (email válido, contraseña de 10+ caracteres) y adapta el diseño a los colores del cliente (#0F4C81 y #F2A900)."
-            className={textareaClass}
-          />
-          <AttachmentList state={attachments} />
-          <p className="text-xs text-muted-foreground">
-            Puedes adjuntar especificaciones o textos en Markdown (.md): Claude los recibe junto a tus instrucciones.
-          </p>
-        </div>
-        {error && (
-          <p role="alert" className="text-sm text-red-300">
-            {error}
-          </p>
-        )}
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={start} disabled={busy || title.trim().length < 3}>
-            {busy ? <Loader2 className="animate-spin" /> : <Bot />}
-            Empezar
-          </Button>
-          <AttachButton state={attachments} disabled={busy} />
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex h-full min-h-0 flex-col bg-background/90 backdrop-blur-xl">
+      <div className="flex items-center gap-1 border-b border-foreground/10 px-2 py-1.5" role="tablist">
+        {TABS.map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={cn(
+              "rounded-md px-3 py-1.5 text-sm transition-colors",
+              tab === id ? "bg-foreground/10 font-medium" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+        <Button size="icon-sm" variant="ghost" className="ml-auto" onClick={onClose} aria-label="Cerrar panel">
+          <X />
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {tab === "preview" && <PreviewPanel session={session} agentBusy={agentBusy} />}
+        {tab === "changes" && <ChangesPanel session={session} />}
+        {tab === "publish" && <PublishPanel session={session} agentBusy={agentBusy} />}
+      </div>
+    </div>
   );
 }
 
-type Tab = "preview" | "changes" | "publish";
-
-function Workspace({ session }: { session: AiSession }) {
+/** Una conversación: cabecera, chat y (si está abierto) el panel de trabajo a la derecha. */
+function SessionView({ session, panelOpen, setPanelOpen }: { session: AiSession; panelOpen: boolean; setPanelOpen: (open: boolean) => void }) {
   const queryClient = useQueryClient();
   const { data } = useAiSession(session.id);
   const chat = useAiEvents(session.id);
-  const [tab, setTab] = useState<Tab>("preview");
   const [closing, setClosing] = useState(false);
   const current = data?.session ?? session;
   const cost = chat.costCents ?? data?.agent?.costCents ?? null;
   const budget = data?.agent?.budgetCents ?? null;
+  const agentBusy = chat.state === "running";
 
   async function raiseBudget() {
     await raiseAiBudget(session.id);
@@ -121,31 +104,49 @@ function Workspace({ session }: { session: AiSession }) {
       await closeAiSession(session.id);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["ai-session", session.id] }),
-        queryClient.invalidateQueries({ queryKey: ["ai-sessions", session.clientId] }),
+        queryClient.invalidateQueries({ queryKey: ["ai-sessions"] }),
       ]);
     } finally {
       setClosing(false);
     }
   }
 
-  const tabs: [Tab, string][] = [
-    ["preview", "Vista previa"],
-    ["changes", "Cambios"],
-    ["publish", "Publicar"],
-  ];
-
   return (
-    <div className="grid min-h-0 gap-4 lg:h-[calc(100vh-13rem)] lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
-      <Card className="flex min-h-[32rem] flex-col gap-0 overflow-hidden py-0 lg:min-h-0">
-        <div className="flex flex-wrap items-center gap-2 border-b border-foreground/10 px-4 py-3">
-          <p className="min-w-0 flex-1 truncate font-medium">{current.title}</p>
+    <div className="flex h-full min-h-0">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex flex-wrap items-center gap-2 border-b border-foreground/10 px-4 py-2">
+          <p className="min-w-0 flex-1 truncate text-sm font-medium" title={current.title}>
+            {current.title}
+          </p>
           <Badge variant="outline">{STATUS_BADGE[current.status]}</Badge>
           {cost !== null && (
-            <span className="text-xs text-muted-foreground tabular-nums" title="Gasto a precio de lista de Anthropic">
+            <span className="text-xs text-muted-foreground tabular-nums" title="Gasto de esta conversación a precio de lista de Anthropic">
               {formatUsd(cost)}
               {budget !== null && ` / ${formatUsd(budget)}`}
             </span>
           )}
+          {current.consoleUrl && (
+            <Button
+              size="xs"
+              variant="ghost"
+              render={<a href={current.consoleUrl} target="_blank" rel="noreferrer" />}
+              nativeButton={false}
+              title="Rastro técnico completo en la consola de Anthropic"
+            >
+              <ExternalLink />
+              Rastro
+            </Button>
+          )}
+          {current.status === "active" && (
+            <Button size="xs" variant="ghost" onClick={close} disabled={closing} title="Cerrar sin publicar">
+              {closing ? <Loader2 className="animate-spin" /> : <X />}
+              Cerrar
+            </Button>
+          )}
+          <Button size="xs" variant={panelOpen ? "secondary" : "outline"} onClick={() => setPanelOpen(!panelOpen)} aria-pressed={panelOpen}>
+            {panelOpen ? <PanelRightClose /> : <PanelRightOpen />}
+            Vista previa y publicar
+          </Button>
         </div>
         <div className="min-h-0 flex-1">
           <ChatPanel
@@ -157,165 +158,165 @@ function Workspace({ session }: { session: AiSession }) {
             onRaiseBudget={raiseBudget}
           />
         </div>
-      </Card>
+      </div>
 
-      <Card className="flex min-h-[32rem] flex-col gap-0 overflow-hidden py-0 lg:min-h-0">
-        <div className="flex items-center gap-1 border-b border-foreground/10 px-2 py-1.5" role="tablist">
-          {tabs.map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={tab === id}
-              onClick={() => setTab(id)}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-sm transition-colors",
-                tab === id ? "bg-foreground/10 font-medium" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-          <div className="ml-auto flex items-center gap-1">
-            {current.consoleUrl && (
-              <Button size="xs" variant="ghost" render={<a href={current.consoleUrl} target="_blank" rel="noreferrer" />} nativeButton={false} title="Rastro completo en la consola de Anthropic">
-                <ExternalLink />
-                Rastro
-              </Button>
-            )}
-            {current.status === "active" && (
-              <Button size="xs" variant="ghost" onClick={close} disabled={closing} title="Cerrar sin desplegar">
-                {closing ? <Loader2 className="animate-spin" /> : <X />}
-                Cerrar sesión
-              </Button>
-            )}
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {tab === "preview" && <PreviewPanel session={current} agentBusy={chat.state === "running"} />}
-          {tab === "changes" && <ChangesPanel session={current} />}
-          {tab === "publish" && <PublishPanel session={current} agentBusy={chat.state === "running"} />}
-        </div>
-      </Card>
+      {panelOpen && (
+        <>
+          {/* En pantallas estrechas el panel se abre encima del chat. */}
+          <button type="button" aria-label="Cerrar panel" className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setPanelOpen(false)} />
+          <aside className="fixed inset-y-0 right-0 z-40 w-full border-l border-foreground/10 sm:w-[34rem] lg:static lg:z-auto lg:w-[46%] lg:max-w-[52rem]">
+            <WorkPanel session={current} agentBusy={agentBusy} onClose={() => setPanelOpen(false)} />
+          </aside>
+        </>
+      )}
     </div>
   );
 }
 
 function Notice({ children }: { children: ReactNode }) {
   return (
-    <Card>
-      <CardContent className="flex items-start gap-3 text-sm">
+    <div className="flex h-full items-center justify-center p-6">
+      <div className="flex max-w-xl items-start gap-3 rounded-xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm">
         <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-400" />
         <div>{children}</div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
-/** AI Developer de un proyecto: sesiones, chat en vivo, cambios y publicación. */
+/**
+ * AI Developer como consola a pantalla completa, al estilo de Claude: conversaciones a la
+ * izquierda, chat en el centro y vista previa / cambios / publicar a la derecha.
+ */
 export default function AiDeveloperPage() {
   const { slug = "" } = useParams();
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
+  const { theme } = useTheme();
+  useEffect(() => applyTheme(theme), [theme]);
+
   const status = useAiStatus();
   const client = useClient(slug);
   const sessions = useAiSessions(slug);
   const [creating, setCreating] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = usePanelOpen();
 
   const list = sessions.data ?? [];
+  const projectName = client.data?.client.name ?? slug;
   const selectedId = params.get("sesion");
-  const selected = list.find((s) => s.id === selectedId) ?? (creating ? undefined : (list.find((s) => s.status === "active") ?? list[0]));
+  const selected = creating ? undefined : (list.find((s) => s.id === selectedId) ?? list.find((s) => s.status === "active") ?? list[0]);
   const hasActive = list.some((s) => s.status === "active");
 
   const select = (id: string) => {
     setCreating(false);
+    setSidebarOpen(false);
     setParams({ sesion: id }, { replace: true });
   };
+  const startNew = () => {
+    setCreating(true);
+    setSidebarOpen(false);
+  };
+  const refreshSessions = () => queryClient.invalidateQueries({ queryKey: ["ai-sessions", slug] });
+
+  const loading = status.isLoading || sessions.isLoading || client.isLoading;
+  let body: ReactNode;
+  if (loading) {
+    body = (
+      <div className="mx-auto max-w-3xl space-y-4 p-6">
+        <Skeleton className="h-10 rounded-xl" />
+        <Skeleton className="h-64 rounded-xl" />
+      </div>
+    );
+  } else if (!status.data?.enabled) {
+    body = (
+      <Notice>
+        El AI Developer no está configurado: falta la clave de la API de Anthropic de la cuenta empresarial en el servidor de la plataforma (
+        <code className="font-mono">ANTHROPIC_API_KEY_SECRET_REF</code>). Ver <code className="font-mono">docs/ai-developer.md</code>.
+      </Notice>
+    );
+  } else if (status.data.missingPermissions?.length) {
+    body = (
+      <Notice>
+        <p className="font-medium">A la GitHub App le faltan permisos para el AI Developer</p>
+        <ul className="mt-1 list-disc pl-5">
+          {status.data.missingPermissions.map((permission) => (
+            <li key={permission}>
+              <code className="font-mono">{permission}</code>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-muted-foreground">
+          Añádelos en GitHub → Settings → Developer settings → GitHub Apps → la App → Permissions & events, guarda y acepta la solicitud de permisos en
+          la instalación (Settings → Applications). Después recarga esta página.
+        </p>
+      </Notice>
+    );
+  } else if (client.data?.client.status !== "ready") {
+    body = <Notice>El proyecto debe terminar de aprovisionarse antes de usar el AI Developer.</Notice>;
+  } else if (selected) {
+    body = <SessionView key={selected.id} session={selected} panelOpen={panelOpen} setPanelOpen={setPanelOpen} />;
+  } else {
+    body = (
+      <Welcome
+        slug={slug}
+        projectName={projectName}
+        onStarted={async (session) => {
+          await refreshSessions();
+          select(session.id);
+        }}
+        onFailed={() => void refreshSessions()}
+      />
+    );
+  }
+
+  const sidebar = (onClose?: () => void) => (
+    <SessionSidebar
+      slug={slug}
+      projectName={projectName}
+      sessions={list}
+      selectedId={selected?.id ?? null}
+      creating={!selected && !loading}
+      canCreate={!hasActive && !creating}
+      onSelect={select}
+      onNew={startNew}
+      onClose={onClose}
+    />
+  );
 
   return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <Link to={`/projects/${slug}`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="size-4" />
-            {client.data?.client.name ?? slug}
-          </Link>
-          <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold tracking-tight">
-            <Bot className="size-6 text-violet-300" />
-            AI Developer
-          </h1>
-        </div>
-        {list.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="sr-only" htmlFor="ai-session-select">
-              Sesión
-            </label>
-            <select
-              id="ai-session-select"
-              value={selected?.id ?? ""}
-              onChange={(e) => select(e.target.value)}
-              className="h-8 max-w-72 rounded-lg border border-input bg-transparent px-2 text-sm dark:bg-input/30"
-            >
-              {creating && <option value="">Nueva sesión</option>}
-              {list.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.title} · {STATUS_BADGE[s.status]}
-                </option>
-              ))}
-            </select>
-            {!hasActive && !creating && (
-              <Button size="sm" onClick={() => setCreating(true)}>
-                <Plus />
-                Nueva sesión
-              </Button>
-            )}
-          </div>
-        )}
-      </div>
+    <div className="flex h-svh flex-col bg-[radial-gradient(ellipse_at_top,#ede9fe_0%,#f6f5fb_45%,#ffffff_100%)] text-foreground dark:bg-[radial-gradient(ellipse_at_top,#1e1b4b_0%,#0b0a1f_45%,#020617_100%)]">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-foreground/10 px-3">
+        <Button size="icon-sm" variant="ghost" className="md:hidden" onClick={() => setSidebarOpen(true)} aria-label="Conversaciones">
+          <Menu />
+        </Button>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          render={<Link to={`/projects/${slug}`} />}
+          nativeButton={false}
+          aria-label={`Volver a ${projectName}`}
+          className="hidden md:inline-flex"
+        >
+          <ArrowLeft />
+        </Button>
+        <ClaudeAvatar className="size-6 [&_svg]:size-3" />
+        <p className="min-w-0 truncate text-sm">
+          <span className="font-medium">AI Developer</span>
+          <span className="text-muted-foreground"> · {projectName}</span>
+        </p>
+      </header>
 
-      {status.isLoading || sessions.isLoading || client.isLoading ? (
-        <Skeleton className="h-96 rounded-xl" />
-      ) : !status.data?.enabled ? (
-        <Notice>
-          El AI Developer no está configurado: falta la clave de la API de Anthropic de la cuenta empresarial en el servidor de la plataforma
-          (<code className="font-mono">ANTHROPIC_API_KEY_SECRET_REF</code>). Ver <code className="font-mono">docs/ai-developer.md</code>.
-        </Notice>
-      ) : status.data.missingPermissions?.length ? (
-        <Notice>
-          <p className="font-medium">A la GitHub App le faltan permisos para el AI Developer</p>
-          <ul className="mt-1 list-disc pl-5">
-            {status.data.missingPermissions.map((permission) => (
-              <li key={permission}>
-                <code className="font-mono">{permission}</code>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-muted-foreground">
-            Añádelos en GitHub → Settings → Developer settings → GitHub Apps → la App → Permissions & events, guarda y acepta la solicitud de
-            permisos en la instalación (Settings → Applications). Después recarga esta página.
-          </p>
-        </Notice>
-      ) : client.data?.client.status !== "ready" ? (
-        <Notice>El proyecto debe terminar de aprovisionarse antes de usar el AI Developer.</Notice>
-      ) : selected ? (
-        <>
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <GitBranch className="size-3.5" />
-            <code className="font-mono">{selected.branch}</code> en {selected.repository} · abierta por {selected.createdBy}
-          </p>
-          <Workspace key={selected.id} session={selected} />
-        </>
-      ) : (
-        <div className="mx-auto max-w-2xl">
-          <NewSession
-            slug={slug}
-            onStarted={async (session) => {
-              await queryClient.invalidateQueries({ queryKey: ["ai-sessions", slug] });
-              select(session.id);
-            }}
-          />
-        </div>
-      )}
-    </section>
+      <div className="flex min-h-0 flex-1">
+        <div className="hidden md:block">{sidebar()}</div>
+        {sidebarOpen && (
+          <>
+            <button type="button" aria-label="Cerrar lista" className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setSidebarOpen(false)} />
+            <div className="fixed inset-y-0 left-0 z-40 md:hidden">{sidebar(() => setSidebarOpen(false))}</div>
+          </>
+        )}
+        <main className="min-w-0 flex-1">{body}</main>
+      </div>
+    </div>
   );
 }

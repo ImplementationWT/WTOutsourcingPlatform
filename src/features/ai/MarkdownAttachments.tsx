@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { MAX_ATTACHMENTS, type MarkdownAttachmentsState, bytes, kb } from "./useMarkdownAttachments";
 
 /** Botón "Adjuntar .md" con su selector de archivos oculto. */
-export function AttachButton({ state, disabled }: { state: MarkdownAttachmentsState; disabled?: boolean }) {
+export function AttachButton({ state, disabled, compact }: { state: MarkdownAttachmentsState; disabled?: boolean; compact?: boolean }) {
   const input = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -22,14 +22,15 @@ export function AttachButton({ state, disabled }: { state: MarkdownAttachmentsSt
       />
       <Button
         type="button"
-        size="sm"
-        variant="outline"
+        size={compact ? "icon-sm" : "sm"}
+        variant={compact ? "ghost" : "outline"}
         onClick={() => input.current?.click()}
         disabled={disabled || state.files.length >= MAX_ATTACHMENTS}
         title="Adjuntar archivos Markdown (.md) para que Claude los lea"
+        aria-label={compact ? "Adjuntar archivos .md" : undefined}
       >
         <Paperclip />
-        Adjuntar .md
+        {!compact && "Adjuntar .md"}
       </Button>
     </>
   );
