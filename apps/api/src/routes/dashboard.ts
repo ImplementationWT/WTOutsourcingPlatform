@@ -5,6 +5,7 @@ import type { Deps } from "../jobs/types.js";
 import type { AdminStore } from "../store/admin-store.js";
 import type { ClientDoc, JobDoc } from "../store/models.js";
 import { initialAdminStatus, shortDigest } from "./clients.js";
+import { appsDomainOf } from "../servers/resolve.js";
 
 const PROBE_TIMEOUT_MS = 4_000;
 /** Acciones de auditoría que se muestran (sin detalles: solo qué, quién, cuándo y sobre qué cliente). */
@@ -40,7 +41,7 @@ export async function registerDashboardRoutes(app: FastifyInstance, { store, dep
 
     const projects = await Promise.all(
       clients.map(async (client: ClientDoc) => {
-        const names = deriveNames(parseSlug(client._id), { targetOwner: github.owner, appsDomain: config.appsDomain });
+        const names = deriveNames(parseSlug(client._id), { targetOwner: github.owner, appsDomain: appsDomainOf(client, config) });
         const deployed = config.deployEnabled && !!client.deployment?.preparedAt;
         const health = deployed ? await probeLive(deps, names.baseUrl) : { live: "not_deployed" as const, responseMs: null };
         return {

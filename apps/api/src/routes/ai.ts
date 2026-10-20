@@ -76,9 +76,11 @@ function anthropicError(error: unknown): { status: number; message: string } | n
  */
 export async function registerAiRoutes(
   app: FastifyInstance,
-  { store, ai, appsDomain, secureCookies }: { store: AdminStore; ai?: AiDeveloper; appsDomain: string; secureCookies: boolean }
+  { store, ai, secureCookies }: { store: AdminStore; ai?: AiDeveloper; secureCookies: boolean }
 ) {
-  const previewHostRe = new RegExp(`^preview-[a-z0-9]+(-[a-z0-9]+)*\\.${appsDomain.replace(/\./g, "\\.")}$`);
+  // Cualquier dominio de servidor: el pase va firmado y ligado al host exacto, y solo vale
+  // para el host de la vista previa activa de su sesión.
+  const previewHostRe = /^preview-[a-z0-9]+(-[a-z0-9]+)*\.([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/;
   const previewHost = (request: FastifyRequest) => {
     const host = request.headers["x-preview-host"];
     return typeof host === "string" && previewHostRe.test(host) ? host : null;

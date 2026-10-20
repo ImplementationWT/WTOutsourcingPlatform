@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 // ssh2 es CommonJS: en Node (ESM) solo expone el export por defecto.
 import ssh2 from "ssh2";
 import { z } from "zod";
@@ -56,6 +57,23 @@ const previewInstallSchema = z.object({
 /** Respuesta de preview-stop. */
 const previewStopSchema = z.object({ status: z.literal("ok"), slug: z.string(), stopped: z.boolean() });
 
+/** Respuesta de server-info: verificación del servidor (sin secretos). */
+const serverInfoSchema = z.object({
+  status: z.literal("ok"),
+  scriptsVersion: z.number().int(),
+  appBaseDomain: z.string(),
+  ghcrOrg: z.string(),
+  acmeEmail: z.boolean(),
+  panelOrigin: z.string().nullable(),
+  panelUpstream: z.string(),
+  nginx: z.object({ valid: z.boolean(), include: z.boolean() }),
+  docker: z.boolean(),
+  certbot: z.boolean(),
+  ports: z.object({ used: z.number().int(), total: z.number().int() }),
+  diskFreeMb: z.number().nullable()
+});
+
+export type ServerInfo = Omit<z.infer<typeof serverInfoSchema>, "status">;
 export type InstallResult = z.infer<typeof installResultSchema>;
 export type PreviewInstallResult = z.infer<typeof previewInstallSchema>;
 export type UninstallResult = z.infer<typeof uninstallResultSchema>;
@@ -75,6 +93,8 @@ export interface ServerAdapter {
   installPreview(slug: Slug): Promise<PreviewInstallResult>;
   /** Para la vista previa y borra su base temporal; nginx y el certificado se conservan. */
   stopPreview(slug: Slug): Promise<{ stopped: boolean }>;
+  /** Verificación de solo lectura: versión de los scripts y configuración del servidor. */
+  serverInfo(): Promise<ServerInfo>;
 }
 
 export interface ServerConnection {
@@ -111,7 +131,7 @@ export function generateClientKeyPair(comment: string) {
 }
 
 /** Únicos comandos que el orquestador puede pedir (provisioner-dispatch aplica la misma lista). */
-type ServerCommand = "install-client" | "client-status" | "uninstall-client" | "preview-install" | "preview-stop";
+type ServerCommand = "install-client" | "client-status" | "uninstall-client" | "preview-install" | "preview-stop" | "server-info";
 
 const INSTALL_TIMEOUT_MS = 10 * 60_000; // incluye la emisión del certificado
 const QUERY_TIMEOUT_MS = 30_000;
@@ -132,7 +152,7 @@ function scriptError(stderr: string) {
 export function createServerAdapter(connection: ServerConnection): ServerAdapter {
   registerSecret(connection.provisionerKey);
 
-  function run(command: ServerCommand, slug: Slug, stdin: string, timeoutMs: number) {
+  function run(command: ServerCommand, slug: Slug | null, stdin: string, timeoutMs: number) {
     return new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
       const client = new Client();
       let settled = false;
@@ -150,8 +170,8 @@ export function createServerAdapter(connection: ServerConnection): ServerAdapter
       }
 
       client.on("ready", () => {
-        // El comando son dos tokens fijos: verbo de la lista y slug ya validado (tipo Slug).
-        client.exec(`${command} ${slug}`, (error, stream) => {
+        // El comando son tokens fijos: verbo de la lista y, si lo lleva, slug ya validado (tipo Slug).
+        client.exec(slug ? `${command} ${slug}` : command, (error, stream) => {
           if (error) return done(new TransientError("server_exec_failed", `No se pudo ejecutar ${command} en el servidor.`));
           let stdout = "";
           let stderr = "";
@@ -166,7 +186,10 @@ export function createServerAdapter(connection: ServerConnection): ServerAdapter
         const message = String(error.message);
         if (/verification failed|host denied/i.test(message)) {
           return done(
-            new FatalError("server_host_key_mismatch", "La clave del servidor no coincide con DEPLOY_HOST_KEY. No se conecta (posible suplantación).")
+            new FatalError(
+              "server_host_key_mismatch",
+              `La clave de ${connection.host} no coincide con la huella fijada. No se conecta (posible suplantación).`
+            )
           );
         }
         if (/authentication methods failed/i.test(message)) {
@@ -233,6 +256,48 @@ export function createServerAdapter(connection: ServerConnection): ServerAdapter
       const result = await run("preview-stop", slug, "", INSTALL_TIMEOUT_MS);
       check("preview-stop", result);
       return { stopped: parse(previewStopSchema, "preview-stop", result.stdout).stopped };
+    },
+    async serverInfo() {
+      const result = await run("server-info", null, "", QUERY_TIMEOUT_MS);
+      check("server-info", result);
+      return parse(serverInfoSchema.omit({ status: true }), "server-info", result.stdout);
     }
   };
+}
+
+/** Huella como la imprime `ssh-keygen -lf`: SHA256:<base64 sin relleno>. */
+export function hostKeyFingerprint(key: Buffer) {
+  return `SHA256:${createHash("sha256").update(key).digest("base64").replace(/=+$/, "")}`;
+}
+
+/**
+ * Lee la clave ed25519 del servidor sin autenticarse (se corta la conexión al recibirla).
+ * Solo sirve para mostrar su huella: se fija cuando una persona la confirma con la que
+ * ve en la consola del VPS, nunca automáticamente.
+ */
+export function fetchHostKey(host: string, port: number, timeoutMs = 15_000) {
+  return new Promise<{ type: "ssh-ed25519"; key: Buffer; fingerprint: string }>((resolve, reject) => {
+    const client = new Client();
+    let captured: Buffer | undefined;
+    const timer = setTimeout(() => finish(new TransientError("server_unreachable", `${host}:${port} no respondió por SSH.`)), timeoutMs);
+    function finish(error?: Error) {
+      clearTimeout(timer);
+      client.end();
+      if (captured) resolve({ type: "ssh-ed25519", key: captured, fingerprint: hostKeyFingerprint(captured) });
+      else reject(error ?? new TransientError("server_unreachable", `No se pudo leer la clave SSH de ${host}.`));
+    }
+    client.on("error", () => finish());
+    client.connect({
+      host,
+      port,
+      username: "provisioner",
+      readyTimeout: timeoutMs,
+      // La de ed25519: la misma que muestra ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub.
+      algorithms: { serverHostKey: ["ssh-ed25519"] },
+      hostVerifier: (key: Buffer) => {
+        captured = Buffer.from(key);
+        return false;
+      }
+    });
+  });
 }

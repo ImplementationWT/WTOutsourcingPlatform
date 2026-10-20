@@ -8,6 +8,7 @@ import type { AdminStore } from "../store/admin-store.js";
 import type { ValidationResult } from "../integrations/catalog.js";
 import type { InitialPasswordVault } from "../store/initial-password-vault.js";
 import type { ProvisioningSecrets } from "../store/provisioning-secrets.js";
+import type { ServerTargets } from "../servers/directory.js";
 import type { ClientDoc, InitialAdminMode, StageName, SubStepStatus } from "../store/models.js";
 
 /** VPS compartido (contrato §3, §5 y §6). Sin claves privadas: la del provisioner vive en el adaptador. */
@@ -90,7 +91,10 @@ export interface Deps {
   github: GithubAdapter;
   mongo: MongoBootstrapAdapter;
   probe: HttpProbe;
+  /** Servidor principal (configuración); los proyectos sin servidor propio usan este. */
   server: ServerAdapter;
+  /** Servidores dados de alta desde el panel (sin ellos, solo el principal). */
+  servers?: ServerTargets;
   resolver: DnsResolver;
   vault: InitialPasswordVault;
   /** Credenciales de integraciones en tránsito (cifradas, con TTL). */

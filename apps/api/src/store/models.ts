@@ -116,10 +116,62 @@ export interface ClientDoc {
   deployment?: DeploymentInfo;
   /** Integraciones por proveedor: solo estado y fechas, nunca credenciales. */
   integrations?: Record<string, IntegrationState>;
+  /**
+   * Servidor donde se despliega, fijado al crearlo (nunca cambia). Sin él, el servidor
+   * principal de la configuración (proyectos anteriores a los servidores múltiples).
+   */
+  server?: ClientServerRef;
   latestJobId: string;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** Servidor del proyecto: id y, copiados al crearlo, nombre y dominio de apps. */
+export interface ClientServerRef {
+  id: string;
+  name: string;
+  appsDomain: string;
+}
+
+/**
+ * Servidor de despliegue dado de alta desde el panel. La clave privada del provisioner
+ * se genera aquí y solo se guarda cifrada (AES-256-GCM, ligada al id del servidor).
+ */
+export interface ServerDoc {
+  _id: string; // uuid
+  name: string;
+  /** Host SSH (el DEPLOY_HOST que se escribe en los repos). */
+  host: string;
+  sshPort: number;
+  /** Dominio de apps: https://<slug>.<appsDomain>; su comodín *.<appsDomain> apunta a publicIp. */
+  appsDomain: string;
+  publicIp: string;
+  provisionerPublicKey: string;
+  provisionerKey: { iv: string; ciphertext: string; tag: string };
+  /** Huella fijada tras confirmarla con la consola del VPS (línea known_hosts). */
+  knownHosts?: string;
+  hostKeyFingerprint?: string;
+  verification?: ServerVerification;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ServerCheck {
+  id: string;
+  label: string;
+  ok: boolean;
+  /** Si falla, ¿impide usar el servidor? (las vistas previas, por ejemplo, son opcionales). */
+  required: boolean;
+  detail?: string;
+}
+
+export interface ServerVerification {
+  at: Date;
+  ok: boolean;
+  checks: ServerCheck[];
+  error?: string;
 }
 
 export type ResourceKind =

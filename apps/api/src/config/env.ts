@@ -1,19 +1,7 @@
 import "dotenv/config";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-
-const hostname = z
-  .string()
-  .regex(/^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i, "debe ser un hostname sin esquema ni ruta");
-
-const hostOrIp = z
-  .string()
-  .regex(
-    /^((?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}|(\d{1,3}\.){3}\d{1,3})$/i,
-    "debe ser un hostname o una IPv4, sin usuario, puerto ni esquema"
-  );
-
-const ipv4 = z.string().regex(/^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/, "debe ser una IPv4");
+import { hostname, hostOrIp, ipv4 } from "../lib/validators.js";
 
 const optional = <T extends z.ZodType>(schema: T) =>
   z.preprocess((value) => (value === "" ? undefined : value), schema.optional());
@@ -78,6 +66,11 @@ export const envSchema = z.object({
   // base64) que cifra las credenciales mientras se aprovisiona, y cuánto pueden esperar.
   INTEGRATION_ENCRYPTION_KEY_SECRET_REF: optional(z.string().min(1)),
   INTEGRATION_SECRET_TTL_HOURS: optional(z.coerce.number().int().min(1).max(168)).default(24),
+
+  // Servidores de despliegue dados de alta desde el panel: clave AES-256 (ruta a un archivo
+  // con 32 bytes en base64) que cifra la clave privada del provisioner de cada servidor.
+  // Sin ella solo se usa el servidor principal (DEPLOY_HOST…).
+  SERVER_KEYS_ENCRYPTION_KEY_SECRET_REF: optional(z.string().min(1)),
 
   // AI Developer (Claude Managed Agents): ruta al archivo con la clave de la API de la cuenta
   // de Anthropic (no el valor). Sin ella, el AI Developer queda desactivado.
@@ -176,6 +169,11 @@ export function loadInitialPasswordKey(env: Env) {
 /** Clave AES-256 de las credenciales de integraciones en tránsito. */
 export function loadIntegrationKey(env: Env) {
   return readAesKey(env.INTEGRATION_ENCRYPTION_KEY_SECRET_REF, "INTEGRATION_ENCRYPTION_KEY_SECRET_REF");
+}
+
+/** Clave AES-256 de las claves privadas de los servidores dados de alta desde el panel. */
+export function loadServerKeysKey(env: Env) {
+  return readAesKey(env.SERVER_KEYS_ENCRYPTION_KEY_SECRET_REF, "SERVER_KEYS_ENCRYPTION_KEY_SECRET_REF");
 }
 
 /** Clave de la API de Anthropic (archivo), o undefined si el AI Developer no está configurado. */

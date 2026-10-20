@@ -1,9 +1,11 @@
 import { FatalError, TransientError } from "../../lib/errors.js";
-import type { ServerTargetConfig, Stage, StageContext } from "../types.js";
+import type { DeployTarget } from "../../servers/directory.js";
+import { serverFor } from "../../servers/resolve.js";
+import type { Stage, StageContext } from "../types.js";
 
-/** Configuración del VPS o error accionable (se comparte con las demás etapas del despliegue). */
-export function requireServer(ctx: StageContext): ServerTargetConfig {
-  const server = ctx.deps.config.server;
+/** Servidor del proyecto o error accionable (se comparte con las demás etapas del despliegue). */
+export async function requireServer(ctx: StageContext): Promise<DeployTarget> {
+  const server = await serverFor(ctx.deps, ctx.client);
   if (!server) {
     throw new FatalError(
       "server_not_configured",
@@ -24,8 +26,8 @@ export const dnsHttpsStage: Stage = {
   name: "dns_https",
   async run(ctx) {
     const { names, deps, store, client } = ctx;
-    const server = requireServer(ctx);
-    const domain = deps.config.appsDomain;
+    const server = await requireServer(ctx);
+    const domain = server.appsDomain;
     await ctx.plan([
       { id: "resolve", label: `Resolver ${names.host}` },
       { id: "match", label: `Comprobar que apunta al servidor (${server.publicIp})` }

@@ -5,7 +5,9 @@ import { deriveNames, parseSlug } from "../domain/naming.js";
 import type { Logger, ProvisioningConfig } from "../jobs/types.js";
 import { redactString, registerSecret } from "../lib/redact.js";
 import type { AdminStore } from "../store/admin-store.js";
-import type { AiPreviewState, AiSessionDoc } from "../store/models.js";
+import type { AiPreviewState, AiSessionDoc, ClientDoc } from "../store/models.js";
+import type { ServerTargets } from "../servers/directory.js";
+import { appsDomainOf, serverFor } from "../servers/resolve.js";
 import { AGENT_GIT_EMAIL, REPO_MOUNT_PATH } from "./agent-definition.js";
 import { type ChatEvent, toChatEvent } from "./events.js";
 import type { PreviewPasses } from "./preview-pass.js";
@@ -34,7 +36,9 @@ export interface AiDeveloperDeps {
   store: AdminStore;
   github: GithubAdapter;
   agent: AiAgentAdapter;
+  /** Servidor principal; los proyectos con servidor propio lo resuelven con `servers`. */
   server: ServerAdapter;
+  servers?: ServerTargets;
   passes: PreviewPasses;
   config: AiConfig;
   provisioning: ProvisioningConfig;
@@ -74,8 +78,18 @@ export class AiDeveloper {
     return missing;
   }
 
-  private names(clientId: string) {
-    return deriveNames(parseSlug(clientId), { targetOwner: this.deps.github.owner, appsDomain: this.deps.provisioning.appsDomain });
+  private names(client: Pick<ClientDoc, "_id" | "server"> | null, clientId: string) {
+    return deriveNames(parseSlug(clientId), {
+      targetOwner: this.deps.github.owner,
+      appsDomain: appsDomainOf(client, this.deps.provisioning)
+    });
+  }
+
+  /** Servidor del proyecto de la sesión (vistas previas). */
+  private async serverOf(clientId: string) {
+    const client = await this.deps.store.getClient(clientId);
+    const target = await serverFor({ config: this.deps.provisioning, server: this.deps.server, servers: this.deps.servers }, client);
+    return { client, target };
   }
 
   consoleUrl(session: AiSessionDoc) {
@@ -111,7 +125,7 @@ export class AiDeveloper {
       throw new AiDeveloperError(409, `A la GitHub App le faltan permisos para el AI Developer: ${missing.join(", ")}. Ver docs/ai-developer.md.`);
     }
 
-    const names = this.names(client._id);
+    const names = this.names(client, client._id);
     const baseSha = await github.getBranchSha(names.repository, "main");
     if (!baseSha) throw new AiDeveloperError(409, `${names.repositoryFullName} no tiene rama main.`);
 
@@ -162,7 +176,7 @@ export class AiDeveloper {
   /** Contexto de la sesión para el agente; acompaña al primer mensaje. */
   private async sessionContext(session: AiSessionDoc) {
     const client = await this.deps.store.getClient(session.clientId);
-    const names = this.names(session.clientId);
+    const names = this.names(client, session.clientId);
     return [
       "Contexto de esta sesión:",
       `- Cliente: ${client?.name ?? session.clientId} (${session.clientId}). App en producción: ${names.baseUrl}`,
@@ -315,7 +329,7 @@ export class AiDeveloper {
     // La sesión del agente ya no hace falta (best effort: se queda en idle).
     await agent.interrupt(session.agentSessionId).catch(() => undefined);
     await github.deleteBranch(session.repository, session.branch).catch(() => undefined);
-    const names = this.names(session.clientId);
+    const names = this.names(null, session.clientId);
     return {
       sha,
       deploying: provisioning.deployEnabled,
@@ -350,9 +364,10 @@ export class AiDeveloper {
    */
   async startPreview(session: AiSessionDoc, actor: string) {
     this.requireActive(session);
-    const { github, server, provisioning } = this.deps;
-    if (!provisioning.deployEnabled || !provisioning.server) {
-      throw new AiDeveloperError(409, "La vista previa necesita el despliegue en el VPS habilitado (DEPLOY_ENABLED).");
+    const { github, provisioning } = this.deps;
+    const { client, target } = provisioning.deployEnabled ? await this.serverOf(session.clientId) : { client: null, target: undefined };
+    if (!target) {
+      throw new AiDeveloperError(409, "La vista previa necesita el despliegue en el VPS habilitado (DEPLOY_ENABLED) y el servidor del proyecto.");
     }
     if (session.preview && ["installing", "building"].includes(session.preview.status)) return this.previewView(session);
     if (!(await github.getWorkflow(session.repository, PREVIEW_WORKFLOW))) {
@@ -362,11 +377,11 @@ export class AiDeveloper {
       );
     }
 
-    const names = this.names(session.clientId);
-    const base = { host: `preview-${names.slug}.${provisioning.appsDomain}`, sha: null, requestedAt: this.now(), requestedBy: actor };
+    const names = this.names(client, session.clientId);
+    const base = { host: `preview-${names.slug}.${target.appsDomain}`, sha: null, requestedAt: this.now(), requestedBy: actor };
     await this.setPreview(session, { ...base, status: "installing" });
     try {
-      const installed = await server.installPreview(names.slug);
+      const installed = await target.adapter.installPreview(names.slug);
       const sha = await github.getBranchSha(session.repository, session.branch);
       await github.dispatchWorkflow(session.repository, PREVIEW_WORKFLOW, session.branch);
       await this.setPreview(session, { ...base, host: installed.host, sha, status: "building" });
@@ -436,9 +451,12 @@ export class AiDeveloper {
     const preview = session.preview;
     if (!preview || preview.status === "stopped") return;
     if (preview.status !== "failed") {
-      await this.deps.server.stopPreview(this.names(session.clientId).slug).catch((error) => {
+      try {
+        const { target } = await this.serverOf(session.clientId);
+        await target?.adapter.stopPreview(parseSlug(session.clientId));
+      } catch (error) {
         this.deps.log.warn({ err: error, session: session._id }, "preview-stop failed");
-      });
+      }
     }
     await this.setPreview(session, { ...preview, status: "stopped", stoppedAt: this.now() });
     this.authCache.clear();

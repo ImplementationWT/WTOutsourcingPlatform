@@ -8,7 +8,7 @@ import {
   type WorkflowRun
 } from "../../src/adapters/github.js";
 import type { HttpProbe } from "../../src/adapters/http-probe.js";
-import type { InstallResult, ServerAdapter, ServerClientStatus, UninstallResult } from "../../src/adapters/server.js";
+import type { InstallResult, ServerAdapter, ServerClientStatus, ServerInfo, UninstallResult } from "../../src/adapters/server.js";
 import { randomBytes } from "node:crypto";
 import type { BootstrapDocument, BootstrapPhase, MongoBootstrapAdapter } from "../../src/adapters/mongo-bootstrap.js";
 import { FatalError, TransientError } from "../../src/lib/errors.js";
@@ -353,6 +353,7 @@ export class FakeServer extends Faulty implements ServerAdapter {
   private nextPort = 20000;
   constructor(private readonly github: FakeGithub, private readonly appsDomain: string) {
     super();
+    this.info.appBaseDomain = appsDomain;
   }
   async installClient(slug: string, publicKey?: string): Promise<InstallResult> {
     this.hit("installClient", slug, publicKey);
@@ -396,6 +397,24 @@ export class FakeServer extends Faulty implements ServerAdapter {
     if (entry) entry.running = false;
     return { stopped };
   }
+  /** Lo que devuelve server-info (los tests lo ajustan para simular servidores mal configurados). */
+  info: ServerInfo = {
+    scriptsVersion: 2,
+    appBaseDomain: "",
+    ghcrOrg: "acme-org",
+    acmeEmail: true,
+    panelOrigin: "https://launchpad.example.test",
+    panelUpstream: "https://launchpad.example.test",
+    nginx: { valid: true, include: true },
+    docker: true,
+    certbot: true,
+    ports: { used: 1, total: 10_000 },
+    diskFreeMb: 50_000
+  };
+  async serverInfo(): Promise<ServerInfo> {
+    this.hit("serverInfo");
+    return this.info;
+  }
   async clientStatus(slug: string): Promise<ServerClientStatus> {
     this.hit("clientStatus", slug);
     const entry = this.clients.get(slug);
@@ -437,6 +456,8 @@ export class FakeProbe extends Faulty implements HttpProbe {
   frontendContentType = "text/html; charset=utf-8";
   /** Para simular una app que expone otro appName. */
   appNameOverride?: string;
+  /** Otros servidores dados de alta (servidores múltiples): la app puede estar en cualquiera. */
+  readonly extraServers: FakeServer[] = [];
   constructor(
     private readonly github: FakeGithub,
     private readonly mongo: FakeMongo,
@@ -447,7 +468,8 @@ export class FakeProbe extends Faulty implements HttpProbe {
   }
   private app(url: string) {
     const host = new URL(url).host;
-    const slug = host.replace(`.${this.appsDomain}`, "");
+    // El slug es la primera etiqueta (el dominio depende del servidor del proyecto).
+    const slug = host.split(".")[0];
     const repo = `${slug}-app`;
     const env = this.github.environments.get(`${repo}/production`);
     const uri = env?.secrets.get("MONGODB_URI");
@@ -456,7 +478,7 @@ export class FakeProbe extends Faulty implements HttpProbe {
     const deployed = (this.github.runs.get(repo) ?? []).some((r) => r.conclusion === "success");
     const installed =
       !this.server ||
-      (this.server.clients.has(slug) && !!env?.secrets.get("DEPLOY_SSH_KEY") && env?.variables.get("APP_HOSTNAME") === host);
+      ([this.server, ...this.extraServers].some((s) => s.clients.has(slug)) && !!env?.secrets.get("DEPLOY_SSH_KEY") && env?.variables.get("APP_HOSTNAME") === host);
     const ok = deployed && installed && !!uri && !!db && (sessionSecret?.length ?? 0) >= 32 && this.mongo.credentialsValid(uri);
     return { ok, doc: db ? this.mongo.databases.get(db) : undefined, appName: env?.variables.get("APP_DISPLAY_NAME") ?? "Aplicación" };
   }

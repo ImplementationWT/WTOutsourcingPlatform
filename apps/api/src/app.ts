@@ -14,6 +14,8 @@ import { registerAiRoutes } from "./routes/ai.js";
 import { registerClientRoutes } from "./routes/clients.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerIntegrationRoutes } from "./routes/integrations.js";
+import { registerServerRoutes } from "./routes/servers.js";
+import { ServerDirectory } from "./servers/directory.js";
 import type { AdminStore } from "./store/admin-store.js";
 
 export interface AppOptions {
@@ -25,10 +27,27 @@ export interface AppOptions {
   logStream?: NodeJS.WritableStream;
   /** AI Developer (Claude Managed Agents); sin él, sus rutas responden 503. */
   ai?: { agent: AiAgentAdapter; config: AiConfig; now?: () => Date };
+  /** Servidores de despliegue; sin él, solo el principal de la configuración (sin alta desde el panel). */
+  servers?: ServerDirectory;
 }
 
-export async function buildApp({ store, deps, auth, logLevel, logStream, ai }: AppOptions) {
+export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStream, ai, servers: givenServers }: AppOptions) {
   const app = Fastify({ logger: loggerOptions({ level: logLevel, stream: logStream }) });
+  const primary = baseDeps.config.server;
+  const servers =
+    givenServers ??
+    new ServerDirectory({
+      servers: store.servers,
+      clients: store.clients,
+      primary: primary && { ...primary, appsDomain: baseDeps.config.appsDomain, adapter: baseDeps.server },
+      ghcrOrg: primary?.ghcrOrg,
+      acmeCa: primary?.acmeCa,
+      resolver: baseDeps.resolver
+    });
+  // Etapas, borrado y AI Developer resuelven el servidor de cada proyecto con `servers`. Se
+  // asigna sobre el mismo objeto (no una copia): quien lo creó sigue viendo los mismos deps.
+  const deps = baseDeps;
+  deps.servers ??= servers;
   const engine = new JobEngine(store, deps, app.log.child({ component: "jobs" }));
   const teardown = new Teardown(store, deps, app.log.child({ component: "teardown" }));
   const aiDeveloper = ai
@@ -37,6 +56,7 @@ export async function buildApp({ store, deps, auth, logLevel, logStream, ai }: A
         github: deps.github,
         agent: ai.agent,
         server: deps.server,
+        servers: deps.servers,
         passes: new PreviewPasses(auth.sessionSecret, ai.now ? () => ai.now!().getTime() : undefined),
         config: ai.config,
         provisioning: deps.config,
@@ -69,15 +89,16 @@ export async function buildApp({ store, deps, auth, logLevel, logStream, ai }: A
   app.get("/health", async () => ({ status: "ok", service: "provisioning-api" }));
 
   await registerAuth(app, auth);
-  await registerClientRoutes(app, { store, engine, teardown, deps });
+  await registerClientRoutes(app, { store, engine, teardown, deps, servers });
+  await registerServerRoutes(app, { store, servers });
   await registerDashboardRoutes(app, { store, deps });
   await registerIntegrationRoutes(app, { store, engine, deps });
-  await registerAiRoutes(app, { store, ai: aiDeveloper, appsDomain: deps.config.appsDomain, secureCookies: auth.secureCookies });
+  await registerAiRoutes(app, { store, ai: aiDeveloper, secureCookies: auth.secureCookies });
 
   app.addHook("onClose", async () => {
     if (previewSweep) clearInterval(previewSweep);
     await Promise.all([engine.idle(), teardown.idle()]);
   });
 
-  return Object.assign(app, { engine, teardown, store, aiDeveloper });
+  return Object.assign(app, { engine, teardown, store, aiDeveloper, servers });
 }

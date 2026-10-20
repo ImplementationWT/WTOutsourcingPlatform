@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { deriveNames, parseSlug } from "../domain/naming.js";
+import { appsDomainOf } from "../servers/resolve.js";
 import { FatalError, ProvisioningError, TransientError } from "../lib/errors.js";
 import { redact, redactString } from "../lib/redact.js";
 import { withRetry } from "../lib/retry.js";
@@ -150,7 +151,7 @@ export class JobEngine {
       // Los nombres se derivan siempre del slug validado guardado en la base.
       const names = deriveNames(parseSlug(client._id), {
         targetOwner: deps.github.owner,
-        appsDomain: deps.config.appsDomain
+        appsDomain: appsDomainOf(client, deps.config)
       });
 
       for (let index = 0; index < job.stages.length; index++) {

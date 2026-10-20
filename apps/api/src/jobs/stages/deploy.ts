@@ -2,6 +2,7 @@ import { FatalError } from "../../lib/errors.js";
 import { pollUntil } from "../../lib/retry.js";
 import type { Stage, StageContext } from "../types.js";
 import { requireServer } from "./dns-https.js";
+import { serverFor } from "../../servers/resolve.js";
 
 const CLOCK_SKEW_MS = 30_000;
 
@@ -28,7 +29,7 @@ export const deployStage: Stage = {
     const { github, config, timing, sleep } = deps;
     const workflow = config.template.deployWorkflow;
 
-    requireServer(ctx);
+    await requireServer(ctx);
 
     // La generación desde template tarda: se espera a que el workflow exista y esté activo.
     await ctx.report(`Esperando el workflow ${workflow}…`);
@@ -108,7 +109,8 @@ export const deployStage: Stage = {
     await store.setClientFields(client._id, { "deployment.lastRunUrl": finished.url });
 
     // El servidor confirma qué imagen (por digest) quedó desplegada y cuándo.
-    const status = await deps.server.clientStatus(names.slug).catch(() => null);
+    const target = await serverFor(deps, client).catch(() => undefined);
+    const status = target ? await target.adapter.clientStatus(names.slug).catch(() => null) : null;
     if (status?.deployment) {
       await store.setClientFields(client._id, {
         "deployment.image": status.deployment.image,

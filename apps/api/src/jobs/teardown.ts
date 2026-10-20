@@ -3,6 +3,7 @@ import { deriveNames, parseSlug } from "../domain/naming.js";
 import { FatalError, OwnershipError, ProvisioningError, TransientError } from "../lib/errors.js";
 import { redactString, registerSecret } from "../lib/redact.js";
 import { pollUntil } from "../lib/retry.js";
+import { appsDomainOf, serverFor } from "../servers/resolve.js";
 import type { AdminStore } from "../store/admin-store.js";
 import type { DeletionDoc, DeletionStep, DeletionStepStatus } from "../store/models.js";
 import { generatePassword, MANAGED_BY, ownershipLabels } from "./stages/credentials.js";
@@ -89,10 +90,11 @@ export class Teardown {
 
   async run(slug: string, actor: string) {
     const { store, deps } = this;
-    const names = deriveNames(parseSlug(slug), { targetOwner: deps.github.owner, appsDomain: deps.config.appsDomain });
     let current = "";
     try {
+      // El dominio y el servidor son los del proyecto (fijos desde que se creó).
       const client = await store.getClient(slug);
+      const names = deriveNames(parseSlug(slug), { targetOwner: deps.github.owner, appsDomain: appsDomainOf(client, deps.config) });
 
       // 0. Antes de borrar nada: lo que no sea de este cliente detiene el borrado entero.
       current = "preflight";
@@ -111,8 +113,9 @@ export class Teardown {
       // 1. Servidor: primero se apaga la app, que es quien usa la base.
       current = "server";
       await this.setStep(slug, current, "running");
-      if (deps.config.server) {
-        const result = await deps.server.uninstallClient(names.slug);
+      const target = await serverFor(deps, client);
+      if (target) {
+        const result = await target.adapter.uninstallClient(names.slug);
         const removed = Object.entries(result.removed)
           .filter(([, v]) => v === true || (typeof v === "number" && v > 0))
           .map(([k]) => k);
@@ -189,7 +192,7 @@ export class Teardown {
 
       // 6. DNS: un único registro comodín para todos los clientes.
       current = "dns";
-      await this.setStep(slug, current, "skipped", `El registro *.${deps.config.appsDomain} es compartido: no hay nada propio de este proyecto.`);
+      await this.setStep(slug, current, "skipped", `El registro *.${appsDomainOf(client, deps.config)} es compartido: no hay nada propio de este proyecto.`);
 
       // 7. Registros de la plataforma (la auditoría se conserva).
       current = "records";

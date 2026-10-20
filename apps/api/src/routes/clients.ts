@@ -11,6 +11,8 @@ import { getProvider, integrationsInputSchema } from "../integrations/catalog.js
 import { redact, registerSecret } from "../lib/redact.js";
 import { ActiveJobExistsError, type AdminStore, DuplicateClientError } from "../store/admin-store.js";
 import type { ClientDoc } from "../store/models.js";
+import { type ServerDirectory, ServerDirectoryError } from "../servers/directory.js";
+import { appsDomainOf, serverFor } from "../servers/resolve.js";
 
 /**
  * Del navegador solo se aceptan nombre, slug y descripción. Base, usuario,
@@ -23,7 +25,9 @@ const createClientSchema = z.object({
   slug: slugSchema.refine((slug) => !slug.startsWith("preview-")),
   description: z.string().trim().min(10).max(280),
   // Integraciones opcionales: estricto (solo proveedores del catálogo y sus campos).
-  integrations: integrationsInputSchema.optional()
+  integrations: integrationsInputSchema.optional(),
+  // Servidor donde se desplegará (fijo para siempre). Sin él, el principal.
+  serverId: z.string().regex(/^(principal|[0-9a-f-]{36})$/).optional()
 });
 
 /** Registra para redacción cualquier credencial recibida, antes incluso de validarla. */
@@ -117,11 +121,13 @@ export async function registerClientRoutes(
     store,
     engine,
     teardown,
-    deps
-  }: { store: AdminStore; engine: JobEngine; teardown: Teardown; deps: Deps & { github: GithubAdapter } }
+    deps,
+    servers
+  }: { store: AdminStore; engine: JobEngine; teardown: Teardown; deps: Deps & { github: GithubAdapter }; servers: ServerDirectory }
 ) {
-  const { github, vault, server, config } = deps;
-    const namesFor = (slug: string) => deriveNames(parseSlug(slug), { targetOwner: github.owner, appsDomain: config.appsDomain });
+  const { github, vault, config } = deps;
+  const namesFor = (client: ClientDoc) =>
+    deriveNames(parseSlug(client._id), { targetOwner: github.owner, appsDomain: appsDomainOf(client, config) });
 
   app.post("/api/clients", { preHandler: requireAdmin }, async (request, reply) => {
     registerIncomingSecrets((request.body as { integrations?: unknown } | null)?.integrations);
@@ -137,10 +143,17 @@ export async function registerClientRoutes(
       return reply.code(503).send({ error: "Las integraciones no están disponibles: falta INTEGRATION_ENCRYPTION_KEY_SECRET_REF en el servidor." });
     }
     const actor = request.user!.username;
+    let server: Awaited<ReturnType<ServerDirectory["select"]>>;
+    try {
+      server = await servers.select(parsed.data.serverId);
+    } catch (error) {
+      if (error instanceof ServerDirectoryError) return reply.code(error.status).send({ error: error.message });
+      throw error;
+    }
 
     try {
-      const job = await store.createClientWithJob({ slug, name, description, actor, stages: engine.stageNames });
-      await store.audit({ actor, action: "client.created", clientId: slug, target: slug });
+      const job = await store.createClientWithJob({ slug, name, description, actor, stages: engine.stageNames, server });
+      await store.audit({ actor, action: "client.created", clientId: slug, target: slug, ...(server ? { details: { server: server.name } } : {}) });
       // Las credenciales quedan cifradas (TTL) hasta que github_secrets las escribe en GitHub.
       for (const [providerId, credentials] of integrations) {
         await deps.secrets.put(slug, providerId, credentials);
@@ -163,7 +176,7 @@ export async function registerClientRoutes(
     const client = await store.getClient(params.data.slug);
     if (!client) return reply.code(404).send({ error: "Cliente no encontrado." });
 
-    const names = namesFor(client._id);
+    const names = namesFor(client);
     const [job, repo, pendingUntil] = await Promise.all([
       store.getJob(client.latestJobId),
       store.getResource("github_repository", names.repositoryFullName),
@@ -185,6 +198,7 @@ export async function registerClientRoutes(
         integrations: integrationsView(client),
         deployment: deploymentView(client, names.baseUrl),
         deployEnabled: config.deployEnabled,
+        server: client.server ?? { id: "principal", name: "Principal", appsDomain: config.appsDomain },
         createdAt: client.createdAt
       },
       resources: {
@@ -291,9 +305,10 @@ export async function registerClientRoutes(
     if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
     const client = await store.getClient(params.data.slug);
     if (!client) return reply.code(404).send({ error: "Cliente no encontrado." });
-    if (!config.deployEnabled || !config.server) return reply.code(409).send({ error: "El despliegue no está habilitado." });
+    const target = config.deployEnabled ? await serverFor(deps, client).catch(() => undefined) : undefined;
+    if (!target) return reply.code(409).send({ error: "El despliegue no está habilitado o el servidor del proyecto no está disponible." });
     try {
-      const status = await server.clientStatus(parseSlug(client._id));
+      const status = await target.adapter.clientStatus(parseSlug(client._id));
       return {
         host: status.host,
         port: status.port,
@@ -318,7 +333,7 @@ export async function registerClientRoutes(
     if (!client.deployment?.preparedAt) {
       return reply.code(409).send({ error: "El servidor aún no está preparado para este cliente; termina primero el aprovisionamiento." });
     }
-    const names = namesFor(client._id);
+    const names = namesFor(client);
     const actor = request.user!.username;
     await github.dispatchWorkflow(names.repository, config.template.deployWorkflow, config.template.ref);
     const at = new Date();

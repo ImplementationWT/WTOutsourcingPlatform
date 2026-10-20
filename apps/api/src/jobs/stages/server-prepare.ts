@@ -19,8 +19,9 @@ export const serverPrepareStage: Stage = {
   name: "server_prepare",
   async run(ctx) {
     const { names, deps, store, client, memory } = ctx;
-    const { github, server: serverAdapter, config } = deps;
-    const server = requireServer(ctx);
+    const { github, config } = deps;
+    const server = await requireServer(ctx);
+    const serverAdapter = server.adapter;
     const environment = config.template.environment;
 
     await ctx.plan([

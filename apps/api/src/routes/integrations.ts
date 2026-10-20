@@ -10,6 +10,7 @@ import { createRateLimiter } from "../lib/rate-limit.js";
 import { ActiveJobExistsError, type AdminStore } from "../store/admin-store.js";
 import type { StageName } from "../store/models.js";
 import { registerIncomingSecrets } from "./clients.js";
+import { appsDomainOf } from "../servers/resolve.js";
 
 const providerParams = z.object({ provider: z.string().min(1).max(40) });
 const clientProviderParams = z.object({ slug: slugSchema, provider: z.string().min(1).max(40) });
@@ -108,7 +109,7 @@ export async function registerIntegrationRoutes(
     if (!validation.ok) return reply.code(422).send({ error: VALIDATION_MESSAGES[validation.code], code: validation.code });
 
     const actor = request.user!.username;
-    const names = deriveNames(parseSlug(slug), { targetOwner: deps.github.owner, appsDomain: deps.config.appsDomain });
+    const names = deriveNames(parseSlug(slug), { targetOwner: deps.github.owner, appsDomain: appsDomainOf(client, deps.config) });
     const current = client.integrations?.[provider.id];
 
     if (client.status === "ready") {

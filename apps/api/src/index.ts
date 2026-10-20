@@ -7,10 +7,19 @@ import { createHttpProbe } from "./adapters/http-probe.js";
 import { createMongoBootstrapAdapter } from "./adapters/mongo-bootstrap.js";
 import { createServerAdapter } from "./adapters/server.js";
 import { buildApp } from "./app.js";
-import { appBaseDomain, loadAnthropicKey, loadEnv, loadInitialPasswordKey, loadIntegrationKey, loadServerConfig } from "./config/env.js";
+import {
+  appBaseDomain,
+  loadAnthropicKey,
+  loadEnv,
+  loadInitialPasswordKey,
+  loadIntegrationKey,
+  loadServerConfig,
+  loadServerKeysKey
+} from "./config/env.js";
 import { getProvider } from "./integrations/catalog.js";
 import { DEFAULT_TIMING } from "./jobs/types.js";
 import { registerSecret } from "./lib/redact.js";
+import { ServerDirectory } from "./servers/directory.js";
 import { AdminStore } from "./store/admin-store.js";
 import { InitialPasswordVault } from "./store/initial-password-vault.js";
 import { ProvisioningSecrets } from "./store/provisioning-secrets.js";
@@ -23,6 +32,7 @@ const server = loadServerConfig(env);
 // Antes de conectar: una clave mal configurada detiene el arranque con un mensaje claro.
 const initialPasswordKey = loadInitialPasswordKey(env);
 const integrationKey = loadIntegrationKey(env);
+const serverKeysKey = loadServerKeysKey(env);
 const anthropicKey = loadAnthropicKey(env);
 registerSecret(anthropicKey);
 if (server) registerSecret(server.provisionerKey);
@@ -36,9 +46,39 @@ await vault.init();
 const secrets = new ProvisioningSecrets(store.provisioningSecrets, integrationKey, env.INTEGRATION_SECRET_TTL_HOURS * 3_600_000);
 await secrets.init();
 
+const resolver = { resolve4: (host: string) => dns.resolve4(host) };
+const primaryAdapter = server
+  ? createServerAdapter({ host: server.host, port: server.port, hostKeys: server.hostKeys, provisionerKey: server.provisionerKey })
+  : {
+      installClient: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
+      clientStatus: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
+      uninstallClient: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
+      installPreview: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
+      stopPreview: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
+      serverInfo: () => Promise.reject(new Error("Servidor de despliegue no configurado."))
+    };
+const servers = new ServerDirectory({
+  servers: store.servers,
+  clients: store.clients,
+  key: serverKeysKey,
+  primary: server && {
+    host: server.host,
+    knownHosts: server.knownHosts,
+    publicIp: server.publicIp,
+    ghcrOrg: server.ghcrOrg,
+    acmeCa: server.acmeCa,
+    appsDomain: appBaseDomain(env),
+    adapter: primaryAdapter
+  },
+  ghcrOrg: env.GHCR_ORG,
+  acmeCa: env.ACME_CA,
+  resolver
+});
+
 const app = await buildApp({
   store,
   logLevel: env.LOG_LEVEL,
+  servers,
   ai: anthropicKey
     ? {
         agent: createAnthropicAgentAdapter(anthropicKey, store.aiAgentSettings, env.ANTHROPIC_WORKSPACE),
@@ -68,16 +108,8 @@ const app = await buildApp({
     }),
     mongo: createMongoBootstrapAdapter(),
     probe: createHttpProbe({ allowUntrustedCertificates: Boolean(server?.acmeCa) }),
-    server: server
-      ? createServerAdapter({ host: server.host, port: server.port, hostKeys: server.hostKeys, provisionerKey: server.provisionerKey })
-      : {
-          installClient: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
-          clientStatus: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
-          uninstallClient: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
-          installPreview: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
-          stopPreview: () => Promise.reject(new Error("Servidor de despliegue no configurado."))
-        },
-    resolver: { resolve4: (host) => dns.resolve4(host) },
+    server: primaryAdapter,
+    resolver,
     vault,
     secrets,
     validateIntegration: async (providerId, credentials) => {
@@ -115,7 +147,7 @@ const app = await buildApp({
 const abandoned = await store.failAbandonedJobs();
 if (abandoned) app.log.warn({ abandoned }, "Marked interrupted jobs as failed");
 app.log.info(
-  { deployEnabled: env.DEPLOY_ENABLED, aiDeveloper: Boolean(anthropicKey), templateVersion: env.TEMPLATE_VERSION, integrations: secrets.available, minSchemaVersion: env.MIN_SCHEMA_VERSION, initialAdminMode: env.INITIAL_ADMIN_MODE },
+  { deployEnabled: env.DEPLOY_ENABLED, aiDeveloper: Boolean(anthropicKey), serverDirectory: servers.available, templateVersion: env.TEMPLATE_VERSION, integrations: secrets.available, minSchemaVersion: env.MIN_SCHEMA_VERSION, initialAdminMode: env.INITIAL_ADMIN_MODE },
   env.DEPLOY_ENABLED ? "Pipeline completo (con despliegue)" : "Fase 1: repo + MongoDB + secrets (despliegue deshabilitado)"
 );
 

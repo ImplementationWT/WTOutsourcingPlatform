@@ -5,7 +5,7 @@ import { redact } from "../lib/redact.js";
 import type { AiAgentSettingsDoc } from "../ai/anthropic-adapter.js";
 import type { InitialPasswordDoc } from "./initial-password-vault.js";
 import type { ProvisioningSecretDoc } from "./provisioning-secrets.js";
-import type { AiSessionDoc, DeletionDoc } from "./models.js";
+import type { AiSessionDoc, ClientServerRef, DeletionDoc, ServerDoc } from "./models.js";
 import {
   type AuditDoc,
   type ClientDoc,
@@ -46,6 +46,8 @@ export class AdminStore {
   readonly aiSessions;
   /** IDs del agente y del entorno en Anthropic (los crea la plataforma la primera vez). */
   readonly aiAgentSettings;
+  /** Servidores de despliegue dados de alta desde el panel (los gestiona ServerDirectory). */
+  readonly servers;
 
   constructor(db: Db, private readonly now: () => Date = () => new Date()) {
     this.clients = db.collection<ClientDoc>("clients");
@@ -57,6 +59,7 @@ export class AdminStore {
     this.provisioningSecrets = db.collection<ProvisioningSecretDoc>("provisioning_secrets");
     this.aiSessions = db.collection<AiSessionDoc>("ai_sessions");
     this.aiAgentSettings = db.collection<AiAgentSettingsDoc>("settings");
+    this.servers = db.collection<ServerDoc>("servers");
   }
 
   async init() {
@@ -68,7 +71,10 @@ export class AdminStore {
       this.auditLog.createIndex({ clientId: 1, at: -1 }),
       // Una sola sesión activa del AI Developer por cliente (una rama y una vista previa a la vez).
       this.aiSessions.createIndex({ clientId: 1 }, { unique: true, partialFilterExpression: { status: "active" }, name: "one_active_ai_session" }),
-      this.aiSessions.createIndex({ clientId: 1, createdAt: -1 })
+      this.aiSessions.createIndex({ clientId: 1, createdAt: -1 }),
+      // Cada servidor tiene su dominio de apps: dos servidores no pueden compartirlo.
+      this.servers.createIndex({ appsDomain: 1 }, { unique: true }),
+      this.clients.createIndex({ "server.id": 1 })
     ]);
   }
 
@@ -82,6 +88,8 @@ export class AdminStore {
     actor: string;
     /** Etapas activas, en orden (por defecto todas). */
     stages?: readonly string[];
+    /** Servidor elegido (sin él, el principal de la configuración). */
+    server?: ClientServerRef;
   }) {
     const at = this.now();
     const jobId = randomUUID();
@@ -92,6 +100,7 @@ export class AdminStore {
         description: input.description,
         status: "provisioning",
         readiness: { ready: false },
+        ...(input.server ? { server: input.server } : {}),
         latestJobId: jobId,
         createdBy: input.actor,
         createdAt: at,
