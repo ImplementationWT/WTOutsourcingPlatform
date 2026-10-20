@@ -1,0 +1,11 @@
+# Contexto de Dockerfile.web (frontend). La API se construye desde apps/api con el suyo.
+node_modules
+dist
+apps
+docs
+.git
+.github
+**/.env
+**/.env.*
+**/*.pem
+**/*.key

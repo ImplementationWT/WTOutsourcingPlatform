@@ -8,6 +8,9 @@ const optional = <T extends z.ZodType>(schema: T) =>
 
 export const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3001),
+  // Interfaz donde escucha: solo loopback (detrás de nginx). 0.0.0.0 solo para el arranque
+  // local con Docker (compose.yaml), donde nginx está en otro contenedor.
+  HOST: z.enum(["127.0.0.1", "0.0.0.0"]).default("127.0.0.1"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
 

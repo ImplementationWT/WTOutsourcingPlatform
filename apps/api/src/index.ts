@@ -159,7 +159,7 @@ process.once("SIGTERM", shutdown);
 process.once("SIGINT", shutdown);
 
 try {
-  await app.listen({ port: env.PORT, host: "127.0.0.1" });
+  await app.listen({ port: env.PORT, host: env.HOST });
 } catch (error) {
   app.log.error({ err: error }, "Server failed to start");
   process.exitCode = 1;

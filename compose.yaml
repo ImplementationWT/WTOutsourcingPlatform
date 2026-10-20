@@ -1,0 +1,60 @@
+# Launchpad en local con un comando:  docker compose up --build
+# Abre http://localhost:8080 (usuario admin, contraseña launchpad-local).
+#
+# Solo hay que poner en apps/api/.env las credenciales de la GitHub App y de MongoDB Atlas
+# (y el .pem como apps/api/github-app.pem). La base administrativa es una MongoDB local, las
+# claves se generan solas y el despliegue a servidores está desactivado: nada toca un VPS.
+# Ojo: con credenciales reales, crear un proyecto crea de verdad su repo y su base en Atlas.
+name: launchpad-local
+
+services:
+  mongo:
+    image: mongo:8
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  api:
+    build: apps/api
+    env_file:
+      - path: apps/api/.env
+        required: false
+    environment:
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      PORT: "3001"
+      ADMIN_MONGODB_URI: mongodb://mongo:27017
+      DEPLOY_ENABLED: "false"
+      DEPLOY_HOST: ""
+      PROVISIONER_SSH_KEY_SECRET_REF: ""
+      LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:-launchpad-local}
+      WEB_PORT: ${PORT:-8080}
+    command: ["node", "/run/start.mjs"]
+    volumes:
+      # Claves y secreto de sesión generados (persisten entre arranques, solo en este equipo).
+      - local-secrets:/home/node
+      - ./apps/api:/run/host-api:ro
+      - ./deploy/local/start.mjs:/run/start.mjs:ro
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    ports:
+      # Solo en este equipo.
+      - "127.0.0.1:${PORT:-8080}:80"
+    depends_on:
+      - api
+
+volumes:
+  mongo-data:
+  local-secrets:

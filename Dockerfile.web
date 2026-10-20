@@ -1,0 +1,18 @@
+# syntax=docker/dockerfile:1
+# Frontend del panel para el arranque local (compose.yaml). En producción lo publica el
+# workflow Deploy en /var/www/launchpad.
+ARG NODE_VERSION=24
+ARG PNPM_VERSION=12.11.2
+
+FROM node:${NODE_VERSION}-slim AS build
+ARG PNPM_VERSION
+RUN npm install -g pnpm@${PNPM_VERSION}
+WORKDIR /app
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY . .
+RUN pnpm build
+
+FROM nginx:1.27-alpine
+COPY deploy/local/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
