@@ -65,16 +65,22 @@ async function viaNginx(app: Awaited<ReturnType<typeof buildApp>>, frameUrl: str
 }
 
 describe("AI Developer: vista previa", () => {
-  it("prepara el servidor, lanza preview.yml en la rama y queda lista con un pase de acceso", async () => {
+  it("arranca la rama en vivo en el servidor (sin GitHub Actions) y queda lista con un pase de acceso", async () => {
     const { api, app, session, server, github, store } = await setup();
     const started = await api("POST", `/api/ai/sessions/${session.id}/preview`);
     expect(started.status, started.raw).toBe(200);
-    expect(started.body.preview).toMatchObject({ status: "building", url: `https://${HOST}`, frameUrl: null });
+    expect(started.body.preview).toMatchObject({ status: "installing", url: `https://${HOST}`, frameUrl: null });
+    await app.aiDeveloper!.previewIdle();
     expect(server.calls.filter((c) => c.method === "installPreview").map((c) => c.args[0])).toEqual(["acme-crm"]);
-    expect(github.calls.find((c) => c.method === "dispatchWorkflow" && c.args[1] === "preview.yml")?.args).toEqual([REPO, "preview.yml", session.branch]);
+    const live = server.calls.find((c) => c.method === "startLivePreview")!;
+    expect(live.args[0]).toBe("acme-crm");
+    expect(live.args[1]).toMatchObject({ repository: `acme-org/${REPO}`, branch: session.branch, token: expect.stringMatching(/^ghs_/) });
+    // El servidor clona con un token de solo lectura; nada pasa por GitHub Actions.
+    expect(github.calls.filter((c) => c.method === "createRepoToken" && c.args[1] === "read")).toHaveLength(1);
+    expect(github.calls.some((c) => c.method === "dispatchWorkflow" && c.args[1] === "preview.yml")).toBe(false);
 
     const state = await api("GET", `/api/ai/sessions/${session.id}/preview`);
-    expect(state.body.preview).toMatchObject({ status: "ready", outdated: false });
+    expect(state.body.preview).toMatchObject({ status: "ready", outdated: false, updating: false, sha: await github.getBranchSha(REPO, session.branch) });
     expect(state.body.preview.frameUrl).toMatch(new RegExp(`^https://${HOST.replace(/\./g, "\\.")}/__launchpad/auth\\?t=`));
     expect(await store.auditLog.countDocuments({ action: "ai.preview_ready" })).toBe(1);
 
@@ -94,14 +100,41 @@ describe("AI Developer: vista previa", () => {
       (await app.inject({ method: "GET", url: "/api/ai/preview/check", headers: { "x-preview-host": "preview-otro.apps.example.test", "x-preview-pass": nginx.value! } })).statusCode
     ).toBe(401);
 
-    // Si la rama avanza, la vista previa queda desactualizada.
-    github.pushCommit(REPO, session.branch, "otro cambio");
-    expect((await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview.outdated).toBe(true);
+  });
+
+  it("cada commit nuevo de Claude se trae solo a la vista en vivo, sin reconstruir", async () => {
+    const { api, app, session, server, github } = await setup();
+    await api("POST", `/api/ai/sessions/${session.id}/preview`);
+    await app.aiDeveloper!.previewIdle();
+    const sha = github.pushCommit(REPO, session.branch, "otro cambio");
+
+    // La consulta del panel detecta el commit y lo trae en segundo plano.
+    const seen = (await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview;
+    expect(seen).toMatchObject({ status: "ready", outdated: true });
+    await app.aiDeveloper!.previewIdle();
+    expect(server.count("updateLivePreview")).toBe(1);
+    expect(server.count("startLivePreview")).toBe(1);
+    expect((await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview).toMatchObject({ sha, outdated: false, updating: false });
+    // Sin commits nuevos no se vuelve a pedir.
+    await api("GET", `/api/ai/sessions/${session.id}/preview`);
+    await app.aiDeveloper!.previewIdle();
+    expect(server.count("updateLivePreview")).toBe(1);
+  });
+
+  it("arranca sola en cuanto Claude sube su primer cambio", async () => {
+    const { api, app, session, server, github } = await setup();
+    expect((await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview).toBeNull();
+    expect(server.count("installPreview")).toBe(0);
+    github.pushCommit(REPO, session.branch, "primer cambio");
+    expect((await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview.status).toBe("installing");
+    await app.aiDeveloper!.previewIdle();
+    expect((await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview.status).toBe("ready");
   });
 
   it("solo redirige a rutas del mismo host tras canjear el pase", async () => {
     const { api, app, session } = await setup();
     await api("POST", `/api/ai/sessions/${session.id}/preview`);
+    await app.aiDeveloper!.previewIdle();
     for (const [next, expected] of [
       ["/registro?x=1", "/registro?x=1"],
       ["//evil.example", "/"],
@@ -114,32 +147,30 @@ describe("AI Developer: vista previa", () => {
     }
   });
 
-  it("sin preview.yml en el repo (plantilla < 1.5.0) lo explica y no toca el servidor", async () => {
-    const { api, session, github, server } = await setup();
-    github.missingWorkflows.add(`${REPO}/preview.yml`);
-    const response = await api("POST", `/api/ai/sessions/${session.id}/preview`);
-    expect(response.status).toBe(409);
-    expect(response.body.error).toContain("preview.yml");
-    expect(server.count("installPreview")).toBe(0);
-  });
-
-  it("un workflow fallido queda como fallido con el paso que falló; uno en curso sigue construyendo", async () => {
-    const { api, session, github } = await setup();
-    github.nextPreviewConclusion = null;
+  it("si no arranca (p. ej. repo sin pnpm dev:preview) queda como fallida con el motivo, y no se relanza sola", async () => {
+    const { api, app, session, server, github } = await setup();
+    server.liveFailure = "el repo no tiene pnpm dev:preview (plantilla anterior a 1.6.0)";
+    github.pushCommit(REPO, session.branch, "cambio");
     await api("POST", `/api/ai/sessions/${session.id}/preview`);
-    expect((await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview).toMatchObject({ status: "building", runUrl: expect.stringContaining("/actions/runs/") });
-
-    await api("POST", `/api/ai/sessions/${session.id}/preview/stop`);
-    github.nextPreviewConclusion = "failure";
-    await api("POST", `/api/ai/sessions/${session.id}/preview`);
+    await app.aiDeveloper!.previewIdle();
     const failed = (await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview;
     expect(failed.status).toBe("failed");
-    expect(failed.error).toContain("deploy › Deploy over SSH");
+    expect(failed.error).toContain("pnpm dev:preview");
+    await api("GET", `/api/ai/sessions/${session.id}/preview`);
+    await app.aiDeveloper!.previewIdle();
+    expect(server.count("startLivePreview")).toBe(1);
+
+    // Corregido el repo, reintentar la arranca.
+    server.liveFailure = null;
+    await api("POST", `/api/ai/sessions/${session.id}/preview`);
+    await app.aiDeveloper!.previewIdle();
+    expect((await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview.status).toBe("ready");
   });
 
-  it("se apaga sola tras una hora sin visitas; cada visita la mantiene encendida", async () => {
-    const { api, app, session, server, time, store } = await setup();
+  it("se apaga sola tras una hora sin visitas; cada visita la mantiene encendida; al volver arranca otra vez", async () => {
+    const { api, app, session, server, time, store, github } = await setup();
     await api("POST", `/api/ai/sessions/${session.id}/preview`);
+    await app.aiDeveloper!.previewIdle();
     const frameUrl = (await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview.frameUrl;
     const nginx = await viaNginx(app, frameUrl);
 
@@ -153,12 +184,29 @@ describe("AI Developer: vista previa", () => {
     expect(server.count("stopPreview")).toBe(1);
     expect((await store.aiSessions.findOne({ _id: session.id }))?.preview?.status).toBe("stopped");
     expect(await nginx.check()).toBe(401);
+
+    // Al volver al panel, si la rama tiene cambios, se levanta de nuevo sola.
+    github.pushCommit(REPO, session.branch, "cambio");
+    expect((await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview.status).toBe("installing");
+    await app.aiDeveloper!.previewIdle();
+    expect(server.count("startLivePreview")).toBe(2);
+  });
+
+  it("parada a mano no se relanza sola", async () => {
+    const { api, app, session, server, github } = await setup();
+    github.pushCommit(REPO, session.branch, "cambio");
+    await api("POST", `/api/ai/sessions/${session.id}/preview`);
+    await app.aiDeveloper!.previewIdle();
+    await api("POST", `/api/ai/sessions/${session.id}/preview/stop`);
+    expect((await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview.status).toBe("stopped");
+    await app.aiDeveloper!.previewIdle();
+    expect(server.count("startLivePreview")).toBe(1);
   });
 
   it("fusionar o cerrar la sesión para la vista previa", async () => {
-    const { api, session, github, server } = await setup();
+    const { api, app, session, github, server } = await setup();
     await api("POST", `/api/ai/sessions/${session.id}/preview`);
-    await api("GET", `/api/ai/sessions/${session.id}/preview`);
+    await app.aiDeveloper!.previewIdle();
     github.pushCommit(REPO, session.branch, "feat: cambio");
     await api("POST", `/api/ai/sessions/${session.id}/pull-request`);
     const merged = await api("POST", `/api/ai/sessions/${session.id}/merge`, { confirm: true });

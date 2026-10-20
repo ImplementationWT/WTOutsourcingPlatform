@@ -31,6 +31,10 @@ export GOOD_IMAGE_ACME BAD_IMAGE_ACME GOOD_IMAGE_BETA
 docker build -q -t localhost:5000/fake-mongo:8 "$tests/fake-mongo" >/dev/null
 docker push -q localhost:5000/fake-mongo:8 >/dev/null
 docker rmi -f localhost:5000/fake-mongo:8 >/dev/null
+# Vista previa en vivo: "node" simulado (corepack, pnpm y servidor de desarrollo sin red).
+docker build -q -t localhost:5000/fake-node:24 "$tests/fake-node" >/dev/null
+docker push -q localhost:5000/fake-node:24 >/dev/null
+docker rmi -f localhost:5000/fake-node:24 >/dev/null
 docker build -q -t fake-panel "$tests/fake-panel" >/dev/null
 docker run -d --name fake-panel --network host fake-panel >/dev/null
 

@@ -25,12 +25,12 @@ export class AiDeveloperError extends Error {
 
 const MAX_PATCH_CHARS = 60_000;
 const MAX_DIFF_FILES = 150;
-export const PREVIEW_WORKFLOW = "preview.yml";
 /** Una vista previa sin visitas se apaga a la hora. */
 const PREVIEW_IDLE_MS = 60 * 60_000;
-/** Si GitHub no muestra el run en este tiempo, se da por fallido. */
-const PREVIEW_RUN_APPEAR_MS = 3 * 60_000;
-const CLOCK_SKEW_MS = 60_000;
+/** Arrancando sin tarea viva pasado este tiempo: la plataforma se reinició a mitad. */
+const PREVIEW_STALE_MS = 20 * 60_000;
+/** Tras un fallo al actualizar, no se reintenta el mismo commit hasta pasado este tiempo. */
+const PREVIEW_UPDATE_RETRY_MS = 60_000;
 
 export interface AiDeveloperDeps {
   store: AdminStore;
@@ -359,87 +359,165 @@ export class AiDeveloper {
   }
 
   /**
-   * Construye la rama en GitHub Actions (workflow preview.yml del repo) y la
-   * levanta en preview-<slug>.<dominio> con una base vacía propia.
+   * Cambia campos de la vista previa solo si sigue siendo la misma (mismo requestedAt): una
+   * tarea que termina tarde no resucita una vista previa parada o relanzada.
+   */
+  private async patchPreview(session: AiSessionDoc, requestedAt: Date, fields: Partial<AiPreviewState>) {
+    const set: Record<string, unknown> = { updatedAt: this.now() };
+    const unset: Record<string, ""> = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (value === undefined) unset[`preview.${key}`] = "";
+      else set[`preview.${key}`] = value;
+    }
+    const result = await this.deps.store.aiSessions.updateOne(
+      { _id: session._id, "preview.requestedAt": requestedAt },
+      { $set: set, ...(Object.keys(unset).length ? { $unset: unset } : {}) }
+    );
+    if (result.matchedCount && session.preview?.requestedAt.getTime() === requestedAt.getTime()) Object.assign(session.preview, fields);
+    return result.matchedCount > 0;
+  }
+
+  /** Arranque y actualizaciones de la vista previa: en segundo plano, una a la vez por sesión. */
+  private readonly previewTasks = new Map<string, Promise<void>>();
+
+  private runPreviewTask(sessionId: string, task: () => Promise<void>) {
+    if (this.previewTasks.has(sessionId)) return;
+    const promise = task()
+      .catch((error) => this.deps.log.warn({ err: error, session: sessionId }, "preview task failed"))
+      .finally(() => this.previewTasks.delete(sessionId));
+    this.previewTasks.set(sessionId, promise);
+  }
+
+  /** Espera a las tareas de vista previa en curso (tests). */
+  async previewIdle() {
+    while (this.previewTasks.size) await Promise.all([...this.previewTasks.values()]);
+  }
+
+  /** Token de solo lectura del repo (caduca en 1 h) para que el servidor clone o actualice la rama. */
+  private async readToken(repository: string) {
+    const token = await this.deps.github.createRepoToken(repository, "read");
+    registerSecret(token);
+    return token;
+  }
+
+  /**
+   * Vista previa en vivo: el servidor del proyecto clona la rama y la arranca en modo
+   * desarrollo (pnpm dev:preview) en preview-<slug>.<dominio>, con una base vacía propia.
+   * Responde enseguida; el arranque sigue en segundo plano (installing → building → ready).
    */
   async startPreview(session: AiSessionDoc, actor: string) {
     this.requireActive(session);
-    const { github, provisioning } = this.deps;
-    const { client, target } = provisioning.deployEnabled ? await this.serverOf(session.clientId) : { client: null, target: undefined };
+    const { client, target } = this.deps.provisioning.deployEnabled ? await this.serverOf(session.clientId) : { client: null, target: undefined };
     if (!target) {
       throw new AiDeveloperError(409, "La vista previa necesita el despliegue en el VPS habilitado (DEPLOY_ENABLED) y el servidor del proyecto.");
     }
     if (session.preview && ["installing", "building"].includes(session.preview.status)) return this.previewView(session);
-    if (!(await github.getWorkflow(session.repository, PREVIEW_WORKFLOW))) {
-      throw new AiDeveloperError(
-        409,
-        `El repositorio no tiene el workflow de vista previa (.github/workflows/${PREVIEW_WORKFLOW}). Llega con la plantilla 1.5.0; en repos anteriores hay que añadirlo.`
-      );
-    }
 
     const names = this.names(client, session.clientId);
-    const base = { host: `preview-${names.slug}.${target.appsDomain}`, sha: null, requestedAt: this.now(), requestedBy: actor };
-    await this.setPreview(session, { ...base, status: "installing" });
-    try {
-      const installed = await target.adapter.installPreview(names.slug);
-      const sha = await github.getBranchSha(session.repository, session.branch);
-      await github.dispatchWorkflow(session.repository, PREVIEW_WORKFLOW, session.branch);
-      await this.setPreview(session, { ...base, host: installed.host, sha, status: "building" });
-    } catch (error) {
-      await this.setPreview(session, { ...base, status: "failed", error: redactString(error instanceof Error ? error.message : "No se pudo iniciar la vista previa.") });
-      throw error;
-    }
-    await this.audit(actor, "ai.preview_started", session, { sha: session.preview?.sha ?? "" });
-    return this.previewView(session);
-  }
+    const requestedAt = this.now();
+    await this.setPreview(session, {
+      status: "installing",
+      mode: "live",
+      host: `preview-${names.slug}.${target.appsDomain}`,
+      sha: null,
+      requestedAt,
+      requestedBy: actor
+    });
+    await this.audit(actor, "ai.preview_started", session);
 
-  /** Avanza el estado (run de GitHub, caducidad) y devuelve la vista pública. */
-  async previewState(session: AiSessionDoc) {
-    const preview = session.preview;
-    if (!preview) return null;
-    const { github } = this.deps;
-
-    if (preview.status === "building") {
-      const runs = await github.listDispatchRuns(session.repository, PREVIEW_WORKFLOW, session.branch);
-      const run = runs.find((r) => new Date(r.createdAt).getTime() >= preview.requestedAt.getTime() - CLOCK_SKEW_MS);
-      if (!run) {
-        if (this.now().getTime() - preview.requestedAt.getTime() > PREVIEW_RUN_APPEAR_MS) {
-          await this.setPreview(session, { ...preview, status: "failed", error: "GitHub no inició el workflow de vista previa." });
-        }
-      } else if (run.status !== "completed") {
-        if (preview.runId !== run.id) await this.setPreview(session, { ...preview, runId: run.id, runUrl: run.url });
-      } else if (run.conclusion === "success") {
+    this.runPreviewTask(session._id, async () => {
+      try {
+        const installed = await target.adapter.installPreview(names.slug);
+        if (!(await this.patchPreview(session, requestedAt, { host: installed.host, status: "building" }))) return;
+        const token = await this.readToken(session.repository);
+        const { sha } = await target.adapter.startLivePreview(names.slug, { repository: names.repositoryFullName, branch: session.branch, token });
         const now = this.now();
-        await this.setPreview(session, { ...preview, runId: run.id, runUrl: run.url, status: "ready", readyAt: now, expiresAt: new Date(now.getTime() + PREVIEW_IDLE_MS) });
-        await this.audit(preview.requestedBy, "ai.preview_ready", session, { sha: preview.sha ?? "" });
-      } else {
-        const step = await github.getRunFailure(session.repository, run.id).catch(() => null);
-        await this.setPreview(session, {
-          ...preview,
-          runId: run.id,
-          runUrl: run.url,
+        if (await this.patchPreview(session, requestedAt, { status: "ready", sha, readyAt: now, expiresAt: new Date(now.getTime() + PREVIEW_IDLE_MS) })) {
+          await this.audit(actor, "ai.preview_ready", session, { sha });
+        }
+      } catch (error) {
+        await this.patchPreview(session, requestedAt, {
           status: "failed",
-          error: step ? `Falló «${step}» en GitHub Actions.` : `El workflow terminó con «${run.conclusion ?? "error"}».`
+          error: redactString(error instanceof Error ? error.message : "No se pudo iniciar la vista previa.")
         });
       }
-    } else if (preview.status === "ready" && preview.expiresAt && preview.expiresAt <= this.now()) {
-      await this.stopPreview(session, "sistema", "expired");
-    }
+    });
     return this.previewView(session);
   }
 
-  private async previewView(session: AiSessionDoc) {
+  /** Trae el último commit de la rama a la vista en vivo (Vite y tsx lo aplican en caliente). */
+  private updatePreview(session: AiSessionDoc, head: string) {
+    const requestedAt = session.preview!.requestedAt;
+    this.runPreviewTask(session._id, async () => {
+      if (!(await this.patchPreview(session, requestedAt, { updating: true, updateError: undefined }))) return;
+      try {
+        const { target } = await this.serverOf(session.clientId);
+        if (!target) throw new Error("El servidor del proyecto no está disponible.");
+        const token = await this.readToken(session.repository);
+        const { sha, reinstalled } = await target.adapter.updateLivePreview(parseSlug(session.clientId), { branch: session.branch, token });
+        await this.patchPreview(session, requestedAt, { sha, updating: false, updatedAt: this.now() });
+        await this.audit("sistema", "ai.preview_updated", session, { sha, reinstalled });
+      } catch (error) {
+        await this.patchPreview(session, requestedAt, {
+          updating: false,
+          updateError: redactString(error instanceof Error ? error.message : "No se pudieron traer los cambios."),
+          updateFailedSha: head,
+          updateFailedAt: this.now()
+        });
+      }
+    });
+  }
+
+  /**
+   * Estado de la vista previa (el panel lo consulta cada pocos segundos). Arranca sola en
+   * cuanto Claude sube su primer cambio (o al volver tras apagarse por inactividad) y se
+   * actualiza sola con cada commit nuevo de la rama.
+   */
+  async previewState(session: AiSessionDoc) {
+    const preview = session.preview;
+    const head = await this.deps.github.getBranchSha(session.repository, session.branch).catch(() => null);
+    const now = this.now();
+
+    if (!preview || (preview.status === "stopped" && preview.stopReason === "expired")) {
+      const hasChanges = Boolean(head && head !== session.baseSha);
+      if (session.status === "active" && this.deps.provisioning.deployEnabled && hasChanges) {
+        try {
+          return await this.startPreview(session, "sistema");
+        } catch (error) {
+          this.deps.log.warn({ err: error, session: session._id }, "preview auto-start failed");
+        }
+      }
+      return preview ? this.previewView(session, head) : null;
+    }
+
+    const starting = preview.status === "installing" || preview.status === "building";
+    if (starting && !this.previewTasks.has(session._id) && now.getTime() - preview.requestedAt.getTime() > PREVIEW_STALE_MS) {
+      await this.patchPreview(session, preview.requestedAt, { status: "failed", error: "El arranque se interrumpió (la plataforma se reinició). Vuelve a intentarlo." });
+    } else if (preview.status === "ready") {
+      if (preview.expiresAt && preview.expiresAt <= now) {
+        await this.stopPreview(session, "sistema", "expired");
+      } else if (head && preview.sha && head !== preview.sha && !this.previewTasks.has(session._id)) {
+        const recentFailure =
+          preview.updateFailedSha === head && preview.updateFailedAt && now.getTime() - preview.updateFailedAt.getTime() < PREVIEW_UPDATE_RETRY_MS;
+        if (!recentFailure) this.updatePreview(session, head);
+      }
+    }
+    return this.previewView(session, head);
+  }
+
+  private async previewView(session: AiSessionDoc, head?: string | null) {
     const preview = session.preview!;
     const ready = preview.status === "ready";
-    // ¿La rama avanzó desde que se construyó? Entonces la vista previa está desactualizada.
-    const head = ready ? await this.deps.github.getBranchSha(session.repository, session.branch).catch(() => null) : null;
     return {
       status: preview.status,
       url: `https://${preview.host}`,
       frameUrl: ready ? `https://${preview.host}/__launchpad/auth?t=${encodeURIComponent(this.deps.passes.issuePass(preview.host, session._id))}` : null,
       sha: preview.sha,
+      /** Trayendo los últimos cambios de Claude (se aplican en caliente). */
+      updating: Boolean(preview.updating),
+      /** La rama tiene commits que la vista previa aún no muestra. */
       outdated: Boolean(ready && head && preview.sha && head !== preview.sha),
-      runUrl: preview.runUrl ?? null,
+      updateError: preview.updateError ?? null,
       requestedAt: preview.requestedAt,
       readyAt: preview.readyAt ?? null,
       expiresAt: preview.expiresAt ?? null,
@@ -458,7 +536,7 @@ export class AiDeveloper {
         this.deps.log.warn({ err: error, session: session._id }, "preview-stop failed");
       }
     }
-    await this.setPreview(session, { ...preview, status: "stopped", stoppedAt: this.now() });
+    await this.setPreview(session, { ...preview, status: "stopped", stoppedAt: this.now(), stopReason: reason, updating: false });
     this.authCache.clear();
     await this.audit(actor, "ai.preview_stopped", session, { reason });
   }

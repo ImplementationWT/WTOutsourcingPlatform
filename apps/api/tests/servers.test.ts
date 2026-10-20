@@ -238,6 +238,8 @@ describe("servidores: proyectos", () => {
     expect(started.body.preview.url).toBe(`https://${host}`);
     expect(ctx.second.calls.filter((c) => c.method === "installPreview").map((c) => c.args[0])).toEqual(["acme-crm"]);
     expect(ctx.server.calls.some((c) => c.method === "installPreview")).toBe(false);
+    await ctx.app.aiDeveloper!.previewIdle();
+    expect(ctx.second.calls.some((c) => c.method === "startLivePreview")).toBe(true);
 
     // nginx del segundo servidor valida contra Launchpad con su host.
     const ready = await ctx.api("GET", `/api/ai/sessions/${session.id}/preview`);

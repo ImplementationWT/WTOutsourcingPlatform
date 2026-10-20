@@ -7,11 +7,13 @@
 #   uninstall-client <slug>
 #   preview-install <slug>   (vista previa del AI Developer)
 #   preview-stop <slug>
+#   preview-live-start <slug>    (vista previa en vivo; JSON con rama y token por stdin)
+#   preview-live-update <slug>   (trae el último commit; JSON por stdin)
 #   server-info              (verificación del servidor, solo lectura)
 # Cualquier otra cosa se rechaza. El slug se valida aquí y otra vez en el script.
 set -euo pipefail
 
-readonly ALLOWED_RE='^(install-client|client-status|uninstall-client|preview-install|preview-stop) ([a-z0-9]+(-[a-z0-9]+)*)$'
+readonly ALLOWED_RE='^(install-client|client-status|uninstall-client|preview-install|preview-stop|preview-live-start|preview-live-update) ([a-z0-9]+(-[a-z0-9]+)*)$'
 
 command=${SSH_ORIGINAL_COMMAND:-}
 if [[ $command == server-info ]]; then

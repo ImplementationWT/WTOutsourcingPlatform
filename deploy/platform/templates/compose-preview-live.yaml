@@ -1,0 +1,104 @@
+# Generado por /opt/platform/bin/preview-live-start para la vista previa en vivo de @@SLUG@@.
+# No editar a mano. Ejecuta la rama de trabajo en modo desarrollo (pnpm dev:preview) con el
+# clon montado: cada commit que trae preview-live-update se aplica en caliente. Su MongoDB es
+# propia y temporal. Nunca usa la base ni los secrets de producción.
+name: preview-@@SLUG@@
+
+services:
+  mongo:
+    image: @@MONGO_IMAGE@@
+    # Replica set de un nodo, como Atlas, para que funcionen las transacciones.
+    command: ["--replSet", "rs0", "--bind_ip_all", "--wiredTigerCacheSizeGB", "0.25"]
+    restart: unless-stopped
+    cpus: "0.5"
+    mem_limit: 768m
+    networks:
+      - preview
+    healthcheck:
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - "try { rs.status() } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }) } quit(db.hello().isWritablePrimary ? 0 : 1)"
+      interval: 3s
+      timeout: 10s
+      start_period: 60s
+      retries: 30
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  app:
+    image: @@NODE_IMAGE@@
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    working_dir: /app
+    # pnpm de packageManager vía corepack (en el directorio del usuario: sin root), instalación
+    # reproducible y modo desarrollo. El clon es del usuario node (uid 1000).
+    command:
+      - sh
+      - -c
+      - corepack enable --install-directory /home/node/.local/bin && pnpm install --frozen-lockfile && exec pnpm dev:preview
+    env_file:
+      - path: @@ENV_FILE@@
+        format: raw
+    environment:
+      NODE_ENV: development
+      PATH: /home/node/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      # La API escucha dentro del contenedor; Vite (5173) la publica con su proxy.
+      HOST: 127.0.0.1
+      PORT: "3000"
+      TRUST_PROXY_HOPS: "1"
+      # Base temporal y acceso solo con pase de Launchpad: admin / admin123 sin cambio obligatorio.
+      FORCE_ADMIN_PASSWORD_CHANGE: "false"
+    user: node
+    volumes:
+      - @@WORKSPACE@@:/app
+      # Home del usuario node (caché de pnpm y corepack): ya existe en la imagen y es suyo,
+      # así que el volumen nace con sus permisos.
+      - pnpm-store:/home/node
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: "1.0"
+    mem_limit: 1536m
+    pids_limit: 512
+    # Solo en loopback: nginx la publica en https://@@HOST@@ (con pase de Launchpad y WebSocket para el HMR).
+    ports:
+      - "127.0.0.1:@@PORT@@:5173"
+    networks:
+      - preview
+    healthcheck:
+      # /health llega a la API por el proxy de Vite: sano cuando responden los dos.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: @@WAIT@@s
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+volumes:
+  # Caché de pnpm por proyecto: el siguiente arranque instala en segundos. Externo para que
+  # "down --volumes" (base temporal) no lo borre; uninstall-client sí lo retira.
+  pnpm-store:
+    name: @@PNPM_VOLUME@@
+    external: true
+
+networks:
+  preview:
+    name: preview-@@SLUG@@
+    labels:
+      platform.client: "@@SLUG@@"

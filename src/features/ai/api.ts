@@ -53,15 +53,20 @@ export function useAiReview(id: string | null, enabled: boolean) {
   });
 }
 
-/** Estado de la vista previa: cada 5 s mientras se construye, cada minuto cuando está lista. */
-export function useAiPreview(id: string | null) {
+/**
+ * Estado de la vista previa. Mientras la sesión está activa se consulta cada pocos segundos:
+ * así arranca sola con el primer cambio de Claude y trae cada commit nuevo a la vista en vivo.
+ */
+export function useAiPreview(id: string | null, active = true) {
   return useQuery({
     queryKey: ["ai-preview", id],
     queryFn: async () => (await apiFetch<{ preview: AiPreview | null }>(sessionUrl(id!, "/preview"))).preview,
     enabled: Boolean(id),
     refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      return status === "installing" || status === "building" ? 5_000 : status === "ready" ? 60_000 : false;
+      if (!active) return false;
+      const preview = query.state.data;
+      const busy = preview && (preview.status === "installing" || preview.status === "building" || preview.updating || preview.outdated);
+      return busy ? 3_000 : 6_000;
     },
   });
 }

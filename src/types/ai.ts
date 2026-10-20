@@ -76,9 +76,11 @@ export interface AiPreview {
   /** URL del iframe con un pase de un solo uso (solo con status ready). */
   frameUrl: string | null;
   sha: string | null;
-  /** La rama tiene commits más nuevos que los de la vista previa. */
+  /** La rama tiene commits que la vista previa aún no muestra. */
   outdated: boolean;
-  runUrl: string | null;
+  /** Trayendo los últimos cambios de Claude (se aplican en caliente, sin recargar). */
+  updating: boolean;
+  updateError: string | null;
   requestedAt: string;
   readyAt: string | null;
   expiresAt: string | null;

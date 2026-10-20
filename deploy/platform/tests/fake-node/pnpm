@@ -1,0 +1,7 @@
+#!/bin/sh
+# pnpm simulado: install deja constancia; dev:preview arranca el servidor de desarrollo.
+case "$1" in
+  install) mkdir -p node_modules && echo installed >>node_modules/.installs ;;
+  dev:preview) exec node /fake/dev-server.js ;;
+  *) echo "pnpm simulado: $*" >&2; exit 1 ;;
+esac

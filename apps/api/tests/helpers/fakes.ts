@@ -275,8 +275,8 @@ export class FakeGithub extends Faulty implements GithubAdapter {
     this.hit("getInstallationPermissions");
     return this.installationPermissions;
   }
-  async createRepoToken(repo: string) {
-    this.hit("createRepoToken", repo);
+  async createRepoToken(repo: string, access: "write" | "read" = "write") {
+    this.hit("createRepoToken", repo, access);
     const token = `ghs_${randomBytes(18).toString("hex")}`;
     this.issuedTokens.push(token);
     return token;
@@ -390,6 +390,24 @@ export class FakeServer extends Faulty implements ServerAdapter {
     this.previews.set(slug, entry);
     return { status: "ok" as const, slug, host: `preview-${slug}.${this.appsDomain}`, port: entry.port, certificate: existing ? ("existing" as const) : ("issued" as const) };
   }
+  /** Si no es null, preview-live-start falla con este motivo (p. ej. repo sin pnpm dev:preview). */
+  liveFailure: string | null = null;
+  async startLivePreview(slug: string, input: { repository: string; branch: string; token: string }) {
+    this.hit("startLivePreview", slug, input);
+    const entry = this.previews.get(slug);
+    if (!entry) throw new FatalError("server_command_failed", `preview-live-start falló en el servidor: la vista previa de ${slug} no está preparada`);
+    if (this.liveFailure) throw new FatalError("server_command_failed", `preview-live-start falló en el servidor: ${this.liveFailure}`);
+    const sha = await this.github.getBranchSha(input.repository.split("/")[1], input.branch);
+    entry.running = true;
+    return { sha: sha! };
+  }
+  async updateLivePreview(slug: string, input: { branch: string; token: string }) {
+    this.hit("updateLivePreview", slug, input);
+    const entry = this.previews.get(slug);
+    if (!entry?.running) throw new FatalError("server_command_failed", `preview-live-update falló en el servidor: la vista previa en vivo de ${slug} no está arrancada`);
+    const sha = await this.github.getBranchSha(`${slug}-app`, input.branch);
+    return { sha: sha!, reinstalled: false };
+  }
   async stopPreview(slug: string) {
     this.hit("stopPreview", slug);
     const entry = this.previews.get(slug);
@@ -399,7 +417,7 @@ export class FakeServer extends Faulty implements ServerAdapter {
   }
   /** Lo que devuelve server-info (los tests lo ajustan para simular servidores mal configurados). */
   info: ServerInfo = {
-    scriptsVersion: 2,
+    scriptsVersion: 3,
     appBaseDomain: "",
     ghcrOrg: "acme-org",
     acmeEmail: true,

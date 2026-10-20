@@ -54,6 +54,10 @@ const previewInstallSchema = z.object({
   certificate: z.enum(["issued", "existing"])
 });
 
+/** Respuestas de la vista previa en vivo. */
+const previewLiveStartSchema = z.object({ status: z.literal("ok"), slug: z.string(), sha: z.string() });
+const previewLiveUpdateSchema = z.object({ status: z.literal("ok"), slug: z.string(), sha: z.string(), reinstalled: z.boolean() });
+
 /** Respuesta de preview-stop. */
 const previewStopSchema = z.object({ status: z.literal("ok"), slug: z.string(), stopped: z.boolean() });
 
@@ -95,6 +99,13 @@ export interface ServerAdapter {
   stopPreview(slug: Slug): Promise<{ stopped: boolean }>;
   /** Verificación de solo lectura: versión de los scripts y configuración del servidor. */
   serverInfo(): Promise<ServerInfo>;
+  /**
+   * Vista previa en vivo: clona la rama (token de solo lectura, por stdin) y arranca
+   * pnpm dev:preview. Espera a que responda; devuelve el commit que muestra.
+   */
+  startLivePreview(slug: Slug, input: { repository: string; branch: string; token: string }): Promise<{ sha: string }>;
+  /** Trae el último commit de la rama a la vista en vivo (se aplica en caliente). */
+  updateLivePreview(slug: Slug, input: { branch: string; token: string }): Promise<{ sha: string; reinstalled: boolean }>;
 }
 
 export interface ServerConnection {
@@ -131,10 +142,21 @@ export function generateClientKeyPair(comment: string) {
 }
 
 /** Únicos comandos que el orquestador puede pedir (provisioner-dispatch aplica la misma lista). */
-type ServerCommand = "install-client" | "client-status" | "uninstall-client" | "preview-install" | "preview-stop" | "server-info";
+type ServerCommand =
+  | "install-client"
+  | "client-status"
+  | "uninstall-client"
+  | "preview-install"
+  | "preview-stop"
+  | "preview-live-start"
+  | "preview-live-update"
+  | "server-info";
 
 const INSTALL_TIMEOUT_MS = 10 * 60_000; // incluye la emisión del certificado
 const QUERY_TIMEOUT_MS = 30_000;
+// El primer arranque instala dependencias (PREVIEW_LIVE_WAIT_SECONDS, 600 por defecto).
+const LIVE_START_TIMEOUT_MS = 15 * 60_000;
+const LIVE_UPDATE_TIMEOUT_MS = 6 * 60_000;
 
 function lastLine(text: string) {
   return text.trimEnd().split("\n").at(-1) ?? "";
@@ -256,6 +278,17 @@ export function createServerAdapter(connection: ServerConnection): ServerAdapter
       const result = await run("preview-stop", slug, "", INSTALL_TIMEOUT_MS);
       check("preview-stop", result);
       return { stopped: parse(previewStopSchema, "preview-stop", result.stdout).stopped };
+    },
+    async startLivePreview(slug, input) {
+      const result = await run("preview-live-start", slug, `${JSON.stringify(input)}\n`, LIVE_START_TIMEOUT_MS);
+      check("preview-live-start", result);
+      return { sha: parse(previewLiveStartSchema, "preview-live-start", result.stdout).sha };
+    },
+    async updateLivePreview(slug, input) {
+      const result = await run("preview-live-update", slug, `${JSON.stringify(input)}\n`, LIVE_UPDATE_TIMEOUT_MS);
+      check("preview-live-update", result);
+      const { sha, reinstalled } = parse(previewLiveUpdateSchema, "preview-live-update", result.stdout);
+      return { sha, reinstalled };
     },
     async serverInfo() {
       const result = await run("server-info", null, "", QUERY_TIMEOUT_MS);

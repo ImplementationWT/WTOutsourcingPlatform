@@ -17,6 +17,9 @@ REGISTRY_HOST=localhost:5000
 DEPLOY_WAIT_SECONDS=45
 PANEL_ORIGIN=https://launchpad.test
 PREVIEW_MONGO_IMAGE=localhost:5000/fake-mongo:8
+PREVIEW_NODE_IMAGE=localhost:5000/fake-node:24
+GIT_BASE_URL=file:///srv/test-git
+PREVIEW_LIVE_WAIT_SECONDS=60
 ${1:-}
 CONF
 }

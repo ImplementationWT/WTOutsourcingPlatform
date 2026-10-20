@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# preview-live-update <slug>  (root, vía sudo desde provisioner-dispatch)
+#
+# Trae a la vista previa en vivo el último commit de su rama (contrato §5.3). Por stdin:
+#   {"branch":"ai/<fecha>-<id>","token":"ghs_…"}
+# git fetch + reset como uid 1000 (sin root, token solo en el entorno); Vite y tsx watch
+# aplican el cambio en caliente. Si cambió pnpm-lock.yaml, reinstala dentro del contenedor.
+# Salida: una última línea JSON {"status":"ok","slug":…,"sha":…,"reinstalled":true|false}.
+set -euo pipefail
+
+# shellcheck source=../lib/common.sh
+source /opt/platform/lib/common.sh
+
+[[ $# -eq 1 ]] || die "uso: preview-live-update <slug>"
+slug=$1
+require_slug "$slug"
+load_config
+
+dir=$(preview_dir "$slug")
+live=$(preview_live_dir "$slug")
+project="preview-$slug"
+compose="$dir/compose.yaml"
+[[ -d "$live/.git" && -f $compose ]] || die "la vista previa en vivo de $slug no está arrancada"
+
+payload=$(head -c 4096)
+branch=$(jq -er '.branch | strings' <<<"$payload" 2>/dev/null) || die "falta branch"
+token=$(jq -er '.token | strings' <<<"$payload" 2>/dev/null) || die "falta token"
+[[ $branch =~ ^ai/[0-9]{8}-[0-9a-f]{8}$ ]] || die "branch inválida"
+[[ $token =~ ^gh[su]_[A-Za-z0-9]{20,255}$ ]] || die "token inválido"
+
+exec 9>"$dir/.deploy.lock"
+flock -w 300 9 || die "hay otra operación de vista previa en curso para $slug"
+
+lock_sum() { sha256sum "$live/pnpm-lock.yaml" 2>/dev/null | cut -d' ' -f1; }
+
+before=$(lock_sum)
+# Solo la rama de esta vista previa; los archivos ignorados (node_modules) se conservan.
+preview_git "$token" -C "$live" fetch --quiet --depth 1 origin "$branch" >&2 || die "no se pudo traer $branch"
+preview_git "$token" -C "$live" reset --quiet --hard FETCH_HEAD >&2
+preview_git "$token" -C "$live" clean --quiet -fd >&2
+sha=$(preview_git "$token" -C "$live" rev-parse HEAD)
+
+reinstalled=false
+if [[ $(lock_sum) != "$before" ]]; then
+  docker compose --project-name "$project" --file "$compose" exec -T app pnpm install --frozen-lockfile >&2 ||
+    die "falló pnpm install tras cambiar pnpm-lock.yaml"
+  reinstalled=true
+fi
+
+jq -cn --arg sha "$sha" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{mode: "live", sha: $sha, updatedAt: $at}' >"$dir/state.json"
+jq -cn --arg slug "$slug" --arg sha "$sha" --argjson reinstalled "$reinstalled" '{status: "ok", slug: $slug, sha: $sha, reinstalled: $reinstalled}'

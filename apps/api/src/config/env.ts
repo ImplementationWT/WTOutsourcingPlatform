@@ -62,7 +62,7 @@ export const envSchema = z.object({
 
   // Template (contrato §1 y §8): versión exacta que deben tener los repos generados
   // (package.json → template.version) y schemaVersion mínima que debe devolver /api/meta.
-  TEMPLATE_VERSION: optional(z.string().regex(/^\d+\.\d+\.\d+$/, "debe ser SemVer, p. ej. 1.5.0")).default("1.5.0"),
+  TEMPLATE_VERSION: optional(z.string().regex(/^\d+\.\d+\.\d+$/, "debe ser SemVer, p. ej. 1.6.0")).default("1.6.0"),
   MIN_SCHEMA_VERSION: optional(z.coerce.number().int().min(1)).default(3),
 
   // Integraciones de clientes (Monday.com…): clave AES-256 (ruta a un archivo con 32 bytes en

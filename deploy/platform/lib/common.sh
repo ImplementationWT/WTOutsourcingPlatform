@@ -18,7 +18,7 @@ readonly SLUG_MAX=30
 readonly APP_INTERNAL_PORT=3000 # contrato §6
 readonly KEY_MARKER_PREFIX="platform-client:"
 # Versión de estos scripts: Launchpad la comprueba (server-info) antes de usar un servidor.
-readonly PLATFORM_SCRIPTS_VERSION=2
+readonly PLATFORM_SCRIPTS_VERSION=3
 
 die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -59,6 +59,11 @@ config_defaults() {
   PANEL_ORIGIN=""
   PANEL_UPSTREAM=http://127.0.0.1:3001
   PREVIEW_MONGO_IMAGE=mongo:8
+  # Vista previa en vivo: imagen de Node que ejecuta pnpm dev:preview, de dónde se clonan
+  # las ramas y cuánto puede tardar el primer arranque (instala dependencias).
+  PREVIEW_NODE_IMAGE=node:24-slim
+  GIT_BASE_URL=https://github.com
+  PREVIEW_LIVE_WAIT_SECONDS=600
 }
 
 # Lee KEY=valor línea a línea (sin source/eval) y valida cada clave conocida.
@@ -74,7 +79,8 @@ load_config() {
     case $key in
       GHCR_ORG | APP_BASE_DOMAIN | ACME_EMAIL | ACME_CA | NGINX_APPS_DIR | NGINX_CONF | NGINX_RELOAD | \
         CERTBOT_WEBROOT | LETSENCRYPT_LIVE | CUSTOMER_APPS_DIR | PORT_RANGE_START | PORT_RANGE_END | \
-        APP_CPUS | APP_MEMORY | DEPLOY_WAIT_SECONDS | REGISTRY_HOST | PANEL_ORIGIN | PANEL_UPSTREAM | PREVIEW_MONGO_IMAGE)
+        APP_CPUS | APP_MEMORY | DEPLOY_WAIT_SECONDS | REGISTRY_HOST | PANEL_ORIGIN | PANEL_UPSTREAM | PREVIEW_MONGO_IMAGE | \
+        PREVIEW_NODE_IMAGE | GIT_BASE_URL | PREVIEW_LIVE_WAIT_SECONDS)
         printf -v "$key" '%s' "$value"
         ;;
       *) die "clave desconocida en $file: $key" ;;
@@ -106,6 +112,9 @@ validate_config() {
   [[ $PANEL_UPSTREAM =~ ^http://(127\.0\.0\.1|localhost):[0-9]+$ || $PANEL_UPSTREAM =~ ^https://([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}(:[0-9]+)?$ ]] ||
     die "PANEL_UPSTREAM debe ser http://127.0.0.1:<puerto> (Launchpad en este servidor) o el origen https del panel"
   [[ $PREVIEW_MONGO_IMAGE =~ ^[a-z0-9]([a-z0-9._/:-]*[a-z0-9])?$ ]] || die "PREVIEW_MONGO_IMAGE inválida"
+  [[ $PREVIEW_NODE_IMAGE =~ ^[a-z0-9]([a-z0-9._/:-]*[a-z0-9])?$ ]] || die "PREVIEW_NODE_IMAGE inválida"
+  [[ $GIT_BASE_URL =~ ^https://[a-z0-9.-]+(:[0-9]+)?$ || $GIT_BASE_URL =~ ^file:///[A-Za-z0-9._/-]+$ ]] || die "GIT_BASE_URL inválida"
+  [[ $PREVIEW_LIVE_WAIT_SECONDS =~ ^[0-9]+$ ]] || die "PREVIEW_LIVE_WAIT_SECONDS inválido"
 }
 
 client_host() { printf '%s.%s' "$1" "$APP_BASE_DOMAIN"; }
@@ -117,6 +126,28 @@ client_network() { printf 'app-%s' "$1"; }
 preview_host() { printf 'preview-%s.%s' "$1" "$APP_BASE_DOMAIN"; }
 preview_dir() { printf '%s/%s/preview' "$CUSTOMER_APPS_DIR" "$1"; }
 preview_port_key() { printf 'preview-%s' "$1"; }
+# Vista previa en vivo: clon de la rama y caché de pnpm (sobrevive a preview-stop). El clon
+# vive fuera de la carpeta del cliente (700, de root) porque lo usa uid 1000: sus carpetas
+# padre solo dejan pasar (711), sin listar.
+preview_live_root() { printf '%s/.preview-live' "$CUSTOMER_APPS_DIR"; }
+preview_live_dir() { printf '%s/%s' "$(preview_live_root)" "$1"; }
+preview_pnpm_volume() { printf 'preview-%s-pnpm' "$1"; }
+# uid/gid del usuario "node" de las imágenes oficiales: el clon le pertenece.
+readonly PREVIEW_UID=1000
+
+# git como uid 1000 (sin root) y sin configuración del sistema ni del usuario.
+# Uso: preview_git <token> <argumentos de git…>. El token va en variables de entorno
+# exportadas (printf es interno de bash y base64 lo lee por stdin): no aparece en la línea
+# de comandos de ningún proceso ni se escribe en el clon.
+preview_git() (
+  local token=$1
+  shift
+  export HOME=/nonexistent GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0
+  export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraHeader
+  GIT_CONFIG_VALUE_0="Authorization: Basic $(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')"
+  export GIT_CONFIG_VALUE_0
+  exec setpriv --reuid="$PREVIEW_UID" --regid="$PREVIEW_UID" --clear-groups git "$@"
+)
 
 # ---- imagen y variables de entorno (contrato §5) --------------------------------
 

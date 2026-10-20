@@ -1,0 +1,4 @@
+#!/bin/sh
+# corepack enable --install-directory <dir>: deja el pnpm simulado en <dir>.
+[ "$1" = enable ] && [ "$2" = --install-directory ] || exit 1
+mkdir -p "$3" && ln -sf /fake/pnpm "$3/pnpm"

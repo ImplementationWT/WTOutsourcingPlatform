@@ -7,7 +7,9 @@
 # escribe el .env (0600), genera el compose y lo arranca esperando a que esté sano.
 # Si no queda sano, vuelve al despliegue anterior.
 #
-# Vista previa del AI Developer (contrato 1.5.0, §5.2):
+# Vista previa del AI Developer construida en GitHub Actions (contrato 1.5.0, §5.2). Desde la
+# plantilla 1.6.0 la plataforma usa la vista en vivo (preview-live-start, §5.3); esto queda
+# para repos antiguos que la lancen con preview.yml:
 #   { "target": "preview", "image": "…@sha256:…", "registryToken": "…" }   (sin "env")
 # La levanta en su carpeta y puerto propios (preview-install) con una MongoDB temporal
 # y un SESSION_SECRET generados aquí: nunca recibe ni usa los secrets de producción.

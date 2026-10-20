@@ -7,17 +7,33 @@ el template espera recibir, lo que expone y lo que deliberadamente no hace.
 
 | Campo | Valor |
 | --- | --- |
-| Template | `node-typescript@1.5.0` |
+| Template | `node-typescript@1.6.0` |
 | Dónde se define | `package.json` → `template.name` y `template.version` |
 
 ```json
-"template": { "name": "node-typescript", "version": "1.5.0" }
+"template": { "name": "node-typescript", "version": "1.6.0" }
 ```
 
 `template.version` sigue SemVer y es independiente de `version` de
 `package.json`. El aprovisionador lo escribe como `templateVersion` en el
 documento de bootstrap (§8). Los repos ya generados quedan fijados a la versión
 con la que se crearon: este cambio no les afecta.
+
+### Cambios en 1.6.0 (respecto a 1.5.0): vista previa en vivo
+
+La app no cambia (esquema 3, mismas variables). La vista previa del AI Developer
+deja de construirse en GitHub Actions: la plataforma clona la rama en el servidor
+y la arranca en modo desarrollo, con recarga en caliente (§5.3).
+
+- Script nuevo `pnpm dev:preview` (`scripts/dev-preview.mjs`): backend con
+  `tsx watch` y frontend con Vite, que con `LAUNCHPAD_PREVIEW=1` escucha en todas
+  las interfaces del contenedor, acepta el host de la vista previa y sirve el HMR
+  por `wss` en el 443 de nginx.
+- `preview.yml` y `DEPLOY_TARGET=preview` (§5.2) se conservan para repos que aún no
+  tienen `dev:preview`, pero la plataforma ya no los usa.
+- Un repo 1.5.0 obtiene la vista en vivo copiando `scripts/dev-preview.mjs`, el
+  script `dev:preview` de `package.json` y el bloque `livePreview` de
+  `web/vite.config.ts`.
 
 ### Cambios en 1.5.0 (respecto a 1.4.0): vista previa del AI Developer
 
@@ -323,6 +339,26 @@ por el panel de la plataforma (validado en cada petición), solo el panel puede
 mostrarla embebida (`frame-ancestors`) y responde con `X-Robots-Tag: noindex`.
 `/health` queda libre para comprobar que el contenedor vive.
 
+### 5.3 Vista previa en vivo (desde 1.6.0)
+
+Sustituye a §5.2. La plataforma, por el comando forzado del orquestador:
+
+1. Prepara `preview-<slug>.<dominio>` (puerto, certificado y nginx con acceso solo
+   desde el panel; el nginx deja pasar el WebSocket del HMR).
+2. Clona la rama de trabajo en el servidor con un token de **solo lectura** de ese
+   repo, que caduca en una hora y no se guarda en el clon.
+3. Arranca un contenedor `node` sin privilegios con el clon montado:
+   `pnpm install --frozen-lockfile` y `pnpm dev:preview`. Su entorno es el de §5.2
+   (MongoDB temporal propia, `SESSION_SECRET` aleatorio y ningún valor de
+   producción), más `NODE_ENV=development` y `FORCE_ADMIN_PASSWORD_CHANGE=false`.
+4. Con cada commit nuevo en la rama, trae el commit al clon (`git fetch` y
+   `reset`). Vite y `tsx watch` lo aplican en segundos; si cambió `pnpm-lock.yaml`,
+   reinstala primero.
+
+El repo solo tiene que traer `pnpm dev:preview`. Si no lo trae, la plataforma lo
+indica (plantilla anterior a 1.6.0). Privacidad, `frame-ancestors` y `/health`,
+como en §5.2.
+
 ## 6. Contenedor, nginx y compose
 
 | Campo | Valor |
@@ -479,7 +515,7 @@ queda en `{ key: "schema", version: 3 }` y `/api/meta` devuelve
   db.app_metadata.insertOne({
     key: "bootstrap",
     clientId: "<slug>",            // string no vacío
-    templateVersion: "1.5.0"       // template.version de package.json
+    templateVersion: "1.6.0"       // template.version de package.json
   })
   ```
 
@@ -496,10 +532,10 @@ queda en `{ key: "schema", version: 3 }` y `/api/meta` devuelve
   comando del servidor (§5). Para quitar la integración, borrar el secret y
   redesplegar.
 - Disparar el primer `Deploy`.
-- Vista previa (opcional, desde 1.5.0): preparar `preview-<slug>.<dominio>`
-  en el VPS (puerto, certificado y nginx con acceso solo desde el panel),
-  lanzar `Preview` sobre la rama de trabajo, aceptar `"target": "preview"` en
-  el comando del servidor (§5.2) y apagar la vista previa cuando ya no se use.
+- Vista previa (opcional): preparar `preview-<slug>.<dominio>` en el VPS (puerto,
+  certificado y nginx con acceso solo desde el panel), arrancar la rama en modo
+  desarrollo y actualizarla con cada commit (§5.3, desde 1.6.0; antes, `Preview`
+  y §5.2), y apagarla cuando ya no se use.
 
 ### Lo hace el template
 

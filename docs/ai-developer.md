@@ -22,11 +22,15 @@ Se abre desde el detalle de un proyecto listo: **AI Developer**
    uno y 600 KB en total. El chat y la auditoría solo muestran el nombre.
 3. **Código.** Claude edita, ejecuta `pnpm lint`, `typecheck`, `test` y `build`,
    hace commit y push **solo a su rama**.
-4. **Vista previa.** *Ver vista previa* lanza el workflow `preview.yml` del repo
-   sobre la rama y la arranca en `https://preview-<slug>.apps.whatever.tech`,
-   embebida junto al chat, con una **base de datos vacía y temporal**
-   (`admin` / `admin123`, sin cambio obligatorio: la base se borra y solo se entra
-   desde el panel). Se apaga sola tras una hora sin visitas.
+4. **Vista previa en vivo.** En cuanto Claude sube su primer cambio, la vista previa
+   arranca sola en `https://preview-<slug>.<dominio>`, embebida junto al chat. El
+   servidor del proyecto clona la rama y la ejecuta en modo desarrollo
+   (`pnpm dev:preview`, con Vite en caliente), sin pasar por GitHub Actions.
+   - Cada commit nuevo de Claude se trae solo y se ve en segundos, sin recargar ni
+     reconstruir. El primer arranque tarda 1–2 minutos porque instala dependencias.
+   - Usa una **base de datos vacía y temporal** (`admin` / `admin123`, sin cambio
+     obligatorio).
+   - Se apaga sola tras una hora sin visitas y se vuelve a levantar al abrir el panel.
 5. **Publicar.** *Crear Pull Request* → GitHub ejecuta el CI del repo →
    *Aprobar y desplegar* (solo con todas las validaciones en verde) fusiona en
    `main` y el workflow `Deploy` del repo despliega a producción.
@@ -51,9 +55,16 @@ Se abre desde el detalle de un proyecto listo: **AI Developer**
   ese host; cada petición se valida contra la API del panel. Solo el panel
   puede embeberla y no se indexa. Usa su propia MongoDB en el VPS, borrada en
   cada arranque.
-- **El job que entra al servidor usa los scripts de `main`.** En `preview.yml`
-  la rama del agente solo se ejecuta dentro del `docker build`, sin acceso al
-  entorno `production`.
+- **La vista en vivo ejecuta la rama del agente en el servidor**, en un contenedor
+  aislado:
+  - usuario `node`, sin capacidades ni escalada de privilegios, con límites de CPU,
+    memoria y procesos;
+  - publicado solo en loopback, detrás del nginx con pase;
+  - sin la red ni los secretos de producción.
+
+  El clon lo hace un usuario sin privilegios (uid 1000) con un token de **solo
+  lectura** de ese repo que caduca en una hora. El token viaja solo en variables de
+  entorno: no aparece en los procesos ni se guarda en el clon.
 - **Auditoría.** Inicio de sesión, mensajes (solo longitud), permisos
   concedidos o denegados, PR, merge y vistas previas quedan en la auditoría.
 
@@ -113,13 +124,14 @@ echo 'PANEL_ORIGIN=https://launchpad.whatever.tech' >> /opt/platform/etc/platfor
 
 ### 4. Repos de clientes
 
-La vista previa necesita `.github/workflows/preview.yml` y el
-`.github/scripts/deploy.sh` de la plantilla **1.5.0**. Los proyectos nuevos ya
-los traen. Para uno anterior, copia esos dos archivos de la plantilla al repo
-del cliente (el resto del AI Developer funciona sin ellos).
+La vista en vivo necesita `pnpm dev:preview`, de la plantilla **1.6.0**. Los
+proyectos nuevos ya lo traen. Para un repo anterior, copia de la plantilla:
 
-El entorno `production` de los repos no debe restringir ramas de despliegue
-(la plataforma lo crea así): el job de vista previa corre en la rama de trabajo.
+- `scripts/dev-preview.mjs`;
+- el script `dev:preview` de `package.json`;
+- el bloque `livePreview` de `web/vite.config.ts`.
+
+El resto del AI Developer funciona sin ellos. `preview.yml` ya no se usa.
 
 ## Problemas frecuentes
 
@@ -132,6 +144,6 @@ El entorno `production` de los repos no debe restringir ramas de despliegue
 | "Anthropic rechazó la petición: …" | El texto tras los dos puntos es el motivo que da Anthropic (p. ej. Managed Agents o el modelo no habilitados en la cuenta). También queda en el log de la API con su `requestId` |
 | "La cuenta de Anthropic no tiene saldo" (en el chat) | Facturación de la cuenta empresarial |
 | Vista previa: "nginx -t falló … server_names_hash_bucket_size" | Host de vista previa largo: vuelve a ejecutar `bootstrap-vps.sh` (paso 3), que lo sube a 128 en `/etc/nginx/platform-apps/_platform-http.conf` |
-| Vista previa: "no tiene el workflow" | Repo con plantilla < 1.5.0 (ver paso 3) |
-| Vista previa fallida | El enlace *Ver el log en GitHub Actions* muestra el paso; a menudo es el build: pide a Claude que lo arregle |
+| Vista previa: "el repo no tiene pnpm dev:preview" | Repo con plantilla < 1.6.0 (ver paso 4) |
+| Vista previa fallida | El aviso trae las últimas líneas de la app (instalación o arranque): pide a Claude que lo arregle |
 | Vista previa "privada" al abrirla en otra pestaña | Normal: solo se entra desde el panel (el pase caduca en 2 minutos) |

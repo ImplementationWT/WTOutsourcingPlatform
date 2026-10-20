@@ -102,7 +102,8 @@ export interface GithubAdapter {
    * Token de instalación limitado a un repo y a Contents (lectura/escritura): lo usa
    * el agente de IA para clonar y hacer push de su rama. Sin permiso de workflows.
    */
-  createRepoToken(repo: string): Promise<string>;
+  /** Token de instalación solo para `repo` (caduca en 1 h): escritura para el agente, lectura para clonar la vista previa. */
+  createRepoToken(repo: string, access?: "write" | "read"): Promise<string>;
   getBranchSha(repo: string, branch: string): Promise<string | null>;
   createBranch(repo: string, branch: string, sha: string): Promise<void>;
   /** Borra la rama. false si ya no existía. */
@@ -411,12 +412,12 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
         return permissions;
       }),
 
-    async createRepoToken(repo) {
+    async createRepoToken(repo, access = "write") {
       try {
         const auth = (await octokit.auth({
           type: "installation",
           repositoryNames: [repo],
-          permissions: { contents: "write", metadata: "read" },
+          permissions: { contents: access, metadata: "read" },
           refresh: true
         })) as { token: string };
         registerSecret(auth.token);

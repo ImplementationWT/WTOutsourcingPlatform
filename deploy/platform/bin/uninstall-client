@@ -45,6 +45,15 @@ if [[ -n $(docker ps --all --quiet --filter "label=com.docker.compose.project=$p
   preview=true
 fi
 if docker network inspect "$preview_project" >/dev/null 2>&1; then docker network rm "$preview_project" >/dev/null || true; fi
+# Vista previa en vivo: clon de la rama y caché de pnpm.
+if [[ -d $(preview_live_dir "$slug") ]]; then
+  rm -rf "$(preview_live_dir "$slug")"
+  preview=true
+fi
+if docker volume inspect "$(preview_pnpm_volume "$slug")" >/dev/null 2>&1; then
+  docker volume rm "$(preview_pnpm_volume "$slug")" >/dev/null
+  preview=true
+fi
 
 # 1. Contenedor e imágenes.
 if [[ -n $(docker ps --all --quiet --filter "label=com.docker.compose.project=$project") ]]; then

@@ -41,7 +41,7 @@ info() { printf '==> %s\n' "$*"; }
 
 # ---- 1. requisitos (se informan; no se instalan) ------------------------------------
 missing=()
-for cmd in docker nginx certbot jq flock openssl visudo useradd usermod; do
+for cmd in docker nginx certbot jq flock openssl visudo useradd usermod git setpriv; do
   command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
 done
 docker compose version >/dev/null 2>&1 || missing+=("docker compose (plugin v2)")
@@ -103,7 +103,7 @@ sudoers_tmp=$(mktemp)
 cat >"$sudoers_tmp" <<EOF
 # Generado por bootstrap-vps.sh: solo los scripts de la plataforma.
 deploy ALL=(root) NOPASSWD: $PLATFORM_DIR/bin/deploy-client
-provisioner ALL=(root) NOPASSWD: $PLATFORM_DIR/bin/install-client, $PLATFORM_DIR/bin/client-status, $PLATFORM_DIR/bin/uninstall-client, $PLATFORM_DIR/bin/preview-install, $PLATFORM_DIR/bin/preview-stop, $PLATFORM_DIR/bin/server-info
+provisioner ALL=(root) NOPASSWD: $PLATFORM_DIR/bin/install-client, $PLATFORM_DIR/bin/client-status, $PLATFORM_DIR/bin/uninstall-client, $PLATFORM_DIR/bin/preview-install, $PLATFORM_DIR/bin/preview-stop, $PLATFORM_DIR/bin/preview-live-start, $PLATFORM_DIR/bin/preview-live-update, $PLATFORM_DIR/bin/server-info
 EOF
 visudo -cf "$sudoers_tmp" >/dev/null || {
   rm -f "$sudoers_tmp"
@@ -174,6 +174,20 @@ else
     nginx_reload
     info "nginx: server_names_hash_bucket_size 128 ($http_conf)."
   fi
+fi
+
+# ---- 7c. WebSocket de las vistas previas en vivo ---------------------------------------------------
+# El nginx de cada vista previa reenvía el Upgrade del HMR de Vite. Variable propia para no
+# chocar con un $connection_upgrade que ya defina el servidor.
+ws_conf="$NGINX_APPS_DIR/_platform-websocket.conf"
+# shellcheck disable=SC2016 # las variables son de nginx: se escriben literalmente
+printf '# Generado por bootstrap-vps.sh: WebSocket (HMR) de las vistas previas en vivo.\nmap $http_upgrade $platform_connection_upgrade {\n    default upgrade;\n    %s close;\n}\n' "''" >"$ws_conf"
+chmod 644 "$ws_conf"
+if ! nginx -t >/dev/null 2>&1; then
+  rm -f "$ws_conf"
+  info "AVISO: nginx -t rechazó $ws_conf; no se aplicó. Las vistas previas en vivo no tendrán recarga en caliente."
+elif nginx_include_active; then
+  nginx_reload
 fi
 
 # ---- 8. hook de renovación de certbot ------------------------------------------------------------

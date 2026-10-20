@@ -17,8 +17,8 @@ import type { ClientDoc, ClientServerRef, ServerCheck, ServerDoc } from "../stor
 
 /** Id del servidor de la configuración (DEPLOY_HOST…): el de los proyectos anteriores. */
 export const PRIMARY_SERVER_ID = "principal";
-/** Versión mínima de los scripts del VPS (server-info existe desde la 2). */
-export const MIN_SCRIPTS_VERSION = 2;
+/** Versión mínima de los scripts del VPS (vista previa en vivo desde la 3). */
+export const MIN_SCRIPTS_VERSION = 3;
 const MIN_DISK_MB = 2_048;
 
 /** Servidor listo para desplegar: datos para los repos y su adaptador SSH. */

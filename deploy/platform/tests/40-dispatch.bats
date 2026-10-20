@@ -26,7 +26,7 @@ dispatch() {
   [ "$status" -eq 0 ]
   json=$(tail -n 1 <<<"$output")
   [ "$(jq -r .status <<<"$json")" = ok ]
-  [ "$(jq -r .scriptsVersion <<<"$json")" = 2 ]
+  [ "$(jq -r .scriptsVersion <<<"$json")" = 3 ]
   [ "$(jq -r .appBaseDomain <<<"$json")" = apps.test ]
   [ "$(jq -r .ghcrOrg <<<"$json")" = testorg ]
   [ "$(jq -r .panelOrigin <<<"$json")" = https://launchpad.test ]

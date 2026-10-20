@@ -266,9 +266,19 @@ export interface AiPreviewState {
   sha: string | null;
   requestedAt: Date;
   requestedBy: string;
+  /** "live": clon de la rama en modo desarrollo (desde la plantilla 1.6.0). */
+  mode?: "live";
+  /** Anteriores a la vista en vivo (construidas en GitHub Actions). */
   runId?: number;
   runUrl?: string;
   readyAt?: Date;
+  /** Trayendo el último commit de la rama (vista en vivo). */
+  updating?: boolean;
+  updatedAt?: Date;
+  updateError?: string;
+  updateFailedSha?: string;
+  updateFailedAt?: Date;
+  stopReason?: "manual" | "expired" | "merged" | "closed";
   /** Se apaga sola tras este momento si nadie la abre (se alarga con cada visita). */
   expiresAt?: Date;
   stoppedAt?: Date;

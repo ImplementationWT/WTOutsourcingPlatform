@@ -2,8 +2,8 @@
 # preview-stop <slug>  (root, vía sudo desde provisioner-dispatch)
 #
 # Para la vista previa del AI Developer y borra su base temporal (volúmenes del
-# compose). Conserva nginx (responde "detenida") y el certificado, para no
-# reemitirlo en la siguiente vista previa. Idempotente.
+# compose) y el clon de la vista en vivo. Conserva nginx (responde "detenida"), el
+# certificado (para no reemitirlo) y la caché de pnpm. Idempotente.
 # Salida: una última línea JSON {"status":"ok","slug":…,"stopped":true|false}.
 set -euo pipefail
 
@@ -33,5 +33,6 @@ if [[ -n $(docker ps --all --quiet --filter "label=com.docker.compose.project=$p
 fi
 if docker network inspect "$project" >/dev/null 2>&1; then docker network rm "$project" >/dev/null || true; fi
 [[ ! -d $dir ]] || rm -f "$dir/compose.yaml" "$dir/.env" "$dir/state.json"
+rm -rf "$(preview_live_dir "$slug")"
 
 jq -cn --arg slug "$slug" --argjson stopped "$stopped" '{status: "ok", slug: $slug, stopped: $stopped}'

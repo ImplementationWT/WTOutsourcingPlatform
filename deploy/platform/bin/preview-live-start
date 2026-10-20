@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# preview-live-start <slug>  (root, vía sudo desde provisioner-dispatch)
+#
+# Vista previa en vivo del AI Developer (contrato §5.3). Por stdin, una línea JSON:
+#   {"repository":"<owner>/<slug>-app","branch":"ai/<fecha>-<id>","token":"ghs_…"}
+# El token es de solo lectura de ese repo y caduca en una hora: solo se usa para clonar
+# y no se guarda (ni en el clon, ni en disco, ni en los argumentos de los procesos).
+#   1. Exige la vista previa preparada (preview-install: puerto, certificado y nginx).
+#   2. Para la anterior (base temporal incluida) y clona la rama como uid 1000, sin root.
+#   3. Comprueba que el repo trae pnpm dev:preview (plantilla 1.6.0 o posterior).
+#   4. Arranca node (pnpm install + pnpm dev:preview) y una MongoDB temporal, y espera a
+#      que la app responda.
+# Salida: una última línea JSON {"status":"ok","slug":…,"sha":…}; si falla, código ≠ 0 y
+# el motivo en stderr (con las últimas líneas del contenedor).
+set -euo pipefail
+
+# shellcheck source=../lib/common.sh
+source /opt/platform/lib/common.sh
+
+[[ $# -eq 1 ]] || die "uso: preview-live-start <slug>"
+slug=$1
+require_slug "$slug"
+load_config
+
+dir=$(preview_dir "$slug")
+port=$(port_of "$(preview_port_key "$slug")")
+[[ -d $dir && -n $port ]] || die "la vista previa de $slug no está preparada (preview-install)"
+
+payload=$(head -c 4096)
+repository=$(jq -er '.repository | strings' <<<"$payload" 2>/dev/null) || die "falta repository"
+branch=$(jq -er '.branch | strings' <<<"$payload" 2>/dev/null) || die "falta branch"
+token=$(jq -er '.token | strings' <<<"$payload" 2>/dev/null) || die "falta token"
+[[ $repository =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?/${slug}-app$ ]] || die "repository inválido: debe ser <owner>/$slug-app"
+[[ $branch =~ ^ai/[0-9]{8}-[0-9a-f]{8}$ ]] || die "branch inválida"
+[[ $token =~ ^gh[su]_[A-Za-z0-9]{20,255}$ ]] || die "token inválido"
+
+exec 9>"$dir/.deploy.lock"
+flock -w 900 9 || die "hay otra operación de vista previa en curso para $slug"
+
+project="preview-$slug"
+compose="$dir/compose.yaml"
+env_file="$dir/.env"
+live=$(preview_live_dir "$slug")
+volume=$(preview_pnpm_volume "$slug")
+
+# 2. Fuera la vista previa anterior (contenedores y base temporal) y su clon.
+if [[ -f $compose ]]; then
+  docker compose --project-name "$project" --file "$compose" down --volumes --remove-orphans >/dev/null 2>&1 || true
+fi
+docker ps --all --quiet --filter "label=com.docker.compose.project=$project" | xargs -r docker rm -f --volumes >/dev/null
+rm -rf "$live"
+install -d -m 711 -o root -g root "$(preview_live_root)"
+install -d -m 755 -o "$PREVIEW_UID" -g "$PREVIEW_UID" "$live"
+
+if ! preview_git "$token" clone --quiet --depth 1 --single-branch --branch "$branch" "$GIT_BASE_URL/$repository.git" "$live" >&2; then
+  die "no se pudo clonar $repository ($branch)"
+fi
+sha=$(preview_git "$token" -C "$live" rev-parse HEAD)
+
+# 3. El repo tiene que saber arrancar en modo vista previa.
+if ! jq -e '.scripts["dev:preview"] | strings' "$live/package.json" >/dev/null 2>&1; then
+  rm -rf "$live"
+  die "el repo no tiene pnpm dev:preview (plantilla anterior a 1.6.0): copia scripts/dev-preview.mjs, el script dev:preview y el bloque livePreview de web/vite.config.ts de la plantilla"
+fi
+
+# 4. Entorno propio (nunca valores de producción) y arranque.
+tmp=$(mktemp "$dir/.env.XXXXXX")
+{
+  printf 'MONGODB_URI=mongodb://mongo:27017/?replicaSet=rs0&directConnection=true\n'
+  printf 'MONGODB_DB=client_%s_preview\n' "${slug//-/_}"
+  printf 'SESSION_SECRET=%s\n' "$(openssl rand -hex 32)"
+} >"$tmp"
+chmod 644 "$tmp" # lo lee docker compose (root); no contiene nada de producción
+mv -f "$tmp" "$env_file"
+docker volume inspect "$volume" >/dev/null 2>&1 || docker volume create --label "platform.client=$slug" "$volume" >/dev/null
+render_template "$PLATFORM_DIR/templates/compose-preview-live.yaml" \
+  "SLUG=$slug" "NODE_IMAGE=$PREVIEW_NODE_IMAGE" "MONGO_IMAGE=$PREVIEW_MONGO_IMAGE" "ENV_FILE=$env_file" "PORT=$port" \
+  "WORKSPACE=$live" "PNPM_VOLUME=$volume" "WAIT=$PREVIEW_LIVE_WAIT_SECONDS" "HOST=$(preview_host "$slug")" >"$compose"
+chmod 600 "$compose"
+
+if ! docker compose --project-name "$project" --file "$compose" up --detach --remove-orphans \
+  --wait --wait-timeout "$PREVIEW_LIVE_WAIT_SECONDS" >/dev/null 2>&1; then
+  printf 'Últimas líneas de la app:\n' >&2
+  docker compose --project-name "$project" --file "$compose" logs --no-color --tail 30 app >&2 2>&1 || true
+  docker compose --project-name "$project" --file "$compose" down --volumes --remove-orphans >/dev/null 2>&1 || true
+  die "la vista previa no arrancó (instalación o pnpm dev:preview): mira las últimas líneas de arriba"
+fi
+
+jq -cn --arg sha "$sha" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{mode: "live", sha: $sha, startedAt: $at}' >"$dir/state.json"
+jq -cn --arg slug "$slug" --arg sha "$sha" '{status: "ok", slug: $slug, sha: $sha}'

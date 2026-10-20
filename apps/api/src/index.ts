@@ -55,7 +55,9 @@ const primaryAdapter = server
       uninstallClient: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
       installPreview: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
       stopPreview: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
-      serverInfo: () => Promise.reject(new Error("Servidor de despliegue no configurado."))
+      serverInfo: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
+      startLivePreview: () => Promise.reject(new Error("Servidor de despliegue no configurado.")),
+      updateLivePreview: () => Promise.reject(new Error("Servidor de despliegue no configurado."))
     };
 const servers = new ServerDirectory({
   servers: store.servers,
