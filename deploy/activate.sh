@@ -73,9 +73,18 @@ docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 start "$RELEASE"
 
 if ! health; then
-  echo "::error::La API no respondió en /health. Logs:"
-  docker logs --tail 80 "$CONTAINER" || true
-  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  echo "::error::La API no respondió en /health."
+  # Estado de salida (código, falta de memoria, reinicios) y logs, incluidos los de stderr.
+  docker inspect --format 'Contenedor: {{.State.Status}} · código de salida {{.State.ExitCode}} · sin memoria (OOM) {{.State.OOMKilled}} · reinicios {{.RestartCount}} {{.State.Error}}' "$CONTAINER" || true
+  echo "Logs (últimas 80 líneas):"
+  docker logs --tail 80 "$CONTAINER" 2>&1 || true
+  # El contenedor fallido se conserva parado para inspeccionarlo (docker logs launchpad-api-failed),
+  # con la configuración con la que falló en api.env.failed. El siguiente despliegue sano los borra.
+  docker rm -f "$CONTAINER-failed" >/dev/null 2>&1 || true
+  docker update --restart no "$CONTAINER" >/dev/null 2>&1 || true
+  docker stop "$CONTAINER" >/dev/null 2>&1 || true
+  docker rename "$CONTAINER" "$CONTAINER-failed" >/dev/null 2>&1 || docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  cp -p "$APP_DIR/api.env" "$APP_DIR/api.env.failed"
   if [ -n "$PREVIOUS" ] && docker image inspect "$IMAGE:$PREVIOUS" >/dev/null 2>&1; then
     echo "Restaurando $IMAGE:$PREVIOUS con su configuración…"
     [ ! -f "$APP_DIR/api.env.prev" ] || mv -f "$APP_DIR/api.env.prev" "$APP_DIR/api.env"
@@ -86,7 +95,8 @@ if ! health; then
 fi
 
 # API sana: se publica el frontend de este release.
-rm -f "$APP_DIR/api.env.prev"
+rm -f "$APP_DIR/api.env.prev" "$APP_DIR/api.env.failed"
+docker rm -f "$CONTAINER-failed" >/dev/null 2>&1 || true
 ln -sfn "$WEB_DIR/releases/$RELEASE" "$WEB_DIR/current.tmp"
 mv -T "$WEB_DIR/current.tmp" "$WEB_DIR/current"
 
