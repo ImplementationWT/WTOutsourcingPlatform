@@ -44,11 +44,29 @@ GitHub y su base en Atlas.
 - **AI Developer en local** (opcional): añade `ANTHROPIC_API_KEY=sk-ant-…` y
   `ANTHROPIC_WORKSPACE` a `apps/api/.env`.
 
-## Desarrollo con recarga automática
+## Desarrollo con recarga automática (sin Docker)
 
-Con Node 24 y pnpm 12: `pnpm install` en la raíz y en `apps/api`. Después,
-`cd apps/api && pnpm dev` (API en `:3001`) y `pnpm dev` en la raíz (panel en `:5173`).
-Hace falta un `apps/api/.env` completo (ver `.env.example`) y una MongoDB.
+Con Node 24 y pnpm 12, en dos terminales desde la raíz:
+
+```bash
+pnpm install
+pnpm dev        # API en http://127.0.0.1:3001 (con su propia MongoDB local)
+pnpm dev:web    # panel en http://localhost:5173
+```
+
+Usa el mismo `apps/api/.env`. Aquí la ruta del `.pem` puede estar en cualquier sitio de
+tu equipo.
+
+**Qué hace `pnpm dev`:**
+
+- instala las dependencias de la API;
+- arranca una MongoDB local, con los datos en `apps/api/.dev/mongo`. Nunca usa la base
+  de producción, aunque el `.env` tenga `ADMIN_MONGODB_URI`;
+- genera las claves de cifrado en `apps/api/.dev`;
+- desactiva el despliegue a servidores;
+- reinicia la API al guardar cambios.
+
+Para borrar los datos locales, borra `apps/api/.dev`.
 
 Tests: `pnpm test` (panel), `cd apps/api && pnpm test` (API) y
 `bash deploy/platform/tests/run.sh` (scripts de los servidores).

@@ -28,3 +28,6 @@ dist-ssr
 .env.*
 !.env.example
 *.pem
+
+# Datos y claves del arranque local de la API (pnpm dev)
+apps/api/.dev/
