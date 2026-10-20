@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm --dir apps/api install --frozen-lockfile --prefer-offline && pnpm --dir apps/api dev:local",
+    "dev:demo": "pnpm --dir apps/api install --frozen-lockfile --prefer-offline && pnpm --dir apps/api dev:demo",
     "dev:web": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",

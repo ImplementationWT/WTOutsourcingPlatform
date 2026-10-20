@@ -71,6 +71,21 @@ Para borrar los datos locales, borra `apps/api/.dev`.
 Tests: `pnpm test` (panel), `cd apps/api && pnpm test` (API) y
 `bash deploy/platform/tests/run.sh` (scripts de los servidores).
 
+## Modo demo (revisar el panel y el AI Developer sin credenciales)
+
+```bash
+pnpm dev:demo   # en vez de pnpm dev (para antes pnpm dev si lo tienes abierto: usan el puerto 3001)
+pnpm dev:web    # http://localhost:5173 → admin / launchpad-local
+```
+
+Todo es simulado y en memoria: GitHub, Atlas, los servidores y Claude. No hace falta
+`.env`, no cuesta nada y nada sale de tu equipo. Trae dos proyectos de ejemplo ya listos.
+En **Tienda Demo → AI Developer**, Claude responde en varios pasos, deja un commit y se
+puede crear el PR y publicar.
+
+La vista previa queda «lista» pero no carga una app real: el iframe apunta a un dominio
+de ejemplo. Al parar, los datos se borran.
+
 ## Documentación
 
 - [Despliegue en los servidores](docs/deployment.md) y [servidores múltiples](docs/servers.md)
