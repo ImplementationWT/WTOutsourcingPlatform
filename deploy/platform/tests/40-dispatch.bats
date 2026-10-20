@@ -21,6 +21,24 @@ dispatch() {
   [[ $output != *s3cr3t* && $output != *session-secret* && $output != *Init-Pa55* && $output != *ghs_* ]]
 }
 
+@test "server-info: verificación de solo lectura, sin secretos ni rutas de claves" {
+  dispatch "server-info"
+  [ "$status" -eq 0 ]
+  json=$(tail -n 1 <<<"$output")
+  [ "$(jq -r .status <<<"$json")" = ok ]
+  [ "$(jq -r .scriptsVersion <<<"$json")" = 2 ]
+  [ "$(jq -r .appBaseDomain <<<"$json")" = apps.test ]
+  [ "$(jq -r .ghcrOrg <<<"$json")" = testorg ]
+  [ "$(jq -r .panelOrigin <<<"$json")" = https://launchpad.test ]
+  [ "$(jq -r .nginx.valid <<<"$json")" = true ]
+  [ "$(jq -r .docker <<<"$json")" = true ]
+  [ "$(jq -r '.ports.total' <<<"$json")" = 51 ]
+  [[ $output != *ops@example.test* && $output != *BEGIN* && $output != */run/secrets* ]]
+  # Sin argumentos: "server-info x" no es un comando permitido.
+  dispatch "server-info acme"
+  [ "$status" -eq 126 ]
+}
+
 @test "install-client por el dispatch recibe la clave por stdin" {
   dispatch "install-client acme" "$(new_pubkey)"
   [ "$status" -eq 0 ]

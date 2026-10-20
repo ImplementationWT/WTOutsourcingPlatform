@@ -103,7 +103,7 @@ sudoers_tmp=$(mktemp)
 cat >"$sudoers_tmp" <<EOF
 # Generado por bootstrap-vps.sh: solo los scripts de la plataforma.
 deploy ALL=(root) NOPASSWD: $PLATFORM_DIR/bin/deploy-client
-provisioner ALL=(root) NOPASSWD: $PLATFORM_DIR/bin/install-client, $PLATFORM_DIR/bin/client-status, $PLATFORM_DIR/bin/uninstall-client, $PLATFORM_DIR/bin/preview-install, $PLATFORM_DIR/bin/preview-stop
+provisioner ALL=(root) NOPASSWD: $PLATFORM_DIR/bin/install-client, $PLATFORM_DIR/bin/client-status, $PLATFORM_DIR/bin/uninstall-client, $PLATFORM_DIR/bin/preview-install, $PLATFORM_DIR/bin/preview-stop, $PLATFORM_DIR/bin/server-info
 EOF
 visudo -cf "$sudoers_tmp" >/dev/null || {
   rm -f "$sudoers_tmp"

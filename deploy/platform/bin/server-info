@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# server-info  (root, vía sudo desde provisioner-dispatch)
+#
+# Consulta de solo lectura con la que Launchpad verifica un servidor antes de
+# usarlo: versión de los scripts, configuración relevante de platform.conf y si
+# nginx, Docker y certbot están listos. Nunca incluye claves, tokens ni rutas
+# de secretos.
+# Salida: una última línea JSON {"status":"ok",...}; si falla, código ≠ 0 y el motivo en stderr.
+set -euo pipefail
+
+# shellcheck source=../lib/common.sh
+source /opt/platform/lib/common.sh
+
+[[ $# -eq 0 ]] || die "uso: server-info"
+load_config
+
+nginx_ok=false nginx_include=false
+if nginx -t >/dev/null 2>&1; then nginx_ok=true; fi
+if nginx_include_active; then nginx_include=true; fi
+docker_ok=false
+if docker info >/dev/null 2>&1; then docker_ok=true; fi
+certbot_ok=false
+if command -v certbot >/dev/null 2>&1; then certbot_ok=true; fi
+
+ports_used=0
+ports=$(ports_file)
+[[ ! -s $ports ]] || ports_used=$(grep -c . "$ports" || true)
+disk_free_mb=$(df -Pm "$CUSTOMER_APPS_DIR" 2>/dev/null | awk 'NR == 2 { print $4 }')
+
+jq -cn \
+  --arg version "$PLATFORM_SCRIPTS_VERSION" \
+  --arg domain "$APP_BASE_DOMAIN" --arg ghcr "$GHCR_ORG" \
+  --arg acme "$([[ -n $ACME_EMAIL ]] && echo true || echo false)" \
+  --arg panelOrigin "$PANEL_ORIGIN" --arg panelUpstream "$PANEL_UPSTREAM" \
+  --arg nginxOk "$nginx_ok" --arg nginxInclude "$nginx_include" --arg docker "$docker_ok" --arg certbot "$certbot_ok" \
+  --argjson used "${ports_used:-0}" --argjson total "$((PORT_RANGE_END - PORT_RANGE_START + 1))" \
+  --arg disk "${disk_free_mb:-}" \
+  '{
+    status: "ok",
+    scriptsVersion: ($version | tonumber),
+    appBaseDomain: $domain,
+    ghcrOrg: $ghcr,
+    acmeEmail: ($acme == "true"),
+    panelOrigin: (if $panelOrigin == "" then null else $panelOrigin end),
+    panelUpstream: $panelUpstream,
+    nginx: { valid: ($nginxOk == "true"), include: ($nginxInclude == "true") },
+    docker: ($docker == "true"),
+    certbot: ($certbot == "true"),
+    ports: { used: $used, total: $total },
+    diskFreeMb: (if $disk == "" then null else ($disk | tonumber) end)
+  }'

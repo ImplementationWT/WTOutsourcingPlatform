@@ -19,6 +19,16 @@ setup() {
   done
 }
 
+@test "PANEL_UPSTREAM: loopback (Launchpad aquí) o el origen https del panel (otro servidor)" {
+  for ok in http://127.0.0.1:3001 http://localhost:3001 https://launchpad.example.com https://panel.example.com:8443; do
+    PANEL_UPSTREAM=$ok validate_config
+  done
+  for bad in http://launchpad.example.com https://launchpad.example.com/api "https://x.com;id" http://10.0.0.5:3001 ftp://x.com; do
+    PANEL_UPSTREAM=$bad run validate_config
+    [ "$status" -ne 0 ]
+  done
+}
+
 @test "imagen: solo ghcr.io/<org>/<slug>-app por digest" {
   digest=sha256:$(printf 'a%.0s' {1..64})
   valid_image acme "ghcr.io/testorg/acme-app@$digest"

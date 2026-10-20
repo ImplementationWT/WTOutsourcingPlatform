@@ -17,6 +17,8 @@ readonly SLUG_RE='^[a-z0-9]+(-[a-z0-9]+)*$'
 readonly SLUG_MAX=30
 readonly APP_INTERNAL_PORT=3000 # contrato §6
 readonly KEY_MARKER_PREFIX="platform-client:"
+# Versión de estos scripts: Launchpad la comprueba (server-info) antes de usar un servidor.
+readonly PLATFORM_SCRIPTS_VERSION=2
 
 die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -52,7 +54,8 @@ config_defaults() {
   APP_MEMORY=512m
   DEPLOY_WAIT_SECONDS=180
   REGISTRY_HOST=ghcr.io
-  # Vistas previas del AI Developer: origen del panel (frame-ancestors) y su API en loopback.
+  # Vistas previas del AI Developer: origen del panel (frame-ancestors) y dónde está su API:
+  # loopback si Launchpad corre en este servidor; si no, su URL https.
   PANEL_ORIGIN=""
   PANEL_UPSTREAM=http://127.0.0.1:3001
   PREVIEW_MONGO_IMAGE=mongo:8
@@ -99,8 +102,9 @@ validate_config() {
   [[ $REGISTRY_HOST =~ ^[a-z0-9.-]+(:[0-9]+)?$ ]] || die "REGISTRY_HOST inválido"
   [[ -z $PANEL_ORIGIN || $PANEL_ORIGIN =~ ^https://([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}(:[0-9]+)?$ ]] ||
     die "PANEL_ORIGIN debe ser el origen https del panel, sin ruta (p. ej. https://launchpad.example.com)"
-  # Solo loopback: nginx consulta a Launchpad en el mismo servidor.
-  [[ $PANEL_UPSTREAM =~ ^http://(127\.0\.0\.1|localhost):[0-9]+$ ]] || die "PANEL_UPSTREAM debe ser http://127.0.0.1:<puerto>"
+  # nginx consulta a Launchpad: en loopback (mismo servidor) o por https (otro servidor).
+  [[ $PANEL_UPSTREAM =~ ^http://(127\.0\.0\.1|localhost):[0-9]+$ || $PANEL_UPSTREAM =~ ^https://([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}(:[0-9]+)?$ ]] ||
+    die "PANEL_UPSTREAM debe ser http://127.0.0.1:<puerto> (Launchpad en este servidor) o el origen https del panel"
   [[ $PREVIEW_MONGO_IMAGE =~ ^[a-z0-9]([a-z0-9._/:-]*[a-z0-9])?$ ]] || die "PREVIEW_MONGO_IMAGE inválida"
 }
 
