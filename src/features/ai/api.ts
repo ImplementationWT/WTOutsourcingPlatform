@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
-import type { AgentUsage, AiPreview, AiReview, AiSession, BranchDiff } from "@/types/ai";
+import type { AgentUsage, AiPreview, AiReview, AiSession, BranchDiff, MarkdownAttachment } from "@/types/ai";
 
 const sessionUrl = (id: string, path = "") => `/api/ai/sessions/${encodeURIComponent(id)}${path}`;
 const post = <T>(url: string, body?: unknown) =>
@@ -69,9 +69,10 @@ export function useAiPreview(id: string | null) {
 export const startAiPreview = (id: string) => post<{ preview: AiPreview }>(sessionUrl(id, "/preview"));
 export const stopAiPreview = (id: string) => post<{ ok: true }>(sessionUrl(id, "/preview/stop"));
 
-export const startAiSession = (slug: string, input: { title: string; message?: string }) =>
+export const startAiSession = (slug: string, input: { title: string; message?: string; attachments?: MarkdownAttachment[] }) =>
   post<{ session: AiSession }>(`/api/clients/${encodeURIComponent(slug)}/ai/sessions`, input);
-export const sendAiMessage = (id: string, text: string) => post<{ ok: true }>(sessionUrl(id, "/messages"), { text });
+export const sendAiMessage = (id: string, text: string, attachments: MarkdownAttachment[] = []) =>
+  post<{ ok: true }>(sessionUrl(id, "/messages"), { text, ...(attachments.length ? { attachments } : {}) });
 export const confirmAiTool = (id: string, toolUseId: string, allow: boolean) =>
   post<{ ok: true }>(sessionUrl(id, "/confirm"), { toolUseId, allow });
 export const interruptAi = (id: string) => post<{ ok: true }>(sessionUrl(id, "/interrupt"));

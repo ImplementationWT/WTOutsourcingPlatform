@@ -9,7 +9,7 @@ import type { AiPreviewState, AiSessionDoc } from "../store/models.js";
 import { AGENT_GIT_EMAIL, REPO_MOUNT_PATH } from "./agent-definition.js";
 import { type ChatEvent, toChatEvent } from "./events.js";
 import type { PreviewPasses } from "./preview-pass.js";
-import type { AiAgentAdapter, AiConfig } from "./types.js";
+import type { AiAgentAdapter, AiConfig, MessageAttachment } from "./types.js";
 
 /** Error con el código HTTP y un mensaje para el panel. */
 export class AiDeveloperError extends Error {
@@ -97,7 +97,7 @@ export class AiDeveloper {
     return token;
   }
 
-  async start(input: { clientId: string; title: string; message?: string; actor: string }) {
+  async start(input: { clientId: string; title: string; message?: string; attachments?: readonly MessageAttachment[]; actor: string }) {
     const { store, github, agent, config } = this.deps;
     const client = await store.getClient(input.clientId);
     if (!client) throw new AiDeveloperError(404, "Cliente no encontrado.");
@@ -155,7 +155,7 @@ export class AiDeveloper {
     await store.aiSessions.insertOne(doc);
     await this.audit(input.actor, "ai.session_started", doc, { agentSession: agentSession.id });
 
-    if (input.message) await this.send(doc, input.message, input.actor);
+    if (input.message || input.attachments?.length) await this.send(doc, input.message ?? "", input.actor, input.attachments);
     return doc;
   }
 
@@ -172,16 +172,21 @@ export class AiDeveloper {
     ].join("\n");
   }
 
-  async send(session: AiSessionDoc, text: string, actor: string) {
+  async send(session: AiSessionDoc, text: string, actor: string, attachments: readonly MessageAttachment[] = []) {
     this.requireActive(session);
     const { agent, store } = this.deps;
     await agent.rotateRepoToken(session.agentSessionId, session.repoResourceId, await this.freshRepoToken(session.repository));
     const context = session.contextSent ? undefined : await this.sessionContext(session);
-    await agent.sendMessage(session.agentSessionId, text, context);
+    // Solo adjuntos: el mensaje lo dice para que Claude sepa qué se espera.
+    const message = text || "Te adjunto estos archivos Markdown.";
+    await agent.sendMessage(session.agentSessionId, message, context, attachments);
     session.contextSent = true;
     const now = this.now();
     await store.aiSessions.updateOne({ _id: session._id }, { $set: { lastMessageAt: now, updatedAt: now, contextSent: true } });
-    await this.audit(actor, "ai.message_sent", session, { length: text.length });
+    await this.audit(actor, "ai.message_sent", session, {
+      length: text.length,
+      ...(attachments.length ? { attachments: attachments.map((file) => file.name).join(", ").slice(0, 500) } : {})
+    });
   }
 
   async confirm(session: AiSessionDoc, toolUseId: string, allow: boolean, actor: string) {

@@ -20,6 +20,7 @@ Cómo trabajas:
 - Configura tu identidad una vez: git config user.name "${AGENT_GIT_NAME}" && git config user.email "${AGENT_GIT_EMAIL}".
 - No modifiques .github/workflows/ (no tienes permiso y el despliegue depende de ellos), ni Dockerfile o compose.yaml salvo que se pida expresamente y lo expliques.
 - Instala dependencias con pnpm (si no está: npm install -g pnpm@<versión de packageManager en package.json>). Antes de cada push ejecuta pnpm lint, pnpm typecheck y pnpm test, y pnpm build si tocaste el frontend. Si algo falla, arréglalo o explica por qué no puedes.
+- Las personas pueden adjuntar archivos Markdown (.md) con especificaciones, textos o guías: te llegan como documentos dentro de su mensaje, con el nombre del archivo como título. No están en el repositorio; si te piden guardarlos ahí, créalos tú con ese contenido.
 - Haz cambios pequeños y coherentes con el estilo del código existente. Si la petición es ambigua o arriesgada (borrar datos, cambiar el modelo de datos, migraciones), pregunta antes.
 - Nunca escribas secretos, contraseñas ni tokens en el código o en los commits. Los valores reales los inyecta la plataforma en producción.
 - No tienes acceso a la base de datos de producción ni al servidor; los tests usan una MongoDB en memoria.

@@ -5,6 +5,12 @@ export type RawAgentEvent = Anthropic.Beta.Sessions.BetaManagedAgentsSessionEven
 
 export type AgentSessionStatus = "rescheduling" | "running" | "idle" | "terminated";
 
+/** Archivo Markdown adjuntado desde el panel (nombre sin ruta y su texto). */
+export interface MessageAttachment {
+  name: string;
+  content: string;
+}
+
 export interface CreateAgentSessionInput {
   title: string;
   /** https://github.com/<owner>/<repo> */
@@ -25,10 +31,11 @@ export interface CreateAgentSessionInput {
 export interface AiAgentAdapter {
   createSession(input: CreateAgentSessionInput): Promise<{ id: string; repoResourceId: string }>;
   /**
-   * Mensaje del usuario. `context` (contexto de la sesión, con autoridad de sistema) va como
-   * system.message justo detrás y en la misma petición: Anthropic no lo acepta suelto.
+   * Mensaje del usuario, con los .md adjuntos como documentos de texto. `context` (contexto de
+   * la sesión, con autoridad de sistema) va como system.message justo detrás y en la misma
+   * petición: Anthropic no lo acepta suelto.
    */
-  sendMessage(sessionId: string, text: string, context?: string): Promise<void>;
+  sendMessage(sessionId: string, text: string, context?: string, attachments?: readonly MessageAttachment[]): Promise<void>;
   confirmTool(sessionId: string, toolUseEventId: string, allow: boolean, denyMessage?: string): Promise<void>;
   interrupt(sessionId: string): Promise<void>;
   /** Los tokens de instalación caducan en 1 h: se renuevan antes de cada mensaje. */

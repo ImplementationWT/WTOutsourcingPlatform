@@ -1,4 +1,4 @@
-import type { AiAgentAdapter, CreateAgentSessionInput, RawAgentEvent } from "../../src/ai/types.js";
+import type { AiAgentAdapter, CreateAgentSessionInput, MessageAttachment, RawAgentEvent } from "../../src/ai/types.js";
 
 type Listener = (event: RawAgentEvent) => void;
 
@@ -19,6 +19,7 @@ interface FakeSession {
 export class FakeAgent implements AiAgentAdapter {
   readonly sessions = new Map<string, FakeSession>();
   readonly systemMessages: { sessionId: string; text: string }[] = [];
+  readonly attachments: { sessionId: string; files: readonly MessageAttachment[] }[] = [];
   readonly confirmations: { sessionId: string; toolUseId: string; allow: boolean; denyMessage?: string }[] = [];
   readonly interrupts: string[] = [];
   readonly calls: string[] = [];
@@ -45,10 +46,12 @@ export class FakeAgent implements AiAgentAdapter {
     this.sessions.set(id, { input, events: [], listeners: new Set(), status: "idle", costCents: 0, budgetCents: input.budgetCents, repoToken: input.repoToken });
     return { id, repoResourceId: `res_${id}` };
   }
-  async sendMessage(sessionId: string, text: string, context?: string) {
+  async sendMessage(sessionId: string, text: string, context?: string, attachments: readonly MessageAttachment[] = []) {
     this.calls.push("sendMessage");
     if (context) this.systemMessages.push({ sessionId, text: context });
-    this.emit(sessionId, { type: "user.message", content: [{ type: "text", text }] });
+    if (attachments.length) this.attachments.push({ sessionId, files: attachments });
+    const documents = attachments.map((file) => ({ type: "document", title: file.name, source: { type: "text", media_type: "text/plain", data: file.content } }));
+    this.emit(sessionId, { type: "user.message", content: [{ type: "text", text }, ...documents] });
     this.onMessage(sessionId, text);
   }
   async confirmTool(sessionId: string, toolUseId: string, allow: boolean, denyMessage?: string) {

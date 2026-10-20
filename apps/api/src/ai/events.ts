@@ -9,7 +9,7 @@ export type AgentState = "running" | "idle" | "waiting" | "budget" | "error" | "
  * texto redactado y las salidas de herramientas recortadas.
  */
 export type ChatEvent =
-  | { id: string; at: string | null; kind: "user"; text: string }
+  | { id: string; at: string | null; kind: "user"; text: string; attachments?: string[] }
   | { id: string; at: string | null; kind: "assistant"; text: string }
   | { id: string; at: string | null; kind: "thinking" }
   | { id: string; at: string | null; kind: "tool"; tool: string; summary: string; needsConfirmation: boolean; denied: boolean }
@@ -30,6 +30,13 @@ function textOf(content: readonly { type: string; text?: string }[] | undefined)
     .filter((block) => block.type === "text" && typeof block.text === "string")
     .map((block) => block.text)
     .join("\n");
+}
+
+/** Títulos de los documentos adjuntos (los .md subidos desde el panel); su contenido no se reenvía. */
+function attachmentsOf(content: readonly { type: string; title?: string | null }[] | undefined) {
+  return (content ?? [])
+    .filter((block) => block.type === "document")
+    .map((block) => clip(redactString(block.title || "documento"), 120));
 }
 
 const str = (value: unknown) => (typeof value === "string" ? value : "");
@@ -86,7 +93,9 @@ export function toChatEvent(event: RawAgentEvent): ChatEvent | null {
   switch (event.type) {
     case "user.message": {
       const text = textOf(event.content);
-      return text ? { id, at, kind: "user", text: clean(text, 20_000) } : null;
+      const attachments = attachmentsOf(event.content);
+      if (!text && !attachments.length) return null;
+      return { id, at, kind: "user", text: clean(text, 20_000), ...(attachments.length ? { attachments } : {}) };
     }
     case "agent.message": {
       const text = textOf(event.content);

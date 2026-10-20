@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { ChatEvent } from "../src/ai/events.js";
+import { type ChatEvent, toChatEvent } from "../src/ai/events.js";
 import { buildApp } from "../src/app.js";
 import { hashPassword } from "../src/auth/password.js";
 import { JobEngine } from "../src/jobs/engine.js";
@@ -166,6 +166,51 @@ describe("AI Developer: sesiones", () => {
     expect((await api("POST", `/api/ai/sessions/${id}/messages`, { text: "Segundo" })).status).toBe(202);
     expect(agent.systemMessages).toHaveLength(1);
     expect(agent.systemMessages[0].text).toContain(`Rama de trabajo: ${started.body.session.branch}`);
+  });
+
+  it("los .md adjuntos llegan al agente como documentos y el chat solo muestra su nombre", async () => {
+    const { api, agent, store } = await setup();
+    const spec = { name: "especificacion.md", content: "# Pantalla Referencia\n\n- Cambiar el título" };
+    const started = await api("POST", "/api/clients/acme-crm/ai/sessions", { title: "Con adjunto", attachments: [spec] });
+    expect(started.status).toBe(201);
+    expect(agent.attachments).toEqual([{ sessionId: [...agent.sessions.keys()][0], files: [spec] }]);
+    // Solo con adjuntos, el mensaje lo indica; y el contexto viaja con él.
+    const [agentSession] = [...agent.sessions.values()];
+    const userEvent = agentSession.events.find((e) => e.type === "user.message")!;
+    expect(toChatEvent(userEvent)).toMatchObject({ kind: "user", text: "Te adjunto estos archivos Markdown.", attachments: ["especificacion.md"] });
+    expect(JSON.stringify(toChatEvent(userEvent))).not.toContain("Cambiar el título");
+    expect(agent.systemMessages).toHaveLength(1);
+
+    const id = started.body.session.id;
+    const more = await api("POST", `/api/ai/sessions/${id}/messages`, { text: "Aplica la guía", attachments: [{ name: "guia.markdown", content: "Usa #0F4C81" }] });
+    expect(more.status).toBe(202);
+    expect(agent.attachments[1].files[0].name).toBe("guia.markdown");
+    const audit = await store.auditLog.find({ action: "ai.message_sent" }).toArray();
+    expect(audit.map((a) => a.details?.attachments)).toEqual(["especificacion.md", "guia.markdown"]);
+    expect(JSON.stringify(audit)).not.toContain("0F4C81");
+  });
+
+  it("rechaza adjuntos que no son .md, con ruta, demasiados o demasiado grandes", async () => {
+    const { api, agent } = await setup();
+    const started = await api("POST", "/api/clients/acme-crm/ai/sessions", { title: "Validación" });
+    const url = `/api/ai/sessions/${started.body.session.id}/messages`;
+    const md = (name: string, content = "hola") => ({ name, content });
+    for (const attachments of [
+      [md("script.sh")],
+      [md("../secreto.md")],
+      [md("a.md", "")],
+      [md("a.md", "x".repeat(200_001))],
+      // 120.000 caracteres pero 240.000 bytes: cuenta el tamaño real.
+      [md("tildes.md", "á".repeat(120_000))],
+      Array.from({ length: 6 }, (_, i) => md(`${i}.md`)),
+      Array.from({ length: 4 }, (_, i) => md(`${i}.md`, "x".repeat(160_000)))
+    ]) {
+      const response = await api("POST", url, { text: "Mira esto", attachments });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain("archivos .md");
+    }
+    expect((await api("POST", url, { text: "" })).status).toBe(400);
+    expect(agent.attachments).toEqual([]);
   });
 
   it("si Anthropic rechaza la petición, el panel muestra su motivo", async () => {

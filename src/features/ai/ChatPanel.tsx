@@ -17,6 +17,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { AgentState, AiSession } from "@/types/ai";
+import { AttachButton, AttachmentList, AttachmentNames } from "./MarkdownAttachments";
+import { useMarkdownAttachments } from "./useMarkdownAttachments";
 import { confirmAiTool, interruptAi, sendAiMessage } from "./api";
 import type { ChatItem, ToolCall } from "./useAiEvents";
 
@@ -82,6 +84,7 @@ function Bubble({ item }: { item: Extract<ChatItem, { kind: "user" | "assistant"
         )}
       >
         {item.text}
+        {item.kind === "user" && item.attachments?.length ? <AttachmentNames names={item.attachments} /> : null}
       </div>
     </div>
   );
@@ -113,6 +116,7 @@ export default function ChatPanel({
   onRaiseBudget: () => Promise<void>;
 }) {
   const [text, setText] = useState("");
+  const attachments = useMarkdownAttachments();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -139,8 +143,11 @@ export default function ChatPanel({
 
   async function send() {
     const message = text.trim();
-    if (!message) return;
-    if (await act(() => sendAiMessage(session.id, message))) setText("");
+    if (!message && !attachments.files.length) return;
+    if (await act(() => sendAiMessage(session.id, message, attachments.files))) {
+      setText("");
+      attachments.clear();
+    }
   }
 
   return (
@@ -201,7 +208,7 @@ export default function ChatPanel({
       </div>
 
       {active ? (
-        <div className="space-y-2 border-t border-foreground/10 p-3">
+        <div className="space-y-2 border-t border-foreground/10 p-3" {...attachments.dropZone}>
           {error && (
             <p role="alert" className="text-xs text-red-300">
               {error}
@@ -218,21 +225,31 @@ export default function ChatPanel({
             }}
             rows={3}
             maxLength={20_000}
-            placeholder={running ? "Puedes enviar más indicaciones mientras trabaja…" : "Describe el cambio que quieres. Enter envía, Shift+Enter salto de línea."}
+            placeholder={
+              running
+                ? "Puedes enviar más indicaciones mientras trabaja…"
+                : "Describe el cambio que quieres o suelta aquí archivos .md. Enter envía, Shift+Enter salto de línea."
+            }
             aria-label="Instrucción para Claude"
             className={textareaClass}
             disabled={busy || state === "budget" || state === "waiting"}
           />
+          <AttachmentList state={attachments} />
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">Trabaja en la rama <code className="font-mono">{session.branch}</code>; nada llega a producción sin tu aprobación.</p>
             <div className="flex gap-2">
+              <AttachButton state={attachments} disabled={busy || state === "budget" || state === "waiting"} />
               {running && (
                 <Button size="sm" variant="outline" onClick={() => act(() => interruptAi(session.id))} disabled={busy}>
                   <Square />
                   Detener
                 </Button>
               )}
-              <Button size="sm" onClick={send} disabled={busy || !text.trim() || state === "budget" || state === "waiting"}>
+              <Button
+                size="sm"
+                onClick={send}
+                disabled={busy || (!text.trim() && !attachments.files.length) || state === "budget" || state === "waiting"}
+              >
                 {busy ? <Loader2 className="animate-spin" /> : <Send />}
                 Enviar
               </Button>

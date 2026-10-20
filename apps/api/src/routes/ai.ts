@@ -13,13 +13,38 @@ import type { AiSessionDoc } from "../store/models.js";
 
 const slugParams = z.object({ slug: slugSchema });
 const idParams = z.object({ id: z.string().uuid() });
+// Archivos .md adjuntos: van al agente como documentos del mensaje. Topes en bytes UTF-8:
+// así la petición cabe en el límite de 1 MB de nginx y Fastify.
+const attachmentsSchema = z
+  .array(
+    z
+      .object({
+        name: z
+          .string()
+          .trim()
+          .max(120)
+          .regex(/^[^/\\\0]+\.(md|markdown)$/i),
+        content: z
+          .string()
+          .min(1)
+          .refine((content) => Buffer.byteLength(content) <= 200_000)
+      })
+      .strict()
+  )
+  .max(5)
+  .refine((files) => files.reduce((total, file) => total + Buffer.byteLength(file.content), 0) <= 600_000);
+const ATTACHMENTS_HELP = "Hasta 5 archivos .md de 200 KB (600 KB en total).";
 const startSchema = z
   .object({
     title: z.string().trim().min(3).max(120),
-    message: z.string().trim().min(1).max(20_000).optional()
+    message: z.string().trim().min(1).max(20_000).optional(),
+    attachments: attachmentsSchema.optional()
   })
   .strict();
-const messageSchema = z.object({ text: z.string().trim().min(1).max(20_000) }).strict();
+const messageSchema = z
+  .object({ text: z.string().trim().max(20_000).default(""), attachments: attachmentsSchema.optional() })
+  .strict()
+  .refine((body) => body.text.length > 0 || Boolean(body.attachments?.length));
 const confirmSchema = z.object({ toolUseId: z.string().min(1).max(200), allow: z.boolean() }).strict();
 const mergeSchema = z.object({ confirm: z.literal(true) }).strict();
 
@@ -124,11 +149,14 @@ export async function registerAiRoutes(
     const params = slugParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
     const body = startSchema.safeParse(request.body);
-    if (!body.success) return reply.code(400).send({ error: "Indica un título (3-120 caracteres) y, opcionalmente, la primera instrucción." });
+    if (!body.success) {
+      return reply.code(400).send({ error: `Indica un título (3-120 caracteres) y, opcionalmente, la primera instrucción. ${ATTACHMENTS_HELP}` });
+    }
     const actor = request.user!.username;
     if (!messageLimiter.take(actor)) return reply.code(429).send({ error: "Demasiados mensajes. Espera un minuto." });
     return run(request, reply, async (ai) => {
-      const session = await ai.start({ clientId: params.data.slug, title: body.data.title, message: body.data.message, actor });
+      const { title, message, attachments } = body.data;
+      const session = await ai.start({ clientId: params.data.slug, title, message, attachments, actor });
       return reply.code(201).send({ session: publicSession(session) });
     });
   });
@@ -183,11 +211,13 @@ export async function registerAiRoutes(
     const session = await loadSession(request, reply);
     if (!session) return reply;
     const body = messageSchema.safeParse(request.body);
-    if (!body.success) return reply.code(400).send({ error: "Escribe una instrucción (máximo 20.000 caracteres)." });
+    if (!body.success) {
+      return reply.code(400).send({ error: `Escribe una instrucción (máximo 20.000 caracteres) o adjunta archivos. ${ATTACHMENTS_HELP}` });
+    }
     const actor = request.user!.username;
     if (!messageLimiter.take(actor)) return reply.code(429).send({ error: "Demasiados mensajes. Espera un minuto." });
     return run(request, reply, async (ai) => {
-      await ai.send(session, body.data.text, actor);
+      await ai.send(session, body.data.text, actor, body.data.attachments);
       return reply.code(202).send({ ok: true });
     });
   });

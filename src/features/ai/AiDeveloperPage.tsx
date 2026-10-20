@@ -13,6 +13,8 @@ import { useClient } from "@/features/projects/api";
 import type { AiSession } from "@/types/ai";
 import ChangesPanel from "./ChangesPanel";
 import ChatPanel, { textareaClass } from "./ChatPanel";
+import { AttachButton, AttachmentList } from "./MarkdownAttachments";
+import { useMarkdownAttachments } from "./useMarkdownAttachments";
 import PreviewPanel from "./PreviewPanel";
 import PublishPanel from "./PublishPanel";
 import { closeAiSession, formatUsd, raiseAiBudget, startAiSession, useAiSession, useAiSessions, useAiStatus } from "./api";
@@ -24,6 +26,7 @@ function NewSession({ slug, onStarted }: { slug: string; onStarted: (session: Ai
   const queryClient = useQueryClient();
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
+  const attachments = useMarkdownAttachments();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,7 +34,11 @@ function NewSession({ slug, onStarted }: { slug: string; onStarted: (session: Ai
     setBusy(true);
     setError(null);
     try {
-      const { session } = await startAiSession(slug, { title: title.trim(), message: message.trim() || undefined });
+      const { session } = await startAiSession(slug, {
+        title: title.trim(),
+        message: message.trim() || undefined,
+        ...(attachments.files.length ? { attachments: attachments.files } : {}),
+      });
       onStarted(session);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo iniciar la sesión.");
@@ -58,7 +65,7 @@ function NewSession({ slug, onStarted }: { slug: string; onStarted: (session: Ai
           <Label htmlFor="ai-title">Título del cambio</Label>
           <Input id="ai-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} placeholder="Validaciones en el formulario de registro" />
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-1.5" {...attachments.dropZone}>
           <Label htmlFor="ai-message">Instrucciones para Claude</Label>
           <textarea
             id="ai-message"
@@ -69,16 +76,23 @@ function NewSession({ slug, onStarted }: { slug: string; onStarted: (session: Ai
             placeholder="Cambia el formulario de registro: agrega validaciones (email válido, contraseña de 10+ caracteres) y adapta el diseño a los colores del cliente (#0F4C81 y #F2A900)."
             className={textareaClass}
           />
+          <AttachmentList state={attachments} />
+          <p className="text-xs text-muted-foreground">
+            Puedes adjuntar especificaciones o textos en Markdown (.md): Claude los recibe junto a tus instrucciones.
+          </p>
         </div>
         {error && (
           <p role="alert" className="text-sm text-red-300">
             {error}
           </p>
         )}
-        <Button onClick={start} disabled={busy || title.trim().length < 3}>
-          {busy ? <Loader2 className="animate-spin" /> : <Bot />}
-          Empezar
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={start} disabled={busy || title.trim().length < 3}>
+            {busy ? <Loader2 className="animate-spin" /> : <Bot />}
+            Empezar
+          </Button>
+          <AttachButton state={attachments} disabled={busy} />
+        </div>
       </CardContent>
     </Card>
   );

@@ -21,6 +21,12 @@ export interface AiSession {
   consoleUrl: string | null;
 }
 
+/** Archivo .md adjuntado a un mensaje (Claude lo recibe como documento). */
+export interface MarkdownAttachment {
+  name: string;
+  content: string;
+}
+
 export interface AgentUsage {
   status: "rescheduling" | "running" | "idle" | "terminated";
   costCents: number;
@@ -29,7 +35,7 @@ export interface AgentUsage {
 
 type Base = { id: string; at: string | null };
 export type ChatEvent =
-  | (Base & { kind: "user"; text: string })
+  | (Base & { kind: "user"; text: string; attachments?: string[] })
   | (Base & { kind: "assistant"; text: string })
   | (Base & { kind: "thinking" })
   | (Base & { kind: "tool"; tool: string; summary: string; needsConfirmation: boolean; denied: boolean })

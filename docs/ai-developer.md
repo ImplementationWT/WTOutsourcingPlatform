@@ -15,6 +15,11 @@ Se abre desde el detalle de un proyecto listo: **AI Developer**
 2. **Chat.** Las instrucciones llegan al agente; el panel muestra en vivo sus
    mensajes, cada archivo que lee o edita y cada comando que ejecuta. Si el
    agente intenta algo dudoso, se pausa y pide **Permitir / Denegar**.
+   **Archivos .md:** con *Adjuntar .md* (o soltándolos sobre el cuadro de texto) se
+   envían especificaciones, textos o guías en Markdown junto al mensaje, también al
+   empezar la sesión. Claude los recibe como documentos, con su nombre como título;
+   no se guardan en el repo salvo que se le pida. Hasta 5 por mensaje, 200 KB cada
+   uno y 600 KB en total. El chat y la auditoría solo muestran el nombre.
 3. **Código.** Claude edita, ejecuta `pnpm lint`, `typecheck`, `test` y `build`,
    hace commit y push **solo a su rama**.
 4. **Vista previa.** *Ver vista previa* lanza el workflow `preview.yml` del repo

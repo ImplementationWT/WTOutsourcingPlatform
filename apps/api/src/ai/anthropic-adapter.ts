@@ -93,10 +93,21 @@ export function createAnthropicAgentAdapter(apiKey: string, settings: Collection
       return { id: session.id, repoResourceId: repo.id };
     },
 
-    async sendMessage(sessionId, text, context) {
+    async sendMessage(sessionId, text, context, attachments = []) {
       await sessions.events.send(sessionId, {
         events: [
-          { type: "user.message", content: [{ type: "text", text }] },
+          {
+            type: "user.message",
+            content: [
+              { type: "text", text },
+              ...attachments.map((file) => ({
+                type: "document" as const,
+                title: file.name,
+                context: "Archivo Markdown adjuntado desde el panel de Launchpad.",
+                source: { type: "text" as const, media_type: "text/plain" as const, data: file.content }
+              }))
+            ]
+          },
           ...(context ? [{ type: "system.message" as const, content: [{ type: "text" as const, text: context }] }] : [])
         ]
       });
