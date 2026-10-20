@@ -53,6 +53,22 @@ base64, no el valor. En producción la genera `deploy/activate.sh` una sola vez 
 sale del VPS y se monta de solo lectura en `/run/secrets/integration.key`. Sin la clave,
 la plataforma rechaza activar integraciones (503) y el resto sigue funcionando.
 
+## Acceso al panel: límite de intentos
+
+El login cuenta los fallos en ventanas de 15 minutos:
+
+- **Por IP:** 10 fallos bloquean esa IP.
+- **Por usuario:** 30 fallos, desde cualquier IP, bloquean ese usuario. Frena ataques
+  repartidos entre muchas IPs, y una sola IP no basta para dejar fuera a todos.
+
+Durante el bloqueo, la contraseña ni se comprueba: el panel responde 429 con
+`Retry-After` aunque sea correcta. Un acierto borra los fallos de esa IP y ese usuario.
+Cada bloqueo queda en el log (`Login blocked after repeated failures`).
+
+La IP es la que ve el nginx del panel. La API solo confía en el salto local
+(`trustProxy` 127.0.0.1), así que lo que el cliente añada a `X-Forwarded-For` no
+cuenta. Los contadores viven en memoria y se reinician con la API.
+
 ## Claves de los servidores de despliegue
 
 `SERVER_KEYS_ENCRYPTION_KEY_SECRET_REF` apunta a `/opt/wt-launchpad/server-keys.key`, que

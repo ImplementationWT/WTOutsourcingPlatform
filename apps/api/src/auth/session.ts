@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import cookie from "@fastify/cookie";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { createLoginGuard, type LoginGuard } from "./login-guard.js";
 import { verifyPassword } from "./password.js";
 
 export const SESSION_COOKIE = "pp_session";
@@ -12,6 +13,8 @@ export interface AuthConfig {
   adminPasswordHash: string;
   sessionSecret: string;
   secureCookies: boolean;
+  /** Límite de intentos fallidos (inyectable para tests). */
+  loginGuard?: LoginGuard;
 }
 
 export interface SessionUser {
@@ -39,6 +42,7 @@ function sameString(a: string, b: string) {
  */
 export async function registerAuth(app: FastifyInstance, config: AuthConfig) {
   await app.register(cookie, { secret: config.sessionSecret });
+  const guard = config.loginGuard ?? createLoginGuard();
 
   app.decorateRequest("user", undefined);
   app.addHook("onRequest", async (request) => {
@@ -59,12 +63,25 @@ export async function registerAuth(app: FastifyInstance, config: AuthConfig) {
     if (!parsed.success) return reply.code(400).send({ error: "Usuario y contraseña son obligatorios." });
 
     const { username, password } = parsed.data;
+    // request.ip es la IP real del navegador (trustProxy solo confía en el nginx local).
+    const ip = request.ip;
+    const wait = guard.retryAfterMs(ip, username);
+    if (wait > 0) {
+      const minutes = Math.ceil(wait / 60_000);
+      return reply
+        .code(429)
+        .header("retry-after", String(Math.ceil(wait / 1000)))
+        .send({ error: `Demasiados intentos fallidos. Vuelve a intentarlo en ${minutes} minuto${minutes === 1 ? "" : "s"}.` });
+    }
+
     // Se verifica siempre la contraseña (aunque el usuario no coincida) para no filtrar por tiempos.
     const passwordOk = await verifyPassword(password, config.adminPasswordHash);
     if (!passwordOk || !sameString(username, config.adminUsername)) {
-      request.log.warn({ username }, "Failed login");
+      const blocked = guard.fail(ip, username);
+      request.log.warn({ username, ip, blocked }, blocked ? "Login blocked after repeated failures" : "Failed login");
       return reply.code(401).send({ error: "Usuario o contraseña incorrectos." });
     }
+    guard.succeed(ip, username);
 
     const value = Buffer.from(
       JSON.stringify({ username, role: "admin", exp: Date.now() + SESSION_TTL_MS })

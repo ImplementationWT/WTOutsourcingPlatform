@@ -32,7 +32,12 @@ export interface AppOptions {
 }
 
 export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStream, ai, servers: givenServers }: AppOptions) {
-  const app = Fastify({ logger: loggerOptions({ level: logLevel, stream: logStream }) });
+  const app = Fastify({
+    logger: loggerOptions({ level: logLevel, stream: logStream }),
+    // La API solo escucha en 127.0.0.1 detrás de nginx: se confía únicamente en ese salto, así
+    // request.ip es la IP que vio nginx (lo que el cliente añada a X-Forwarded-For se ignora).
+    trustProxy: ["127.0.0.1", "::1"]
+  });
   const primary = baseDeps.config.server;
   const servers =
     givenServers ??

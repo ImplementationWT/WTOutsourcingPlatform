@@ -47,7 +47,10 @@ export default function LoginPage() {
       queryClient.setQueryData(SESSION_KEY, user);
       navigate(from, { replace: true });
     } catch (e) {
-      setError(e instanceof ApiError && e.status === 401 ? "Usuario o contraseña incorrectos." : "No se pudo conectar con el servidor.");
+      if (e instanceof ApiError && e.status === 401) setError("Usuario o contraseña incorrectos.");
+      // Bloqueo por intentos fallidos: el servidor dice cuántos minutos faltan.
+      else if (e instanceof ApiError && e.status === 429) setError(e.message);
+      else setError("No se pudo conectar con el servidor.");
     }
   }
 
