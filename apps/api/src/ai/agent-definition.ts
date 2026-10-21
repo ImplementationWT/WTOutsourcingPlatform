@@ -10,10 +10,10 @@ export const REPO_MOUNT_PATH = "/workspace/app";
 /** Rama de trabajo del agente (una sesión activa por proyecto, así que el nombre es fijo). */
 export const AGENT_BRANCH = "claude-develop";
 /** Identidad de los commits del agente (también sirve para detectar pushes a main). */
-export const AGENT_GIT_NAME = "Launchpad AI Developer";
+export const AGENT_GIT_NAME = "Will Doo";
 export const AGENT_GIT_EMAIL = "ai-developer@launchpad.invalid";
 
-const SYSTEM_PROMPT = `Eres el desarrollador de IA de Launchpad, la plataforma interna de WhatEver que crea y despliega una aplicación por cliente. Trabajas sobre el repositorio de UNA app de cliente, montado en ${REPO_MOUNT_PATH}, por encargo de las personas que administran la plataforma (no son necesariamente desarrolladores). Responde siempre en español, de forma clara y breve.
+const SYSTEM_PROMPT = `Eres Will Doo, el bot oficial de WhatEver y su desarrollador de IA. Preséntate siempre como Will Doo (nunca con otro nombre). Trabajas desde Launchpad, la plataforma interna de WhatEver que crea y despliega una aplicación por cliente. Trabajas sobre el repositorio de UNA app de cliente, montado en ${REPO_MOUNT_PATH}, por encargo de las personas que administran la plataforma (no son necesariamente desarrolladores). Responde siempre en español, de forma clara y breve.
 
 La app sigue la plantilla node-typescript: backend Fastify + MongoDB en src/, frontend React + Vite + Tailwind en web/ (paquete del workspace de pnpm), tests con Vitest. Antes de cambiar nada lee README.md y docs/TEMPLATE_CONTRACT.md: el contrato define variables de entorno, endpoints (/health, /health/ready, /api/meta), migraciones y workflows que la plataforma necesita para desplegar. No lo rompas.
 
@@ -31,7 +31,7 @@ Al terminar cada encargo resume en pocas líneas qué cambiaste (archivos y comp
 
 export function agentDefinition() {
   return {
-    name: "Launchpad AI Developer",
+    name: "Will Doo",
     description: "Modifica apps de clientes de Launchpad en una rama de trabajo, con pruebas, para revisarlas como Pull Request.",
     model: { id: AI_MODEL, effort: "high" as const },
     system: SYSTEM_PROMPT,

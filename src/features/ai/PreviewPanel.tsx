@@ -84,13 +84,13 @@ export default function PreviewPanel({ session, agentBusy }: { session: AiSessio
             {preview?.status === "stopped"
               ? "La vista previa se apagó. Ábrela de nuevo para ver los últimos cambios."
               : preview?.status === "failed"
-                ? "Pide a Claude que lo arregle o vuelve a intentarlo."
+                ? "Pide a Will Doo que lo arregle o vuelve a intentarlo."
                 : active
-                  ? "Preparando la vista previa: la app en vivo, con una base de datos vacía y sin tocar producción. Cada cambio de Claude se verá aquí al momento."
+                  ? "Preparando la vista previa: la app en vivo, con una base de datos vacía y sin tocar producción. Cada cambio de Will Doo se verá aquí al momento."
                   : "La sesión está cerrada."}
           </p>
           {active && start(preview ? "Abrir vista previa" : "Abrirla ya")}
-          {agentBusy && !preview && <p className="text-xs text-muted-foreground">Claude está trabajando…</p>}
+          {agentBusy && !preview && <p className="text-xs text-muted-foreground">Will Doo está trabajando…</p>}
         </div>
         {error && (
           <p role="alert" className="text-red-300">
@@ -157,7 +157,7 @@ export default function PreviewPanel({ session, agentBusy }: { session: AiSessio
       {(preview.updating || preview.outdated) && (
         <div className="flex items-center gap-2 border-b border-violet-400/20 bg-violet-500/10 px-3 py-1.5 text-xs text-violet-200">
           <Loader2 className="size-3.5 animate-spin" />
-          Aplicando los últimos cambios de Claude…
+          Aplicando los últimos cambios de Will Doo…
         </div>
       )}
       {preview.updateError && !preview.updating && (

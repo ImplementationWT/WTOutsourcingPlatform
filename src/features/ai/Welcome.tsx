@@ -60,7 +60,7 @@ export default function Welcome({
           <ClaudeAvatar className="size-11 [&_svg]:size-5" />
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">¿Qué quieres cambiar en {projectName}?</h1>
           <p className="max-w-lg text-sm text-muted-foreground">
-            Cuéntaselo a Claude con tus palabras. Trabaja en una copia aparte, te enseña el resultado en una vista previa y nada se publica sin tu
+            Cuéntaselo a Will Doo con tus palabras. Trabaja en una copia aparte, te enseña el resultado en una vista previa y nada se publica sin tu
             aprobación.
           </p>
         </div>

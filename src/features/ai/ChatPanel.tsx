@@ -122,15 +122,15 @@ function Message({ item }: { item: Extract<ChatItem, { kind: "user" | "assistant
 }
 
 const STATE_LABEL: Partial<Record<AgentState, string>> = {
-  running: "Claude está trabajando…",
-  waiting: "Claude espera tu aprobación para continuar.",
+  running: "Will Doo está trabajando…",
+  waiting: "Will Doo espera tu aprobación para continuar.",
   budget: "Se alcanzó el presupuesto de la sesión.",
   error: "La sesión falló tras varios reintentos. Envía un mensaje para continuar.",
-  refused: "Claude no puede continuar con esta petición.",
+  refused: "Will Doo no puede continuar con esta petición.",
   terminated: "La sesión del agente terminó.",
 };
 
-/** Conversación con Claude: mensajes, pasos agrupados, aprobaciones y la caja de mensaje. */
+/** Conversación con Will Doo: mensajes, pasos agrupados, aprobaciones y la caja de mensaje. */
 export default function ChatPanel({
   session,
   items,
@@ -188,11 +188,11 @@ export default function ChatPanel({
         <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
           {connection === "connecting" && items.length === 0 && (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> Conectando con Claude…
+              <Loader2 className="size-4 animate-spin" /> Conectando con Will Doo…
             </p>
           )}
           {connection === "open" && items.length === 0 && active && (
-            <p className="text-center text-sm text-muted-foreground">Escribe abajo qué quieres cambiar. Claude trabajará en la rama de esta sesión.</p>
+            <p className="text-center text-sm text-muted-foreground">Escribe abajo qué quieres cambiar. Will Doo trabajará en la rama de esta sesión.</p>
           )}
           {items.map((item, index) =>
             item.kind === "tools" ? <Steps key={item.id} calls={item.calls} live={index === items.length - 1} /> : <Message key={item.id} item={item} />,
@@ -202,7 +202,7 @@ export default function ChatPanel({
             <div key={call.id} className="ml-10 space-y-2 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-sm">
               <p className="flex items-center gap-2 font-medium">
                 <ShieldAlert className="size-4 text-amber-300" />
-                Claude pide permiso para este paso
+                Will Doo pide permiso para este paso
               </p>
               <code className="block rounded bg-background/60 px-2 py-1 font-mono text-xs break-all">{call.summary}</code>
               <div className="flex gap-2">
@@ -229,7 +229,7 @@ export default function ChatPanel({
               )}
             </div>
           )}
-          {connection === "lost" && <p className="ml-10 text-xs text-amber-300">Se perdió la conexión con Claude. Reconectando…</p>}
+          {connection === "lost" && <p className="ml-10 text-xs text-amber-300">Se perdió la conexión con Will Doo. Reconectando…</p>}
           <div ref={bottom} />
         </div>
       </div>
@@ -255,7 +255,7 @@ export default function ChatPanel({
                   ? "Puedes darle más indicaciones mientras trabaja…"
                   : blocked
                     ? "Resuelve el aviso de arriba para continuar"
-                    : "Responde a Claude o pide otro cambio…"
+                    : "Responde a Will Doo o pide otro cambio…"
               }
             />
             <p className="mt-2 text-center text-[11px] text-muted-foreground">

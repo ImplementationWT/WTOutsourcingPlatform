@@ -26,14 +26,16 @@ dir=$(preview_dir "$slug")
 port=$(port_of "$(preview_port_key "$slug")")
 [[ -d $dir && -n $port ]] || die "la vista previa de $slug no está preparada (preview-install)"
 
-payload=$(head -c 4096)
+payload=$(head -c 16384)
 repository=$(jq -er '.repository | strings' <<<"$payload" 2>/dev/null) || die "falta repository"
 branch=$(jq -er '.branch | strings' <<<"$payload" 2>/dev/null) || die "falta branch"
 token=$(jq -er '.token | strings' <<<"$payload" 2>/dev/null) || die "falta token"
 [[ $repository =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?/${slug}-app$ ]] || die "repository inválido: debe ser <owner>/$slug-app"
 # Solo la rama de trabajo del agente (nunca main ni otra).
 [[ $branch == claude-develop ]] || die "branch inválida: solo claude-develop"
-[[ $token =~ ^gh[su]_[A-Za-z0-9]{20,255}$ ]] || die "token inválido"
+# Token de instalación de GitHub: solo se comprueba que no tenga espacios ni comillas (su
+# formato cambia con el tiempo). Nunca se ejecuta: va en una variable de entorno de git.
+[[ $token =~ ^[A-Za-z0-9_.~+/=-]{20,4096}$ ]] || die "token inválido (${#token} caracteres, empieza por ${token:0:4})"
 
 exec 9>"$dir/.deploy.lock"
 flock -w 900 9 || die "hay otra operación de vista previa en curso para $slug"

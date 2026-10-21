@@ -261,8 +261,6 @@ export default function AiDeveloperPage() {
 
   const sidebar = (onClose?: () => void) => (
     <SessionSidebar
-      slug={slug}
-      projectName={projectName}
       sessions={list}
       selectedId={selected?.id ?? null}
       creating={!selected && !loading}
@@ -291,7 +289,7 @@ export default function AiDeveloperPage() {
         </Button>
         <ClaudeAvatar className="size-6 [&_svg]:size-3" />
         <p className="min-w-0 truncate text-sm">
-          <span className="font-medium">AI Developer</span>
+          <span className="font-medium">Will Doo</span>
           <span className="text-muted-foreground"> · {projectName}</span>
         </p>
       </header>

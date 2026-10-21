@@ -66,7 +66,7 @@ export default function ChangesPanel({ session }: { session: AiSession }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm">
           {data.aheadBy === 0 ? (
-            <span className="text-muted-foreground">Claude aún no ha subido cambios a la rama.</span>
+            <span className="text-muted-foreground">Will Doo aún no ha subido cambios a la rama.</span>
           ) : (
             <>
               <strong>{data.files.length}</strong> {data.files.length === 1 ? "archivo" : "archivos"} en <strong>{data.aheadBy}</strong>{" "}

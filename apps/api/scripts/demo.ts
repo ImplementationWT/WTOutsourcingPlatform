@@ -29,7 +29,7 @@ for (const project of [
   await new JobEngine(store, fakes.deps, silent).run(job._id, "admin");
 }
 
-// Claude simulado: piensa, lee, edita, pasa las pruebas, sube un commit y resume en markdown.
+// Will Doo simulado: piensa, lee, edita, pasa las pruebas, sube un commit y resume en markdown.
 const agent = new FakeAgent();
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let cost = 0;
@@ -63,7 +63,7 @@ agent.onMessage = (sessionId, text) => {
         {
           type: "text",
           text: [
-            "Listo. **Esto es una respuesta simulada** del modo demo; con la clave de Anthropic responde Claude de verdad.",
+            "Listo. **Esto es una respuesta simulada** del modo demo; con la clave de Anthropic responde Will Doo de verdad.",
             "",
             "Qué hice:",
             "- Cambié el título de la pantalla de inicio en `web/src/pages/Home.tsx`.",

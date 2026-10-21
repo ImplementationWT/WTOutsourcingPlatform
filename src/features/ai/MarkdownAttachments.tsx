@@ -26,7 +26,7 @@ export function AttachButton({ state, disabled, compact }: { state: MarkdownAtta
         variant={compact ? "ghost" : "outline"}
         onClick={() => input.current?.click()}
         disabled={disabled || state.files.length >= MAX_ATTACHMENTS}
-        title="Adjuntar archivos Markdown (.md) para que Claude los lea"
+        title="Adjuntar archivos Markdown (.md) para que Will Doo los lea"
         aria-label={compact ? "Adjuntar archivos .md" : undefined}
       >
         <Paperclip />

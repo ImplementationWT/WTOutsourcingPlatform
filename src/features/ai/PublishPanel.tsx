@@ -111,7 +111,7 @@ export default function PublishPanel({ session, agentBusy }: { session: AiSessio
                 ))}
               </ul>
             )}
-            {checks && checks.failed > 0 && <p className="text-red-300">Pide a Claude en el chat que corrija los fallos; las validaciones se repiten con cada push.</p>}
+            {checks && checks.failed > 0 && <p className="text-red-300">Pide a Will Doo en el chat que corrija los fallos; las validaciones se repiten con cada push.</p>}
           </div>
         </li>
 
@@ -152,7 +152,7 @@ export default function PublishPanel({ session, agentBusy }: { session: AiSessio
                   <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <CircleDashed className="size-3.5" />
                     {agentBusy
-                      ? "Espera a que Claude termine."
+                      ? "Espera a que Will Doo termine."
                       : pr.mergeable === false
                         ? "El PR tiene conflictos con main."
                         : "Disponible cuando todas las validaciones estén en verde."}

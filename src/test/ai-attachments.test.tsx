@@ -43,7 +43,7 @@ describe("AI Developer: adjuntos .md", () => {
     fireEvent.change(input, { target: { files: [file("spec.md", "# Referencia\n\nCambiar el título")] } });
     expect(await screen.findByText("spec.md")).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText("Instrucción para Claude"), { target: { value: "Sigue la especificación" } });
+    fireEvent.change(screen.getByLabelText("Instrucción para Will Doo"), { target: { value: "Sigue la especificación" } });
     fireEvent.click(screen.getByRole("button", { name: /Enviar/ }));
 
     await waitFor(() => expect(bodies).toHaveLength(1));

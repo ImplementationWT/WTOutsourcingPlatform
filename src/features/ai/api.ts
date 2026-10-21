@@ -55,7 +55,7 @@ export function useAiReview(id: string | null, enabled: boolean) {
 
 /**
  * Estado de la vista previa. Mientras la sesión está activa se consulta cada pocos segundos:
- * así arranca sola con el primer cambio de Claude y trae cada commit nuevo a la vista en vivo.
+ * así arranca sola con el primer cambio de Will Doo y trae cada commit nuevo a la vista en vivo.
  */
 export function useAiPreview(id: string | null, active = true) {
   return useQuery({

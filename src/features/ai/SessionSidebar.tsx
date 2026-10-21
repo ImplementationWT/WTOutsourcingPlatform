@@ -1,5 +1,4 @@
-import { Link } from "react-router-dom";
-import { ArrowLeft, MessageSquare, Plus, X } from "lucide-react";
+import { MessageSquare, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { AiSession } from "@/types/ai";
@@ -20,8 +19,6 @@ function when(iso: string) {
 
 /** Conversaciones del proyecto, como la lista de chats de Claude. */
 export default function SessionSidebar({
-  slug,
-  projectName,
   sessions,
   selectedId,
   creating,
@@ -30,8 +27,6 @@ export default function SessionSidebar({
   onNew,
   onClose,
 }: {
-  slug: string;
-  projectName: string;
   sessions: AiSession[];
   selectedId: string | null;
   creating: boolean;
@@ -94,12 +89,6 @@ export default function SessionSidebar({
         {!sessions.length && !creating && <p className="px-3 py-2 text-sm text-muted-foreground">Aún no hay conversaciones.</p>}
       </nav>
 
-      <div className="border-t border-foreground/10 p-3">
-        <Link to={`/projects/${slug}`} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground">
-          <ArrowLeft className="size-4 shrink-0" />
-          <span className="truncate">Volver a {projectName}</span>
-        </Link>
-      </div>
     </div>
   );
 }

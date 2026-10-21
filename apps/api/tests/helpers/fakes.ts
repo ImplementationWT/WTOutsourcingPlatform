@@ -311,7 +311,7 @@ export class FakeGithub extends Faulty implements GithubAdapter {
       aheadBy: ahead.length,
       behindBy: 0,
       url: `https://github.com/${this.owner}/${repo}/compare/${base}...${head}`,
-      commits: ahead.map((c) => ({ sha: c.sha, message: c.message, author: "Launchpad AI Developer", date: null })),
+      commits: ahead.map((c) => ({ sha: c.sha, message: c.message, author: "Will Doo", date: null })),
       files: ahead.map((c, i) => ({ filename: `web/src/file-${i}.tsx`, status: "modified", additions: 3, deletions: 1, patch: `@@ -1 +1 @@\n-old\n+${c.message}` }))
     };
   }

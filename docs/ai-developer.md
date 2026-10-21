@@ -1,7 +1,7 @@
 # AI Developer
 
-Claude modifica la app de un cliente a partir de instrucciones en lenguaje
-natural, muestra los cambios en una vista previa y solo se despliegan cuando
+**Will Doo**, el bot oficial de WhatEver (con Claude por debajo), modifica la app de un
+cliente a partir de instrucciones en lenguaje natural, muestra los cambios en una vista previa y solo se despliegan cuando
 una persona los aprueba.
 
 Se abre desde el detalle de un proyecto listo: **AI Developer**

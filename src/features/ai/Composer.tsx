@@ -28,7 +28,7 @@ export default function Composer({
   busy?: boolean;
   disabled?: boolean;
   placeholder: string;
-  /** Si Claude está trabajando: botón para detenerlo. */
+  /** Si Will Doo está trabajando: botón para detenerlo. */
   onStop?: () => void;
   autoFocus?: boolean;
   /** Más alto (pantalla de sesión nueva). */
@@ -67,7 +67,7 @@ export default function Composer({
         maxLength={20_000}
         autoFocus={autoFocus}
         placeholder={placeholder}
-        aria-label="Instrucción para Claude"
+        aria-label="Instrucción para Will Doo"
         disabled={disabled}
         className={cn(
           "block w-full resize-none bg-transparent px-4 pt-3.5 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed",
