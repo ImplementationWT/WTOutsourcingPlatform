@@ -37,8 +37,9 @@ token=$(jq -er '.token | strings' <<<"$payload" 2>/dev/null) || die "falta token
 # formato cambia con el tiempo). Nunca se ejecuta: va en una variable de entorno de git.
 # (La longitud va aparte: en las expresiones de bash una repetición no puede pasar de 255, y
 # los tokens actuales de GitHub son más largos.)
-((${#token} >= 20 && ${#token} <= 4096)) && [[ $token =~ ^[A-Za-z0-9_.~+/=-]+$ ]] ||
+if ((${#token} < 20 || ${#token} > 4096)) || [[ ! $token =~ ^[A-Za-z0-9_.~+/=-]+$ ]]; then
   die "token inválido (${#token} caracteres, empieza por ${token:0:4})"
+fi
 
 exec 9>"$dir/.deploy.lock"
 flock -w 900 9 || die "hay otra operación de vista previa en curso para $slug"
