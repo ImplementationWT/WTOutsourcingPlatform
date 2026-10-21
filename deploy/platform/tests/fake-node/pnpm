@@ -2,6 +2,9 @@
 # pnpm simulado: install deja constancia; dev:preview arranca el servidor de desarrollo.
 case "$1" in
   install) mkdir -p node_modules && echo installed >>node_modules/.installs ;;
-  dev:preview) exec node /fake/dev-server.js ;;
+  dev:preview)
+    # Arranque roto a propósito (pruebas del diagnóstico): el repo trae fail.txt.
+    if [ -f fail.txt ]; then echo "Error: falla simulada al arrancar la app" >&2; exit 1; fi
+    exec node /fake/dev-server.js ;;
   *) echo "pnpm simulado: $*" >&2; exit 1 ;;
 esac

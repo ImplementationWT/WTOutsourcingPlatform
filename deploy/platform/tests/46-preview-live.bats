@@ -144,6 +144,20 @@ live() { # <ruta>
   [ "$status" -eq 0 ]
 }
 
+@test "si la app no arranca, el motivo llega al mensaje y el log completo queda guardado" {
+  make_repo
+  printf 'x\n' >/tmp/acme-work/fail.txt
+  commit "Rompe el arranque"
+  push
+  run /opt/platform/bin/preview-live-start acme <<<"$(start_payload)"
+  [ "$status" -ne 0 ]
+  [[ $output == *"la vista previa no arrancó: Error: falla simulada al arrancar la app"* ]]
+  [[ $output == *"/srv/customer-apps/acme/preview/live-error.log"* ]]
+  [ "$(stat -c '%a' /srv/customer-apps/acme/preview/live-error.log)" = 600 ]
+  grep -q "falla simulada" /srv/customer-apps/acme/preview/live-error.log
+  [ -z "$(docker ps -aq --filter label=com.docker.compose.project=preview-acme)" ]
+}
+
 @test "un repo sin pnpm dev:preview se rechaza con un mensaje claro" {
   make_repo sin-dev-preview
   run /opt/platform/bin/preview-live-start acme <<<"$(start_payload)"

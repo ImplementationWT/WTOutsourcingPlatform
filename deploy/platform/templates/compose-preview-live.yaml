@@ -54,6 +54,8 @@ services:
       # La API escucha dentro del contenedor; Vite (5173) la publica con su proxy.
       HOST: 127.0.0.1
       PORT: "3000"
+      # El proxy de Vite apunta aquí: 127.0.0.1 explícito (localhost podría resolver a ::1).
+      API_URL: http://127.0.0.1:3000
       TRUST_PROXY_HOPS: "1"
       # Base temporal y acceso solo con pase de Launchpad: admin / admin123 sin cambio obligatorio.
       FORCE_ADMIN_PASSWORD_CHANGE: "false"

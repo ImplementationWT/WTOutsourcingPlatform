@@ -87,10 +87,21 @@ chmod 600 "$compose"
 
 if ! docker compose --project-name "$project" --file "$compose" up --detach --remove-orphans \
   --wait --wait-timeout "$PREVIEW_LIVE_WAIT_SECONDS" >/dev/null 2>&1; then
-  printf 'Últimas líneas de la app:\n' >&2
-  docker compose --project-name "$project" --file "$compose" logs --no-color --tail 30 app >&2 2>&1 || true
+  # Los logs se guardan antes de borrar los contenedores (si no, se pierden) y el motivo va en
+  # la línea de error, que es la que muestra el panel.
+  error_log="$dir/live-error.log"
+  {
+    docker compose --project-name "$project" --file "$compose" ps --all 2>&1 || true
+    docker compose --project-name "$project" --file "$compose" logs --no-color --tail 80 2>&1 || true
+  } >"$error_log"
+  chmod 600 "$error_log"
+  reason=$(docker compose --project-name "$project" --file "$compose" logs --no-color --no-log-prefix --tail 40 app 2>/dev/null |
+    grep -Ev '^[[:space:]]*$' | grep -Ei 'err|fail|cannot|unable|not found|denied|killed' | tail -n 1 | cut -c1-300 || true)
+  [[ -n $reason ]] || reason=$(docker compose --project-name "$project" --file "$compose" logs --no-color --no-log-prefix --tail 5 app 2>/dev/null |
+    grep -Ev '^[[:space:]]*$' | tail -n 1 | cut -c1-300 || true)
+  cat "$error_log" >&2
   docker compose --project-name "$project" --file "$compose" down --volumes --remove-orphans >/dev/null 2>&1 || true
-  die "la vista previa no arrancó (instalación o pnpm dev:preview): mira las últimas líneas de arriba"
+  die "la vista previa no arrancó: ${reason:-la app no respondió a tiempo} (log completo en $error_log)"
 fi
 
 jq -cn --arg sha "$sha" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{mode: "live", sha: $sha, startedAt: $at}' >"$dir/state.json"
