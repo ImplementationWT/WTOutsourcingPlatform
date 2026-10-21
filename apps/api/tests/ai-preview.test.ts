@@ -168,7 +168,7 @@ describe("AI Developer: vista previa", () => {
   });
 
   it("se apaga sola tras una hora sin visitas; cada visita la mantiene encendida; al volver arranca otra vez", async () => {
-    const { api, app, session, server, time, store, github } = await setup();
+    const { api, app, session, server, time, store } = await setup();
     await api("POST", `/api/ai/sessions/${session.id}/preview`);
     await app.aiDeveloper!.previewIdle();
     const frameUrl = (await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview.frameUrl;
