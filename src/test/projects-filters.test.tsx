@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import ProjectsPage from "@/features/projects/ProjectsPage";
-import { applyFilters, normalizeTag, readFilters } from "@/features/projects/filters";
+import { normalizeTag, searchProjects } from "@/features/projects/filters";
 import type { ProjectRepo } from "@/types/project";
 
 const base = {
@@ -28,21 +28,13 @@ const projects: ProjectRepo[] = [
 ];
 
 const names = (list: ProjectRepo[]) => list.map((p) => p.name);
-const filtersOf = (query: string) => readFilters(new URLSearchParams(query));
 
-describe("filtros de proyectos", () => {
-  it("combina origen, estado, etiquetas (todas), archivados y búsqueda", () => {
-    expect(names(applyFilters(projects, filtersOf("origen=platform")))).toEqual(["acme-crm-app", "beta-shop-app"]);
-    expect(names(applyFilters(projects, filtersOf("origen=other")))).toEqual(["landing-acme", "viejo"]);
-    expect(names(applyFilters(projects, filtersOf("estado=failed")))).toEqual(["beta-shop-app"]);
-    expect(names(applyFilters(projects, filtersOf("etiquetas=cliente-acme")))).toEqual(["acme-crm-app", "landing-acme"]);
-    expect(names(applyFilters(projects, filtersOf("etiquetas=cliente-acme,launchpad")))).toEqual(["acme-crm-app"]);
-    expect(names(applyFilters(projects, filtersOf("archivados=ocultar")))).not.toContain("viejo");
-    // La búsqueda mira nombre, descripción y etiquetas.
-    expect(names(applyFilters(projects, filtersOf("q=landing de")))).toEqual(["landing-acme"]);
-    expect(names(applyFilters(projects, filtersOf("q=cliente-ac")))).toEqual(["acme-crm-app", "landing-acme"]);
-    // Valores desconocidos en la URL se ignoran.
-    expect(applyFilters(projects, filtersOf("origen=x&estado=y"))).toHaveLength(4);
+describe("búsqueda de proyectos", () => {
+  it("busca por nombre, descripción y etiquetas", () => {
+    expect(searchProjects(projects, "")).toHaveLength(4);
+    expect(names(searchProjects(projects, "landing de"))).toEqual(["landing-acme"]);
+    expect(names(searchProjects(projects, "cliente-ac"))).toEqual(["acme-crm-app", "landing-acme"]);
+    expect(names(searchProjects(projects, "  BETA "))).toEqual(["beta-shop-app"]);
   });
 
   it("normaliza etiquetas al formato de GitHub", () => {
@@ -72,7 +64,7 @@ function renderPage(fetchImpl: typeof fetch, initial = "/projects") {
 }
 
 describe("página de Proyectos", () => {
-  it("filtra por etiqueta desde los chips y guarda el filtro en la URL", async () => {
+  it("sin filtros: solo la búsqueda (guardada en la URL); pulsar una etiqueta la busca", async () => {
     renderPage((async (input: RequestInfo | URL) => {
       const url = String(input);
       const body = url === "/api/projects" ? { projects, platformTopic: "launchpad" } : { appBaseDomain: "apps.example.com", atlas: { clusterName: "c", consoleUrl: null } };
@@ -80,16 +72,21 @@ describe("página de Proyectos", () => {
     }) as typeof fetch);
 
     await screen.findByText("4 de 4 proyectos");
-    const tagFilters = screen.getByText("Etiquetas").parentElement!;
-    fireEvent.click(within(tagFilters).getByRole("button", { name: /#cliente-acme/ }));
-    expect(screen.getByText("2 de 4 proyectos")).toBeTruthy();
-    expect(screen.getByTestId("search").textContent).toBe("?etiquetas=cliente-acme");
+    expect(screen.queryByText("Origen")).toBeNull();
+    expect(screen.queryByText("Estado")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Ocultar archivados/ })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Creados por la plataforma" }));
+    fireEvent.change(screen.getByPlaceholderText(/Buscar por nombre/), { target: { value: "beta" } });
     expect(screen.getByText("1 de 4 proyectos")).toBeTruthy();
+    expect(screen.getByTestId("search").textContent).toBe("?q=beta");
 
-    fireEvent.click(screen.getByRole("button", { name: /Limpiar filtros/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Limpiar búsqueda/ }));
     expect(screen.getByText("4 de 4 proyectos")).toBeTruthy();
+
+    const card = screen.getByText("landing-acme").closest("[data-slot=card]") as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: /#cliente-acme/ }));
+    expect(screen.getByText("2 de 4 proyectos")).toBeTruthy();
+    expect(screen.getByTestId("search").textContent).toBe("?q=cliente-acme");
   });
 
   it("edita las etiquetas de un proyecto y las envía normalizadas", async () => {
@@ -113,7 +110,7 @@ describe("página de Proyectos", () => {
 
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(puts[0]).toEqual({ url: "/api/projects/viejo/topics", body: JSON.stringify({ topics: ["legacy", "sitio-web"] }) });
-    const tagFilters = (await screen.findByText("Etiquetas")).parentElement!;
-    expect(await within(tagFilters).findByRole("button", { name: /#sitio-web/ })).toBeTruthy();
+    // La etiqueta guardada aparece en la tarjeta del proyecto.
+    expect(await screen.findByRole("button", { name: /#sitio-web/ })).toBeTruthy();
   });
 });

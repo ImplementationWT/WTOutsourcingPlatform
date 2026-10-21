@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
@@ -21,7 +20,7 @@ import { cn } from "@/lib/utils";
 import type { LinkedAccount, ProjectRepo } from "@/types/project";
 import { usePlatform, useProjects } from "./api";
 import { deriveResources } from "./config";
-import { applyFilters, hasActiveFilters, type ProjectFilters, readFilters, tagCounts, writeFilters } from "./filters";
+import { searchProjects } from "./filters";
 import { accountStatusMeta, providerMeta } from "./meta";
 import StatusLabel from "./StatusLabel";
 import TopicsEditor from "./TopicsEditor";
@@ -61,54 +60,16 @@ function linkedAccounts(repo: ProjectRepo, platform: Platform): Account[] {
   return accounts;
 }
 
-/** Botón de filtro con estado pulsado (aria-pressed). */
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "inline-flex h-7 items-center gap-1 rounded-full border px-3 text-xs font-medium transition-colors",
-        active
-          ? "border-violet-400/60 bg-violet-500/20 text-violet-200"
-          : "border-foreground/15 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-function FilterRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="w-20 shrink-0 text-xs font-medium tracking-wider text-muted-foreground uppercase">{label}</span>
-      {children}
-    </div>
-  );
-}
-
-const STATUS_OPTIONS = [
-  ["ready", "Listo"],
-  ["provisioning", "Aprovisionando"],
-  ["failed", "Fallido"],
-] as const;
-
 export default function ProjectsPage() {
   const { data: projects, isLoading, isError, error, refetch, isFetching } = useProjects();
   const [params, setParams] = useSearchParams();
-  const filters = readFilters(params);
+  const q = params.get("q") ?? "";
+  // La búsqueda vive en la URL para poder compartirla.
+  const setQuery = (value: string) => setParams(value ? { q: value } : {}, { replace: true });
+  // Pulsar una etiqueta de una tarjeta la busca (y pulsarla otra vez quita la búsqueda).
+  const searchTag = (tag: string) => setQuery(q === tag ? "" : tag);
 
-  const update = (patch: Partial<ProjectFilters>) => setParams(writeFilters({ ...filters, ...patch }), { replace: true });
-  const toggleTag = (tag: string) =>
-    update({ tags: filters.tags.includes(tag) ? filters.tags.filter((t) => t !== tag) : [...filters.tags, tag] });
-
-  const all = projects ?? [];
-  const filtered = applyFilters(all, filters);
-  const tags = tagCounts(all);
-  // Las etiquetas del filtro que ya no existen siguen visibles para poder quitarlas.
-  const missingTags = filters.tags.filter((t) => !tags.some(([tag]) => tag === t));
+  const filtered = searchProjects(projects ?? [], q);
 
   return (
     <section className="space-y-6">
@@ -138,8 +99,8 @@ export default function ProjectsPage() {
               <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Buscar por nombre, descripción o etiqueta…"
-                value={filters.q}
-                onChange={(e) => update({ q: e.target.value })}
+                value={q}
+                onChange={(e) => setQuery(e.target.value)}
                 className="pl-8"
               />
             </div>
@@ -148,69 +109,14 @@ export default function ProjectsPage() {
                 {filtered.length} de {projects.length} {projects.length === 1 ? "proyecto" : "proyectos"}
               </span>
             )}
-            {hasActiveFilters(filters) && (
-              <Button size="sm" variant="ghost" onClick={() => setParams(new URLSearchParams(), { replace: true })}>
+            {q && (
+              <Button size="sm" variant="ghost" onClick={() => setQuery("")}>
                 <X />
-                Limpiar filtros
+                Limpiar búsqueda
               </Button>
             )}
           </div>
 
-          {projects && projects.length > 0 && (
-            <div className="space-y-2">
-              <FilterRow label="Origen">
-                <Chip active={filters.origin === "all"} onClick={() => update({ origin: "all", status: null })}>
-                  Todos
-                </Chip>
-                <Chip active={filters.origin === "platform"} onClick={() => update({ origin: "platform" })}>
-                  Creados por la plataforma
-                </Chip>
-                <Chip active={filters.origin === "other"} onClick={() => update({ origin: "other", status: null })}>
-                  Otros repos
-                </Chip>
-                <span className="mx-1 h-4 w-px bg-foreground/15" aria-hidden />
-                <Chip active={filters.hideArchived} onClick={() => update({ hideArchived: !filters.hideArchived })}>
-                  <Archive className="size-3" />
-                  Ocultar archivados
-                </Chip>
-              </FilterRow>
-              {filters.origin !== "other" && (
-                <FilterRow label="Estado">
-                  {STATUS_OPTIONS.map(([value, label]) => (
-                    <Chip
-                      key={value}
-                      active={filters.status === value}
-                      onClick={() => update({ status: filters.status === value ? null : value, origin: "platform" })}
-                    >
-                      {label}
-                    </Chip>
-                  ))}
-                </FilterRow>
-              )}
-              <FilterRow label="Etiquetas">
-                {tags.length === 0 && missingTags.length === 0 ? (
-                  <span className="text-xs text-muted-foreground">
-                    Ningún proyecto tiene etiquetas todavía: añádelas desde cada tarjeta.
-                  </span>
-                ) : (
-                  <>
-                    {tags.map(([tag, count]) => (
-                      <Chip key={tag} active={filters.tags.includes(tag)} onClick={() => toggleTag(tag)}>
-                        #{tag}
-                        <span className="tabular-nums opacity-60">{count}</span>
-                      </Chip>
-                    ))}
-                    {missingTags.map((tag) => (
-                      <Chip key={tag} active onClick={() => toggleTag(tag)}>
-                        #{tag}
-                        <span className="tabular-nums opacity-60">0</span>
-                      </Chip>
-                    ))}
-                  </>
-                )}
-              </FilterRow>
-            </div>
-          )}
         </div>
       )}
 
@@ -251,11 +157,11 @@ export default function ProjectsPage() {
           </CardContent>
         </Card>
       ) : filtered.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Ningún proyecto coincide con los filtros.</p>
+        <p className="text-sm text-muted-foreground">Ningún proyecto coincide con la búsqueda.</p>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {filtered.map((repo) => (
-            <ProjectCard key={repo.id} repo={repo} activeTags={filters.tags} onToggleTag={toggleTag} />
+            <ProjectCard key={repo.id} repo={repo} activeTags={q ? [q] : []} onToggleTag={searchTag} />
           ))}
         </div>
       )}
