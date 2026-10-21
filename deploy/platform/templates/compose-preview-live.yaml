@@ -43,7 +43,8 @@ services:
     command:
       - sh
       - -c
-      - corepack enable --install-directory /home/node/.local/bin && pnpm install --frozen-lockfile && exec pnpm dev:preview
+      # corepack no crea la carpeta de destino: se crea antes.
+      - mkdir -p /home/node/.local/bin && corepack enable --install-directory /home/node/.local/bin && pnpm install --frozen-lockfile && exec pnpm dev:preview
     env_file:
       - path: @@ENV_FILE@@
         format: raw

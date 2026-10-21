@@ -1,4 +1,6 @@
 #!/bin/sh
-# corepack enable --install-directory <dir>: deja el pnpm simulado en <dir>.
+# corepack enable --install-directory <dir>: deja el pnpm simulado en <dir>. Como el real, falla
+# si <dir> no existe (no crea carpetas).
 [ "$1" = enable ] && [ "$2" = --install-directory ] || exit 1
-mkdir -p "$3" && ln -sf /fake/pnpm "$3/pnpm"
+[ -d "$3" ] || { echo "Internal Error: ENOENT: no such file or directory, lstat '$3'" >&2; exit 1; }
+ln -sf /fake/pnpm "$3/pnpm"
