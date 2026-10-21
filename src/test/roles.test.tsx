@@ -3,7 +3,9 @@ import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import AppSidebar from "@/components/layout/AppSidebar";
-import CostsPage from "@/features/costs/CostsPage";
+import CostsSection from "@/features/costs/CostsSection";
+import UserMenu from "@/components/layout/UserMenu";
+import { fireEvent } from "@testing-library/react";
 import { formatUsd } from "@/features/costs/api";
 import { BOSS, LEAD, withSession } from "./session";
 
@@ -30,16 +32,27 @@ const summary = (scope: string) => ({
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
 
-describe("menú por rol", () => {
-  it("Usuarios solo para jefes; Costos para todos", () => {
-    renderWith(<AppSidebar />, LEAD);
-    expect(screen.getByText("Costos")).toBeTruthy();
+describe("menú", () => {
+  it("la barra lateral no tiene Costos (está en el Dashboard) ni Usuarios", () => {
+    renderWith(<AppSidebar />, BOSS);
+    expect(screen.getByText("Dashboard")).toBeTruthy();
+    expect(screen.queryByText("Costos")).toBeNull();
     expect(screen.queryByText("Usuarios")).toBeNull();
   });
 
-  it("el jefe ve Usuarios", () => {
-    renderWith(<AppSidebar />, BOSS);
-    expect(screen.getByText("Usuarios")).toBeTruthy();
+  it("Usuarios y equipos está en el menú del usuario, solo para CEO/CCO", async () => {
+    const teams = (async () => json({ teams: [] })) as typeof fetch;
+    renderWith(<UserMenu />, BOSS, teams);
+    fireEvent.click(screen.getByText("Jefa"));
+    expect(await screen.findByText("Usuarios y equipos")).toBeTruthy();
+    expect(screen.getByText("CEO/CCO")).toBeTruthy();
+  });
+
+  it("un team leader no ve Usuarios y equipos", async () => {
+    renderWith(<UserMenu />, LEAD, (async () => json({ teams: [] })) as typeof fetch);
+    fireEvent.click(screen.getByText("Ana"));
+    expect(await screen.findByText("Configuración")).toBeTruthy();
+    expect(screen.queryByText("Usuarios y equipos")).toBeNull();
   });
 });
 
@@ -50,22 +63,23 @@ describe("Costos", () => {
     expect(formatUsd(null)).toBe("—");
   });
 
-  it("jefe: tarjetas por equipo, aviso de precio de lista y exportación con el rango", async () => {
+  it("CEO/CCO: tarjetas por equipo, gráficos, aviso de precio de lista y sin exportar CSV", async () => {
     const urls: string[] = [];
-    renderWith(<CostsPage />, BOSS, (async (input: RequestInfo | URL) => {
+    renderWith(<CostsSection />, BOSS, (async (input: RequestInfo | URL) => {
       urls.push(String(input));
       return json(summary("boss"));
     }) as typeof fetch);
-    expect(await screen.findByText("Equipo A", { selector: "p" })).toBeTruthy();
+    expect(await screen.findByText("Proyectos más caros")).toBeTruthy();
     expect(screen.getByText(/Precio de lista/)).toBeTruthy();
-    expect(screen.getByText("Proyectos más caros")).toBeTruthy();
+    expect(screen.getByRole("list", { name: "Proyectos más caros" })).toBeTruthy();
+    expect(screen.getByRole("list", { name: "Gasto por persona" })).toBeTruthy();
+    expect(screen.getAllByText("Equipo A").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Exportar CSV")).toBeNull();
     expect(urls[0]).toMatch(/^\/api\/costs\/summary\?from=\d{4}-\d{2}-01&to=\d{4}-\d{2}-\d{2}$/);
-    const link = screen.getByText("Exportar CSV").closest("a")!;
-    expect(link.getAttribute("href")).toMatch(/^\/api\/costs\/export\.csv\?from=/);
   });
 
   it("developer: sus sesiones", async () => {
-    renderWith(<CostsPage />, { ...LEAD, role: "developer" }, (async (input: RequestInfo | URL) => {
+    renderWith(<CostsSection />, { ...LEAD, role: "developer" }, (async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.startsWith("/api/costs/sessions")) {
         return json({

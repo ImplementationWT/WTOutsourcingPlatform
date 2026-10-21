@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
-import { useTeamFilter, withTeam } from "@/features/admin/api";
 import type {
   ClientDetail,
   DashboardData,
@@ -20,10 +19,12 @@ export interface NewProjectInput {
   integrations?: Record<string, Record<string, string>>;
   /** Servidor donde se desplegará (no cambia nunca). */
   serverId?: string;
+  /** Solo CEO/CCO: equipo del proyecto. */
+  teamId?: string;
 }
 
-async function fetchProjects(teamId: string | null): Promise<ProjectRepo[]> {
-  return (await apiFetch<{ projects: ProjectRepo[] }>(withTeam("/api/projects", teamId))).projects;
+async function fetchProjects(): Promise<ProjectRepo[]> {
+  return (await apiFetch<{ projects: ProjectRepo[] }>("/api/projects")).projects;
 }
 
 export function useClient(slug: string) {
@@ -67,9 +68,8 @@ export function revealInitialPassword(slug: string) {
 
 /** Proyectos reales: repos de GitHub de la organización (sin internos AB/WT). */
 export function useProjects() {
-  // Solo los del equipo del usuario; un jefe ve todos o los del equipo que elija.
-  const teamId = useTeamFilter();
-  return useQuery({ queryKey: ["projects", teamId], queryFn: () => fetchProjects(teamId) });
+  // Solo los del equipo del usuario; un CEO/CCO ve todos.
+  return useQuery({ queryKey: ["projects"], queryFn: fetchProjects });
 }
 
 /** Reemplaza las etiquetas (topics de GitHub) de un proyecto. */
@@ -116,10 +116,9 @@ export function removeIntegration(slug: string, provider: string) {
 
 /** Panel principal con datos reales: estado, salud en vivo, atención y actividad. */
 export function useDashboard() {
-  const teamId = useTeamFilter();
   return useQuery({
-    queryKey: ["dashboard", teamId],
-    queryFn: () => apiFetch<DashboardData>(withTeam("/api/dashboard", teamId)),
+    queryKey: ["dashboard"],
+    queryFn: () => apiFetch<DashboardData>("/api/dashboard"),
     refetchInterval: 30_000,
   });
 }

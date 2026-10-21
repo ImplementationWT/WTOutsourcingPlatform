@@ -24,7 +24,7 @@ import {
 } from "./api";
 import { selectClass } from "./TeamAssignCard";
 
-const ROLES: UserRole[] = ["lead", "developer", "boss"];
+const ROLES: UserRole[] = ["developer", "lead", "boss"];
 
 /** Contraseña temporal: se muestra una sola vez para entregarla en persona. */
 function TemporaryPassword({ username, password, onClose }: { username: string; password: string; onClose: () => void }) {
@@ -165,41 +165,55 @@ function NewUserForm({ teams, onCreated }: { teams: AdminTeam[]; onCreated: (use
   }
 
   return (
-    <form onSubmit={submit} className="grid gap-3 rounded-lg border border-foreground/10 p-4 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
-      <div className="space-y-1.5">
-        <Label htmlFor="new-username">Usuario</Label>
-        <Input id="new-username" placeholder="ana.lopez" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} autoComplete="off" />
+    <form onSubmit={submit} className="space-y-3 rounded-lg border border-foreground/10 p-4">
+      <p className="text-sm font-medium">Nuevo usuario</p>
+      {/* Primero el rol y el equipo (los CEO/CCO no tienen equipo); después, quién es. */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="new-role">1. Rol</Label>
+          <select id="new-role" className={cn(selectClass, "w-full")} value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
+            {ROLES.map((r) => (
+              <option key={r} value={r}>
+                {ROLE_LABELS[r]}
+              </option>
+            ))}
+          </select>
+        </div>
+        {needsTeam ? (
+          <div className="space-y-1.5">
+            <Label htmlFor="new-team">2. Equipo</Label>
+            <select id="new-team" className={cn(selectClass, "w-full")} value={teamId} disabled={!teams.length} onChange={(e) => setTeamId(e.target.value)}>
+              <option value="">{teams.length ? "Elige un equipo" : "Primero crea un equipo"}</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium">2. Equipo</p>
+            <p className="flex h-8 items-center text-sm text-muted-foreground">Sin equipo: ve y opera todos.</p>
+          </div>
+        )}
+        <div className="space-y-1.5">
+          <Label htmlFor="new-username">3. Usuario</Label>
+          <Input id="new-username" placeholder="ana.lopez" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} autoComplete="off" />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="new-name">Nombre</Label>
+          <Input id="new-name" placeholder="Ana López" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+        </div>
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="new-name">Nombre</Label>
-        <Input id="new-name" placeholder="Ana López" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" disabled={busy || !valid}>
+          {busy ? <Loader2 className="animate-spin" /> : <UserPlus />}
+          Crear usuario
+        </Button>
+        {needsTeam && !teamId && <span className="text-xs text-muted-foreground">Asigna un equipo antes de crear el usuario.</span>}
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="new-role">Rol</Label>
-        <select id="new-role" className={cn(selectClass, "w-full")} value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
-          {ROLES.map((r) => (
-            <option key={r} value={r}>
-              {ROLE_LABELS[r]}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="new-team">Equipo</Label>
-        <select id="new-team" className={cn(selectClass, "w-full")} value={needsTeam ? teamId : ""} disabled={!needsTeam} onChange={(e) => setTeamId(e.target.value)}>
-          <option value="">{needsTeam ? "Elige un equipo" : "Todos (jefe)"}</option>
-          {teams.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <Button type="submit" disabled={busy || !valid}>
-        {busy ? <Loader2 className="animate-spin" /> : <UserPlus />}
-        Crear usuario
-      </Button>
-      {error && <p className="text-sm text-red-300 sm:col-span-2 lg:col-span-5">{error}</p>}
+      {error && <p className="text-sm text-red-300">{error}</p>}
     </form>
   );
 }
@@ -267,7 +281,7 @@ function UserRow({ user, teams, self, onPassword }: { user: AdminUser; teams: Ad
           disabled={busy !== null || user.role === "boss"}
           onChange={(e) => void run("team", () => updateUser(user.id, { teamId: e.target.value || null }))}
         >
-          {user.role === "boss" && <option value="">Todos</option>}
+          {user.role === "boss" && <option value="">Sin equipo</option>}
           {teams.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}
@@ -295,7 +309,7 @@ function UserRow({ user, teams, self, onPassword }: { user: AdminUser; teams: Ad
   );
 }
 
-/** Administración de usuarios y equipos (solo jefes). */
+/** Administración de usuarios y equipos (solo CEO/CCO). */
 export default function UsersPage() {
   const me = useSession().data;
   const users = useAdminUsers();
@@ -304,13 +318,13 @@ export default function UsersPage() {
   const showPassword = (username: string, value: string) => setPassword({ username, password: value });
 
   if (me && me.role !== "boss") {
-    return <p className="text-sm text-muted-foreground">Solo los jefes administran usuarios y equipos.</p>;
+    return <p className="text-sm text-muted-foreground">Solo los CEO/CCO administran usuarios y equipos.</p>;
   }
 
   return (
     <section className="space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Usuarios</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Usuarios y equipos</h1>
         <p className="mt-2 text-muted-foreground">Cuentas individuales, roles y equipos. Cada persona entra con su usuario y contraseña.</p>
       </div>
 
@@ -325,8 +339,8 @@ export default function UsersPage() {
             <CardHeader>
               <CardTitle>Personas</CardTitle>
               <CardDescription>
-                Jefe: ve todo en solo lectura. Team leader y developer: operan los proyectos de su equipo. Desactivar corta la sesión al
-                momento.
+                CEO/CCO: ve y opera todos los proyectos, sin equipo. Team leader y developer: los de su equipo. Desactivar corta la
+                sesión al momento.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">

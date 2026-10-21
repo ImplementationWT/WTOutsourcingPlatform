@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
 import { useSession, type UserRole } from "@/features/auth/auth";
@@ -27,7 +26,7 @@ export interface AdminUser {
   createdAt: string;
 }
 
-/** Equipos visibles: todos para un jefe, el propio para el resto. */
+/** Equipos visibles: todos para un CEO/CCO, el propio para el resto. */
 export function useTeams() {
   const enabled = Boolean(useSession().data);
   return useQuery({
@@ -60,49 +59,3 @@ export const resetPassword = (id: string) => apiFetch<{ temporaryPassword: strin
 export const createTeam = (input: { name: string }) => apiFetch<{ team: Team }>("/api/admin/teams", json("POST", input));
 export const updateTeam = (id: string, patch: { name?: string; leadUserId?: string | null }) => apiFetch(`/api/admin/teams/${id}`, json("PATCH", patch));
 export const moveProject = (slug: string, teamId: string | null) => apiFetch(`/api/admin/clients/${slug}/team`, json("POST", { teamId }));
-
-// ---- equipo elegido por un jefe (selector de la cabecera) ---------------------------------
-
-const TEAM_FILTER_KEY = "forge.team-filter";
-const listeners = new Set<() => void>();
-
-function readTeamFilter(): string | null {
-  try {
-    return window.localStorage.getItem(TEAM_FILTER_KEY);
-  } catch {
-    return null;
-  }
-}
-
-let teamFilter = typeof window === "undefined" ? null : readTeamFilter();
-
-export function setTeamFilter(value: string | null) {
-  teamFilter = value;
-  try {
-    if (value) window.localStorage.setItem(TEAM_FILTER_KEY, value);
-    else window.localStorage.removeItem(TEAM_FILTER_KEY);
-  } catch {
-    // sin almacenamiento: se queda en memoria
-  }
-  for (const listener of listeners) listener();
-}
-
-/** Equipo que filtra el panel (solo jefes; null = todos). Para el resto siempre null. */
-export function useTeamFilter() {
-  const isBoss = useSession().data?.role === "boss";
-  const value = useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    () => teamFilter,
-    () => null,
-  );
-  return isBoss ? value : null;
-}
-
-/** Añade ?teamId= a una ruta de la API si un jefe eligió equipo. */
-export function withTeam(path: string, teamId: string | null) {
-  if (!teamId) return path;
-  return `${path}${path.includes("?") ? "&" : "?"}teamId=${encodeURIComponent(teamId)}`;
-}

@@ -8,7 +8,7 @@ import { moveProject, useTeams } from "./api";
 export const selectClass =
   "h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
 
-/** Jefes: asignar el proyecto a un equipo o moverlo a otro. */
+/** CEO/CCO: asignar el proyecto a un equipo o moverlo a otro. */
 export default function TeamAssignCard({ slug, teamId }: { slug: string; teamId: string | null }) {
   const queryClient = useQueryClient();
   const teams = useTeams();
@@ -41,7 +41,7 @@ export default function TeamAssignCard({ slug, teamId }: { slug: string; teamId:
           <Users className="size-4 text-violet-300" />
           Equipo
         </CardTitle>
-        <CardDescription>Solo los miembros del equipo ven y operan el proyecto. Sin equipo, solo lo ven los jefes.</CardDescription>
+        <CardDescription>Solo los miembros del equipo ven y operan el proyecto. Sin equipo, solo lo ven los CEO/CCO.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-2">
         <select aria-label="Equipo del proyecto" className={selectClass} value={value} onChange={(e) => setValue(e.target.value)}>

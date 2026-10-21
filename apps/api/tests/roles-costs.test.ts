@@ -80,7 +80,7 @@ function client(app: App, headers: { cookie: string }) {
   };
 }
 
-/** Dos equipos (A y B), un jefe, un lead y un developer en A y un lead en B. */
+/** Dos equipos (A y B), un CEO/CCO, un lead y un developer en A y un lead en B. */
 async function world({ agent }: { agent?: FakeAgent } = {}) {
   const store = await freshStore();
   const built = await build(store, { agent });
@@ -97,7 +97,7 @@ async function provision(store: AdminStore, deps: ReturnType<typeof createFakes>
 }
 
 describe("migración de la cuenta admin", () => {
-  it("la cuenta de la configuración pasa a ser un jefe una sola vez (idempotente)", async () => {
+  it("la cuenta de la configuración pasa a ser un CEO/CCO una sola vez (idempotente)", async () => {
     const store = await freshStore();
     await build(store);
     await build(store);
@@ -106,7 +106,7 @@ describe("migración de la cuenta admin", () => {
     expect(users[0]).toMatchObject({ username: "jefe", role: "boss", teamId: null, active: true, mustChangePassword: false, passwordHash });
     expect(await store.auditLog.countDocuments({ action: "user.migrated_from_config" })).toBe(1);
 
-    // Entra con su misma contraseña, como jefe.
+    // Entra con su misma contraseña, como CEO/CCO.
     const { app } = await build(store);
     const session = await login(app, "JEFE");
     expect(session.status).toBe(200);
@@ -161,29 +161,29 @@ describe("login individual", () => {
 });
 
 describe("roles", () => {
-  it("el jefe es de solo lectura: 403 en cualquier escritura fuera de la administración", async () => {
-    const { store, deps, as } = await world();
-    await provision(store, deps, "acme-crm", TEST_TEAM_ID);
+  it("el CEO/CCO tiene todos los permisos: crea en el equipo que elija y usa el AI Developer en cualquier proyecto", async () => {
+    const agent = new FakeAgent();
+    const { store, deps, as } = await world({ agent });
+    await provision(store, deps, "acme-crm", OTHER_TEAM_ID);
     const boss = await as("jefe");
-    expect((await boss("GET", "/api/clients/acme-crm")).status).toBe(200);
-    expect((await boss("GET", "/api/dashboard")).status).toBe(200);
-    expect((await boss("GET", "/api/costs/summary")).status).toBe(200);
-    for (const [method, url] of [
-      ["POST", "/api/clients"],
-      ["POST", "/api/clients/acme-crm/redeploy"],
-      ["POST", "/api/clients/acme-crm/delete"],
-      ["PUT", "/api/clients/acme-crm/integrations/monday"],
-      ["POST", "/api/clients/acme-crm/ai/sessions"],
-      ["POST", "/api/servers"],
-      ["PUT", "/api/projects/acme-crm-app/topics"]
-    ] as const) {
-      const response = await boss(method, url, {});
-      expect(response.status, `${method} ${url}`).toBe(403);
-      expect(response.body.error).toContain("solo lectura");
-    }
+
+    // Sin equipo elegido no crea; con equipo, el proyecto queda en ese equipo.
+    expect((await boss("POST", "/api/clients", { name: "Beta Shop", slug: "beta-shop", description: "Tienda en línea de Beta" })).status).toBe(400);
+    const created = await boss("POST", "/api/clients", { name: "Beta Shop", slug: "beta-shop", description: "Tienda en línea de Beta", teamId: TEST_TEAM_ID });
+    expect(created.status, created.raw).toBe(202);
+    expect((await store.getClient("beta-shop"))?.teamId).toBe(TEST_TEAM_ID);
+    expect((await boss("POST", "/api/clients", { name: "Gamma", slug: "gamma", description: "Proyecto de prueba", teamId: "33333333-3333-4333-8333-333333333333" })).status).toBe(400);
+
+    // AI Developer y operaciones en un proyecto de cualquier equipo.
+    const started = await boss("POST", "/api/clients/acme-crm/ai/sessions", { title: "Cambiar el logo" });
+    expect(started.status, started.raw).toBe(201);
+    expect((await store.aiSessions.findOne({ _id: started.body.session.id }))).toMatchObject({ teamId: OTHER_TEAM_ID, createdBy: "jefe" });
+    expect((await boss("POST", `/api/ai/sessions/${started.body.session.id}/close`)).status).toBe(200);
+    expect((await boss("POST", "/api/clients/acme-crm/redeploy")).status).not.toBe(403);
+    expect((await boss("POST", "/api/servers", {})).status).toBe(400);
   });
 
-  it("solo los jefes administran usuarios y equipos", async () => {
+  it("solo los CEO/CCO administran usuarios y equipos", async () => {
     const { as } = await world();
     const lead = await as("admin");
     expect((await lead("GET", "/api/teams")).body.teams).toEqual([{ id: TEST_TEAM_ID, name: "Equipo A" }]);
@@ -201,8 +201,10 @@ describe("roles", () => {
   it("team leaders y developers crean proyectos en su equipo", async () => {
     const { store, as } = await world();
     const dev = await as("dev");
-    const created = await dev("POST", "/api/clients", { name: "Beta Shop", slug: "beta-shop", description: "Tienda en línea de Beta" });
+    const created = await dev("POST", "/api/clients", { name: "Beta Shop", slug: "beta-shop", description: "Tienda en línea de Beta", teamId: OTHER_TEAM_ID });
     expect(created.status).toBe(202);
+    expect((await store.getClient("beta-shop"))?.teamId).toBe(TEST_TEAM_ID);
+    // El developer no elige equipo: se ignora el que mande y queda en el suyo.
     expect((await store.getClient("beta-shop"))?.teamId).toBe(TEST_TEAM_ID);
     // El identificador es único en toda la plataforma: desde otro equipo también está ocupado.
     const other = await as("otro");
@@ -247,7 +249,7 @@ describe("aislamiento entre equipos", () => {
     expect((await lead("GET", `/api/ai/sessions/${started.body.session.id}`)).status).toBe(404);
     expect((await lead("POST", `/api/ai/sessions/${started.body.session.id}/close`)).status).toBe(404);
 
-    // El jefe ve todo, también los proyectos sin equipo, y puede acotar a un equipo.
+    // El CEO/CCO ve todo, también los proyectos sin equipo, y puede acotar a un equipo.
     const boss = await as("jefe");
     expect((await boss("GET", "/api/dashboard")).body.projects.map((p: { id: string }) => p.id).sort()).toEqual(["acme-crm", "beta-shop", "viejo"]);
     expect((await boss("GET", `/api/dashboard?teamId=${OTHER_TEAM_ID}`)).body.projects.map((p: { id: string }) => p.id)).toEqual(["beta-shop"]);
@@ -255,7 +257,7 @@ describe("aislamiento entre equipos", () => {
     expect((await boss("GET", `/api/ai/sessions/${started.body.session.id}`)).status).toBe(200);
   });
 
-  it("el jefe asigna o mueve proyectos entre equipos", async () => {
+  it("el CEO/CCO asigna o mueve proyectos entre equipos", async () => {
     const { store, deps, as } = await world();
     await provision(store, deps, "viejo", null);
     const lead = await as("admin");
@@ -281,7 +283,7 @@ describe("aislamiento entre equipos", () => {
     expect((await boss("POST", `/api/admin/users/${devId}/reset-password`)).body.temporaryPassword).toBeTruthy();
   });
 
-  it("un jefe no puede quitarse el rol ni dejar la plataforma sin jefes", async () => {
+  it("un CEO/CCO no puede quitarse el rol ni dejar la plataforma sin CEO/CCO", async () => {
     const { store, as } = await world();
     const boss = await as("jefe");
     const bossId = (await store.users.findOne({ username: "jefe" }))!._id;
@@ -424,7 +426,7 @@ describe("costos del AI Developer", () => {
       ["Diego Dev", 375]
     ]);
 
-    // Rango de fechas (to incluye ese día) y filtro de equipo del jefe.
+    // Rango de fechas (to incluye ese día) y filtro de equipo del CEO/CCO.
     expect((await boss("GET", "/api/costs/summary?from=2026-09-01&to=2026-09-15")).body.totals.costCents).toBe(4250);
     expect((await boss("GET", `/api/costs/summary?teamId=${TEST_TEAM_ID}`)).body.totals.costCents).toBe(1375);
     expect((await boss("GET", "/api/costs/summary?from=2026-13-01")).status).toBe(400);

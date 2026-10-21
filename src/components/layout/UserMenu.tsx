@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, LogOut, Moon, Settings, Sun } from "lucide-react";
+import { ChevronDown, LogOut, Moon, Settings, Sun, Users } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,6 +54,12 @@ export default function UserMenu() {
           <Settings />
           Configuración
         </DropdownMenuItem>
+        {user?.role === "boss" && (
+          <DropdownMenuItem onClick={() => navigate("/users")}>
+            <Users />
+            Usuarios y equipos
+          </DropdownMenuItem>
+        )}
         {/* Conmutador de tema: el menú queda abierto para ver el cambio. */}
         <DropdownMenuItem closeOnClick={false} onClick={toggle} role="menuitemcheckbox" aria-checked={dark}>
           {dark ? <Moon /> : <Sun />}

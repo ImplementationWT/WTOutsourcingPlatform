@@ -28,7 +28,9 @@ const createClientSchema = z.object({
   // Integraciones opcionales: estricto (solo proveedores del catálogo y sus campos).
   integrations: integrationsInputSchema.optional(),
   // Servidor donde se desplegará (fijo para siempre). Sin él, el principal.
-  serverId: z.string().regex(/^(principal|[0-9a-f-]{36})$/).optional()
+  serverId: z.string().regex(/^(principal|[0-9a-f-]{36})$/).optional(),
+  // Solo CEO/CCO: equipo del proyecto (el resto crea siempre en el suyo).
+  teamId: z.string().uuid().optional()
 });
 
 /** Registra para redacción cualquier credencial recibida, antes incluso de validarla. */
@@ -144,9 +146,12 @@ export async function registerClientRoutes(
       return reply.code(503).send({ error: "Las integraciones no están disponibles: falta INTEGRATION_ENCRYPTION_KEY_SECRET_REF en el servidor." });
     }
     const actor = request.user!.username;
-    // El proyecto es del equipo de quien lo crea.
-    const teamId = request.user!.teamId;
-    if (!teamId) return reply.code(409).send({ error: "Tu usuario no tiene equipo: pide a un jefe que te asigne uno." });
+    // El proyecto es del equipo de quien lo crea; un CEO/CCO (sin equipo) elige el equipo.
+    const user = request.user!;
+    const teamId = user.role === "boss" ? (parsed.data.teamId ?? null) : user.teamId;
+    if (user.role === "boss" && !teamId) return reply.code(400).send({ error: "Elige el equipo del proyecto." });
+    if (!teamId) return reply.code(409).send({ error: "Tu usuario no tiene equipo: pide a un CEO/CCO que te asigne uno." });
+    if (!(await store.teams.findOne({ _id: teamId }))) return reply.code(400).send({ error: "El equipo no existe." });
     let server: Awaited<ReturnType<ServerDirectory["select"]>>;
     try {
       server = await servers.select(parsed.data.serverId);

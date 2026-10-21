@@ -208,14 +208,14 @@ export class UserDirectory {
     const user = await this.findById(id);
     if (!user) throw new UserDirectoryError(404, "Usuario no encontrado.");
     if (id === actor.id && (patch.active === false || (patch.role && patch.role !== "boss"))) {
-      throw new UserDirectoryError(400, "No puedes desactivarte ni quitarte el rol de jefe a ti mismo.");
+      throw new UserDirectoryError(400, "No puedes desactivarte ni quitarte el rol de CEO/CCO a ti mismo.");
     }
     const role = patch.role ?? user.role;
     const teamId = await this.requireTeam(patch.teamId === undefined ? user.teamId : patch.teamId, role);
     // Siempre queda al menos un jefe activo.
     if (user.role === "boss" && (role !== "boss" || patch.active === false)) {
       const bosses = await this.store.users.countDocuments({ role: "boss", active: true, _id: { $ne: id } });
-      if (!bosses) throw new UserDirectoryError(400, "Debe quedar al menos un jefe activo.");
+      if (!bosses) throw new UserDirectoryError(400, "Debe quedar al menos un CEO/CCO activo.");
     }
     const set = { role, teamId, updatedAt: this.now(), ...(patch.name ? { name: patch.name.trim() } : {}), ...(patch.active === undefined ? {} : { active: patch.active }) };
     await this.store.users.updateOne({ _id: id }, { $set: set });

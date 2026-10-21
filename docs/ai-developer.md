@@ -5,8 +5,8 @@ cliente a partir de instrucciones en lenguaje natural, muestra los cambios en un
 una persona los aprueba.
 
 Se abre desde el detalle de un proyecto listo: **AI Developer**
-(`/projects/<slug>/ai`). Lo usan los team leaders y developers del equipo del proyecto.
-Los jefes no lo abren (solo lectura) y las sesiones de otro equipo responden 404. Roles y
+(`/projects/<slug>/ai`). Lo usan los team leaders y developers del equipo del proyecto y
+los CEO/CCO en cualquier proyecto; las sesiones de otro equipo responden 404. Roles y
 equipos en [security.md](security.md#usuarios-roles-y-equipos).
 
 ## Cómo funciona
@@ -80,7 +80,7 @@ cabecera del chat, y el detalle completo, en la consola de Anthropic (*Sessions*
 
 ### Costos por equipo, proyecto y persona
 
-La página **Costos** (`/costs`) reparte el gasto del agente. Solo cuenta Claude, en USD:
+La sección **Costos** del **Dashboard** reparte el gasto del agente. Solo cuenta Claude, en USD:
 no incluye servidores, Atlas ni GitHub.
 
 - **Origen.** Cada sesión guarda `costCents` (centavos de USD), `budgetCents`,
@@ -96,12 +96,13 @@ no incluye servidores, Atlas ni GitHub.
   pasadas.
 - **Borrar una conversación** del panel la marca como borrada (`deletedAt`): deja de
   listarse, pero su costo sigue contando.
-- **Alcance.** El jefe ve todo (con tarjetas por equipo, tendencia mensual y proyectos más
-  caros) y puede filtrar por equipo. El team leader ve su equipo, con el gasto por
-  developer. El developer ve sus sesiones.
+- **Alcance.** El CEO/CCO ve todo, con tarjetas por equipo, tendencia mensual y gráficos
+  de proyectos más caros y gasto por persona. El team leader ve su equipo, con los mismos
+  gráficos. El developer ve sus sesiones.
 - **Métricas.** Totales, tendencia mensual (por mes UTC de inicio de la sesión), número de
   sesiones, PR fusionados y costo por PR fusionado (gasto ÷ PR fusionados).
-- **Filtros y exportación.** Rango de fechas (`from`/`to`, AAAA-MM-DD, `to` incluido) y CSV
+- **Filtros y exportación.** Rango de fechas (`from`/`to`, AAAA-MM-DD, `to` incluido). El
+  panel no tiene botón de exportar, pero la API sigue ofreciendo el CSV
   (`/api/costs/export.csv`) con el mismo alcance del rol. Las celdas que empiezan por `=`,
   `+`, `-` o `@` llevan un apóstrofo delante para que Excel no las ejecute como fórmula.
 
@@ -120,7 +121,8 @@ resumen como «sin costo disponible».
 
 ### Conciliar con la factura de Anthropic
 
-1. Exporta el CSV del mes en *Costos*, sin filtro de equipo, con la sesión de un jefe.
+1. Con la sesión de un CEO/CCO abierta, descarga el CSV del mes abriendo en el navegador
+   `https://<panel>/api/costs/export.csv?from=AAAA-MM-01&to=AAAA-MM-DD`.
 2. En la consola de Anthropic, abre *Usage* / *Cost* del workspace `ANTHROPIC_WORKSPACE`
    para el mismo mes.
 3. La suma de `costo_usd` debería acercarse al costo de lista de las sesiones de Managed

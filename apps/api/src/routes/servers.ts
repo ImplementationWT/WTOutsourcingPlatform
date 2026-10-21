@@ -2,8 +2,8 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../auth/session.js";
 
-/** Servidores: infraestructura compartida entre equipos. Los ve cualquiera; los cambian los team leaders. */
-const requireServerAdmin = requireRole("lead");
+/** Servidores: infraestructura compartida entre equipos. Los ve cualquiera; los cambian CEO/CCO y team leaders. */
+const requireServerAdmin = requireRole("boss", "lead");
 import { ProvisioningError } from "../lib/errors.js";
 import { createRateLimiter } from "../lib/rate-limit.js";
 import { hostname, hostOrIp, ipv4 } from "../lib/validators.js";

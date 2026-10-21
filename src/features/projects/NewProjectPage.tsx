@@ -13,21 +13,14 @@ import { newProjectSchema, type NewProjectValues } from "./new-project/schema";
 import Stepper from "./new-project/Stepper";
 import SummaryStep from "./new-project/SummaryStep";
 import { useProvisioning } from "./provisioning";
-import { canOperate, useSession } from "@/features/auth/auth";
+import { useIsBoss } from "@/features/auth/auth";
 
 const STEPS = ["Información", "Integraciones y despliegue", "Resumen", "Creación"];
 const FORM_STEPS = 3;
 
-/** Solo team leaders y developers crean proyectos (quedan en su equipo). */
+/** El proyecto queda en el equipo de quien lo crea; un CEO/CCO elige el equipo. */
 export default function NewProjectPage() {
-  const session = useSession();
-  if (session.data && !canOperate(session.data)) {
-    return <p className="text-sm text-muted-foreground">Los jefes tienen acceso de solo lectura: los proyectos los crean los team leaders y developers.</p>;
-  }
-  return <NewProjectWizard />;
-}
-
-function NewProjectWizard() {
+  const isBoss = useIsBoss();
   const { data: projects } = useProjects();
   const { data: catalog } = useIntegrationCatalog();
   const provisioning = useProvisioning();
@@ -45,6 +38,10 @@ function NewProjectWizard() {
     if (step === 0) {
       const valid = await form.trigger(["name", "slug", "description"]);
       if (!valid) return;
+      if (isBoss && !values.teamId) {
+        form.setError("teamId", { message: "Elige el equipo del proyecto" });
+        return;
+      }
       const repository = deriveResources(values.slug).repository;
       if (projects?.some((p) => p.name.toLowerCase() === repository)) {
         form.setError("slug", { message: `Ya existe el repositorio ${repository} en GitHub` });
@@ -77,6 +74,7 @@ function NewProjectWizard() {
       slug: data.slug,
       description: data.description,
       ...(data.serverId ? { serverId: data.serverId } : {}),
+      ...(isBoss && data.teamId ? { teamId: data.teamId } : {}),
       ...(enabled.length ? { integrations: Object.fromEntries(enabled.map(([id, state]) => [id, state.credentials])) } : {}),
     });
     // Enviadas una vez: se borran del formulario (si se vuelve atrás habrá que escribirlas de nuevo).

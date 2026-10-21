@@ -23,7 +23,7 @@ export default function TopicsEditor({
   repo: ProjectRepo;
   activeTags: string[];
   onToggleTag: (tag: string) => void;
-  /** Solo quien opera el proyecto (no los jefes) puede cambiar las etiquetas. */
+  /** Repos sin proyecto de la plataforma: sus etiquetas no se editan desde aquí. */
   editable?: boolean;
 }) {
   const queryClient = useQueryClient();

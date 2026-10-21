@@ -56,23 +56,25 @@ la plataforma rechaza activar integraciones (503) y el resto sigue funcionando.
 ## Usuarios, roles y equipos
 
 Cada persona entra con **su propio usuario y contraseña** (sin SSO). Las cuentas las crea
-un jefe en **Usuarios** (`/users`).
+un CEO/CCO en **Usuarios y equipos** (menú del usuario, arriba a la derecha → `/users`).
+Al crear una cuenta se elige primero el rol y después el equipo; los CEO/CCO no tienen
+equipo.
 
 | Rol | Ve | Puede |
 | --- | --- | --- |
-| **Jefe** (`boss`) | Todos los proyectos, incluidos los que aún no tienen equipo, y todos los costos | Solo lectura. Además administra usuarios y equipos y mueve proyectos entre equipos |
+| **CEO/CCO** (`boss`) | Todos los proyectos, incluidos los que aún no tienen equipo, y todos los costos | Todo: crear proyectos (eligiendo el equipo) y operarlos, AI Developer, servidores. Además administra usuarios y equipos y mueve proyectos entre equipos |
 | **Team leader** (`lead`) | Los proyectos de su equipo y los costos del equipo | Crear y operar proyectos, integraciones y secretos, usar el AI Developer, crear PR y fusionar. También da de alta y verifica servidores |
 | **Developer** (`developer`) | Los proyectos de su equipo y sus propias sesiones en Costos | Lo mismo que el team leader, salvo los servidores |
 
 - **Un equipo por proyecto.** El proyecto queda en el equipo de quien lo crea. Un proyecto
   de otro equipo responde **404**, no 403, para no confirmar que existe. Esto vale para
   clientes, trabajos, AI Developer, integraciones, panel y listado de proyectos.
-- **Jefes de solo lectura.** Cualquier petición que no sea GET a un jefe responde 403.
-  Las excepciones son `/api/auth/*` (su contraseña) y `/api/admin/*` (administración).
+- **CEO/CCO.** Opera cualquier proyecto. Al crear uno elige el equipo (obligatorio); el
+  resto crea siempre en su equipo, aunque envíe otro.
 - **Servidores.** Son infraestructura compartida entre equipos: los ve cualquier sesión y
-  solo los team leaders los añaden, verifican, rotan o quitan.
+  solo CEO/CCO y team leaders los añaden, verifican, rotan o quitan.
 - **Repos de GitHub sin proyecto de la plataforma** (por ejemplo, creados a mano) no
-  tienen equipo: en *Proyectos* solo los ven los jefes.
+  tienen equipo: en *Proyectos* solo los ven los CEO/CCO.
 
 **Sesión.** Es una cookie HttpOnly firmada (HMAC, 8 h) con el id de usuario, el usuario,
 el rol y el equipo. En cada petición el usuario se relee de la base, así que desactivar
@@ -80,7 +82,7 @@ una cuenta o cambiarle el rol o el equipo tiene efecto al momento, sin esperar a
 cookie caduque.
 
 **Contraseñas.** Se guardan con scrypt y deben tener entre 10 y 128 caracteres, distintas
-del usuario. El jefe nunca elige la contraseña: al crear o restablecer una cuenta, la
+del usuario. El CEO/CCO nunca elige la contraseña: al crear o restablecer una cuenta, la
 plataforma genera una **temporal** que se muestra **una sola vez** en la respuesta y no se
 guarda en logs ni en la auditoría. Con una contraseña temporal, la API solo deja usar
 `/api/auth/*` (403 `password_change_required`) hasta cambiarla en el primer ingreso. En la
@@ -88,10 +90,10 @@ API el indicador se llama `mustChangeCredentials`: la redacción global oculta c
 clave que contenga `password`.
 
 **Migración.** En el primer arranque, la cuenta de la configuración
-(`PANEL_ADMIN_USERNAME` / `PANEL_ADMIN_PASSWORD_HASH`) se copia como usuario **jefe**, con
+(`PANEL_ADMIN_USERNAME` / `PANEL_ADMIN_PASSWORD_HASH`) se copia como usuario **CEO/CCO**, con
 la misma contraseña. Es idempotente: si ya hay usuarios no hace nada. Mientras la
 colección `users` esté vacía, la cuenta de la configuración sigue entrando como antes.
-Los proyectos existentes quedan **sin equipo**: solo los ven los jefes hasta que uno los
+Los proyectos existentes quedan **sin equipo**: solo los ven los CEO/CCO hasta que uno los
 asigne desde el detalle del proyecto (tarjeta *Equipo*).
 
 **Auditoría.** Cada evento guarda el usuario (`actor`), su nombre real (`actorName`) y su
@@ -113,7 +115,7 @@ Cada bloqueo queda en el log (`Login blocked after repeated failures`).
 
 Además, cada cuenta se **bloquea 15 minutos tras 5 contraseñas incorrectas seguidas**,
 aunque después acierte. El bloqueo se guarda en la base (sobrevive a reinicios), queda
-auditado (`user.locked`) y se levanta antes si un jefe restablece la contraseña.
+auditado (`user.locked`) y se levanta antes si un CEO/CCO restablece la contraseña.
 
 La IP es la que ve el nginx del panel. La API solo confía en el salto local
 (`trustProxy` 127.0.0.1), así que lo que el cliente añada a `X-Forwarded-For` no

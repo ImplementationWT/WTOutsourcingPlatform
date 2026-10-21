@@ -11,6 +11,7 @@ import StatusLabel from "@/features/projects/StatusLabel";
 import { cn } from "@/lib/utils";
 import type { DashboardData, DashboardProject } from "@/types/project";
 import { useCanOperate } from "@/features/auth/auth";
+import CostsSection from "@/features/costs/CostsSection";
 
 const relative = new Intl.RelativeTimeFormat("es", { numeric: "auto" });
 
@@ -60,7 +61,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
           <p className="mt-2 text-muted-foreground">
-            Estado real de los proyectos: aprovisionamiento, salud de cada app y actividad reciente.
+            Estado real de los proyectos (aprovisionamiento, salud de cada app y actividad reciente) y costos del AI Developer.
           </p>
         </div>
         <Button variant="ghost" onClick={() => refetch()} disabled={isFetching}>
@@ -85,9 +86,10 @@ export default function DashboardPage() {
       ) : (
         <>
           <StatTiles data={data} />
-          <div className="grid gap-4 xl:grid-cols-3">
+          {/* Cuadrícula: la columna derecha ocupa el mismo alto que la tabla, sin huecos. */}
+          <div className="grid items-stretch gap-4 xl:grid-cols-3">
             <ProjectsTable data={data} />
-            <div className="space-y-4">
+            <div className="flex flex-col gap-4">
               <Attention data={data} />
               <Activity data={data} />
             </div>
@@ -97,6 +99,8 @@ export default function DashboardPage() {
           </p>
         </>
       )}
+
+      <CostsSection />
     </section>
   );
 }
@@ -122,7 +126,7 @@ function StatTiles({ data }: { data: DashboardData }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {tiles.map((tile) => (
-        <Card key={tile.label}>
+        <Card key={tile.label} className="h-full">
           <CardHeader>
             <CardDescription>{tile.label}</CardDescription>
             <CardTitle className={cn("font-semibold tabular-nums", tile.text ? "text-2xl leading-9" : "text-3xl", tile.warn && "text-amber-400")}>
@@ -139,7 +143,7 @@ function StatTiles({ data }: { data: DashboardData }) {
 function ProjectsTable({ data }: { data: DashboardData }) {
   const canOperate = useCanOperate();
   return (
-    <Card className="xl:col-span-2">
+    <Card className="h-full xl:col-span-2">
       <CardHeader>
         <CardTitle>Proyectos</CardTitle>
         <CardDescription>Salud en vivo, versión del template, HTTPS y último despliegue.</CardDescription>
@@ -225,7 +229,7 @@ function Attention({ data }: { data: DashboardData }) {
 
 function Activity({ data }: { data: DashboardData }) {
   return (
-    <Card>
+    <Card className="flex-1">
       <CardHeader>
         <CardTitle>Actividad reciente</CardTitle>
         <CardDescription>Últimas acciones registradas en la auditoría.</CardDescription>

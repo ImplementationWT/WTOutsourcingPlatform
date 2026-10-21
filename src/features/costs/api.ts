@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
-import { useTeamFilter } from "@/features/admin/api";
 
 export interface CostBucket {
   costCents: number;
@@ -42,25 +41,22 @@ export interface CostRange {
   to: string;
 }
 
-/** Parámetros de la API: rango (AAAA-MM-DD, `to` incluido) y equipo elegido por un jefe. */
-export function costQuery(range: CostRange, teamId: string | null) {
+/** Parámetros de la API: rango (AAAA-MM-DD, `to` incluido). */
+export function costQuery(range: CostRange) {
   const params = new URLSearchParams();
   if (range.from) params.set("from", range.from);
   if (range.to) params.set("to", range.to);
-  if (teamId) params.set("teamId", teamId);
   const text = params.toString();
   return text ? `?${text}` : "";
 }
 
 export function useCostSummary(range: CostRange) {
-  const teamId = useTeamFilter();
-  const query = costQuery(range, teamId);
+  const query = costQuery(range);
   return useQuery({ queryKey: ["costs", "summary", query], queryFn: () => apiFetch<CostSummary>(`/api/costs/summary${query}`) });
 }
 
 export function useCostSessions(range: CostRange, enabled = true) {
-  const teamId = useTeamFilter();
-  const query = costQuery(range, teamId);
+  const query = costQuery(range);
   return useQuery({
     queryKey: ["costs", "sessions", query],
     queryFn: async () => (await apiFetch<{ sessions: CostSessionRow[] }>(`/api/costs/sessions${query}`)).sessions,

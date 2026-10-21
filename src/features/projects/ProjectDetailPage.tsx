@@ -103,7 +103,7 @@ export default function ProjectDetailPage() {
               <p className="mt-2 text-muted-foreground">{data.client.description}</p>
               <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground">
                 <Users className="size-4" />
-                {data.client.team ? data.client.team.name : "Sin equipo (solo lo ven los jefes)"}
+                {data.client.team ? data.client.team.name : "Sin equipo (solo lo ven los CEO/CCO)"}
               </p>
             </div>
             {canOperate && data.client.status === "ready" && (

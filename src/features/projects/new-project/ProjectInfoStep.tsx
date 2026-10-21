@@ -6,6 +6,9 @@ import { cn } from "@/lib/utils";
 import { slugify } from "../config";
 import { fieldClass } from "./parts";
 import type { NewProjectValues } from "./schema";
+import { useTeams } from "@/features/admin/api";
+import { selectClass } from "@/features/admin/TeamAssignCard";
+import { useIsBoss } from "@/features/auth/auth";
 
 export default function ProjectInfoStep({
   slugTouched,
@@ -21,6 +24,8 @@ export default function ProjectInfoStep({
     formState: { errors },
   } = useFormContext<NewProjectValues>();
   const description = useWatch({ control, name: "description" }) ?? "";
+  const isBoss = useIsBoss();
+  const teams = useTeams();
 
   const nameField = register("name", {
     onChange: (e) => {
@@ -99,6 +104,25 @@ export default function ProjectInfoStep({
           />
           {errors.description && <p className="text-xs text-red-400">{errors.description.message}</p>}
         </div>
+
+        {isBoss && (
+          <div className="space-y-2">
+            <Label htmlFor="teamId">Equipo *</Label>
+            <select id="teamId" className={cn(selectClass, "h-10 w-full", fieldClass)} aria-invalid={!!errors.teamId} {...register("teamId")}>
+              <option value="">Elige el equipo que llevará el proyecto</option>
+              {teams.data?.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+            </select>
+            {errors.teamId ? (
+              <p className="text-xs text-red-400">{errors.teamId.message}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Solo ese equipo (y los CEO/CCO) verá y operará el proyecto.</p>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

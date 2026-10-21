@@ -80,7 +80,7 @@ export interface ClientDetail {
     deployEnabled: boolean;
     /** Servidor donde se despliega (fijado al crear el proyecto). */
     server: { id: string; name: string; appsDomain: string };
-    /** Equipo dueño del proyecto (null: anterior a los equipos; solo lo ven los jefes). */
+    /** Equipo dueño del proyecto (null: anterior a los equipos; solo lo ven los CEO/CCO). */
     team: { id: string; name: string } | null;
     /** Estado y fechas por proveedor; nunca valores. */
     integrations: ClientIntegration[];

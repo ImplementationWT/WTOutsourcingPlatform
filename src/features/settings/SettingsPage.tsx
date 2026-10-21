@@ -19,7 +19,7 @@ export default function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Cuenta</CardTitle>
-            <CardDescription>Los datos los gestiona un jefe desde Usuarios.</CardDescription>
+            <CardDescription>Los datos los gestiona un CEO/CCO desde Usuarios y equipos.</CardDescription>
           </CardHeader>
           <CardContent>
             <dl className="grid grid-cols-[8rem_1fr] gap-y-2 text-sm">

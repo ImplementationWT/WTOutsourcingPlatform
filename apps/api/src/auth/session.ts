@@ -37,11 +37,8 @@ function sameString(a: string, b: string) {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-/** Rutas que se pueden usar con la contraseña pendiente de cambiar (y por los jefes aunque escriban). */
+/** Rutas que se pueden usar con la contraseña pendiente de cambiar. */
 const AUTH_PATHS = ["/api/auth/"];
-/** Escrituras permitidas a los jefes: administración de usuarios, equipos y proyectos. */
-const BOSS_WRITE_PATHS = ["/api/auth/", "/api/admin/"];
-const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 /**
  * Sesión del panel: cookie HttpOnly firmada (HMAC) con userId, username, rol, equipo y
@@ -92,10 +89,6 @@ export async function registerAuth(app: FastifyInstance, config: AuthConfig, use
     if (user.mustChangeCredentials && !AUTH_PATHS.some((p) => path.startsWith(p))) {
       return reply.code(403).send({ error: "Cambia tu contraseña para continuar.", code: "password_change_required" });
     }
-    // Jefes: solo lectura (excepto la administración de usuarios, equipos y proyectos).
-    if (user.role === "boss" && !READ_METHODS.has(request.method) && !BOSS_WRITE_PATHS.some((p) => path.startsWith(p))) {
-      return reply.code(403).send({ error: "Los jefes tienen acceso de solo lectura." });
-    }
   });
 
   function setSession(reply: FastifyReply, user: SessionUser) {
@@ -135,7 +128,7 @@ export async function registerAuth(app: FastifyInstance, config: AuthConfig, use
       else if (result.error === "locked") {
         guard.fail(ip, username);
         request.log.warn({ username, ip }, "Login on locked account");
-        return reply.code(429).send({ error: "Cuenta bloqueada temporalmente por intentos fallidos. Inténtalo más tarde o pide a un jefe que restablezca tu contraseña." });
+        return reply.code(429).send({ error: "Cuenta bloqueada temporalmente por intentos fallidos. Inténtalo más tarde o pide a un CEO/CCO que restablezca tu contraseña." });
       }
     } else {
       // Compatibilidad antes de la migración: la cuenta de la configuración.
@@ -194,7 +187,10 @@ export function requireRole(...roles: UserRole[]) {
   };
 }
 
-/** Team leaders y developers: los que operan proyectos (crear, desplegar, AI Developer…). */
-export const requireOperator = requireRole("lead", "developer");
-/** Solo jefes: administración de usuarios, equipos y proyectos. */
+/**
+ * Operar proyectos (crear, desplegar, integraciones, AI Developer…): todos los roles. El CEO/CCO
+ * opera cualquier proyecto; team leaders y developers, los de su equipo (lo filtra el acceso).
+ */
+export const requireOperator = requireRole("boss", "lead", "developer");
+/** Solo CEO/CCO (rol "boss"): administración de usuarios, equipos y proyectos. */
 export const requireBoss = requireRole("boss");

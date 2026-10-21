@@ -65,7 +65,7 @@ describe("etiquetas de proyectos (topics de GitHub)", () => {
     await store.createClientWithJob({ teamId: TEST_TEAM_ID, slug: "tienda", name: "Tienda", description: "Tienda web", actor: "admin" });
     github.repos.set("tienda-app", repo("tienda-app"));
     github.topics.set("tienda-app", ["legacy"]);
-    // Un repo que no es de un proyecto de la plataforma (sin equipo): solo lo ven los jefes.
+    // Un repo que no es de un proyecto de la plataforma (sin equipo): solo lo ven los CEO/CCO.
     github.repos.set("tienda-web", repo("tienda-web"));
 
     const list = (await app.inject({ method: "GET", url: "/api/projects", headers })).json();

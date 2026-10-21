@@ -16,7 +16,7 @@ export interface SessionUser {
 }
 
 export const ROLE_LABELS: Record<UserRole, string> = {
-  boss: "Jefe",
+  boss: "CEO/CCO",
   lead: "Team leader",
   developer: "Developer",
 };
@@ -36,8 +36,11 @@ export function useSession() {
   return useQuery({ queryKey: SESSION_KEY, queryFn: fetchSession, retry: false, staleTime: 5 * 60_000 });
 }
 
-/** Team leaders y developers operan los proyectos de su equipo; los jefes solo consultan. */
-export const canOperate = (user: SessionUser | null | undefined) => user?.role === "lead" || user?.role === "developer";
+/**
+ * Todos los roles operan proyectos (crear, desplegar, AI Developer…): el CEO/CCO cualquiera; team
+ * leaders y developers, los de su equipo (la API ya solo les devuelve esos).
+ */
+export const canOperate = (user: SessionUser | null | undefined) => Boolean(user);
 
 /** ¿Puede el usuario de la sesión crear, desplegar, usar el AI Developer…? */
 export function useCanOperate() {

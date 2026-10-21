@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowLeft, Loader2, Menu, PanelRightOpen, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +28,6 @@ import {
   useAiStatus,
 } from "./api";
 import { useAiEvents } from "./useAiEvents";
-import { canOperate, useSession } from "@/features/auth/auth";
 
 const STATUS_BADGE: Record<AiSession["status"], string> = { active: "En curso", merged: "Publicada", closed: "Cerrada" };
 
@@ -190,15 +189,7 @@ function Notice({ children }: { children: ReactNode }) {
  * AI Developer como consola a pantalla completa, al estilo de Claude: conversaciones a la
  * izquierda, chat en el centro y vista previa / cambios / publicar a la derecha.
  */
-/** El AI Developer lo usan team leaders y developers; los jefes (solo lectura) vuelven al proyecto. */
 export default function AiDeveloperPage() {
-  const { slug = "" } = useParams();
-  const session = useSession();
-  if (session.data && !canOperate(session.data)) return <Navigate to={`/projects/${slug}`} replace />;
-  return <AiDeveloperConsole />;
-}
-
-function AiDeveloperConsole() {
   const { slug = "" } = useParams();
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
