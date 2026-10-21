@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Eye, Loader2, Monitor, Power, RefreshCw, RotateCcw, Smartphone, Sparkles } from "lucide-react";
+import { AlertTriangle, Eye, Loader2, Monitor, Power, RefreshCw, Smartphone, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { AiPreview, AiSession } from "@/types/ai";
@@ -149,9 +149,6 @@ export default function PreviewPanel({ session, agentBusy }: { session: AiSessio
         </div>
         <Button size="xs" variant="ghost" onClick={reload} title="Recargar la página">
           <RefreshCw />
-        </Button>
-        <Button size="xs" variant="ghost" onClick={() => act(() => startAiPreview(session.id))} disabled={busy} title="Reiniciar desde cero (base vacía)">
-          <RotateCcw />
         </Button>
         <Button size="xs" variant="ghost" onClick={() => act(() => stopAiPreview(session.id))} disabled={busy} title="Apagar la vista previa">
           <Power />

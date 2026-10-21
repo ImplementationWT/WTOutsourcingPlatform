@@ -8,7 +8,7 @@ import type { AdminStore } from "../store/admin-store.js";
 import type { AiPreviewState, AiSessionDoc, ClientDoc } from "../store/models.js";
 import type { ServerTargets } from "../servers/directory.js";
 import { appsDomainOf, serverFor } from "../servers/resolve.js";
-import { AGENT_GIT_EMAIL, REPO_MOUNT_PATH } from "./agent-definition.js";
+import { AGENT_BRANCH, AGENT_GIT_EMAIL, REPO_MOUNT_PATH } from "./agent-definition.js";
 import { type ChatEvent, toChatEvent } from "./events.js";
 import type { PreviewPasses } from "./preview-pass.js";
 import type { AiAgentAdapter, AiConfig, MessageAttachment } from "./types.js";
@@ -131,7 +131,19 @@ export class AiDeveloper {
 
     const id = randomUUID();
     const now = this.now();
-    const branch = `ai/${now.toISOString().slice(0, 10).replace(/-/g, "")}-${id.slice(0, 8)}`;
+    const branch = AGENT_BRANCH;
+    // Restos de una sesión cerrada sin publicar: sin cambios se borra; con cambios se archiva
+    // con otro nombre (no se pierde) y la sesión nueva empieza limpia desde main.
+    if (await github.getBranchSha(names.repository, branch)) {
+      const previous = await github.compareBranches(names.repository, "main", branch);
+      if (previous.aheadBy > 0) {
+        const archive = `${branch}-archivo-${now.toISOString().slice(0, 16).replace(/[-:]/g, "").replace("T", "-")}`;
+        await github.renameBranch(names.repository, branch, archive);
+        await store.audit({ actor: input.actor, action: "ai.branch_archived", clientId: client._id, target: branch, details: { archive } });
+      } else {
+        await github.deleteBranch(names.repository, branch);
+      }
+    }
     await github.createBranch(names.repository, branch, baseSha);
 
     let agentSession: { id: string; repoResourceId: string };

@@ -2,7 +2,7 @@
 # preview-live-update <slug>  (root, vía sudo desde provisioner-dispatch)
 #
 # Trae a la vista previa en vivo el último commit de su rama (contrato §5.3). Por stdin:
-#   {"branch":"ai/<fecha>-<id>","token":"ghs_…"}
+#   {"branch":"claude-develop","token":"ghs_…"}
 # git fetch + reset como uid 1000 (sin root, token solo en el entorno); Vite y tsx watch
 # aplican el cambio en caliente. Si cambió pnpm-lock.yaml, reinstala dentro del contenedor.
 # Salida: una última línea JSON {"status":"ok","slug":…,"sha":…,"reinstalled":true|false}.
@@ -25,7 +25,8 @@ compose="$dir/compose.yaml"
 payload=$(head -c 4096)
 branch=$(jq -er '.branch | strings' <<<"$payload" 2>/dev/null) || die "falta branch"
 token=$(jq -er '.token | strings' <<<"$payload" 2>/dev/null) || die "falta token"
-[[ $branch =~ ^ai/[0-9]{8}-[0-9a-f]{8}$ ]] || die "branch inválida"
+# Solo la rama de trabajo del agente (nunca main ni otra).
+[[ $branch == claude-develop ]] || die "branch inválida: solo claude-develop"
 [[ $token =~ ^gh[su]_[A-Za-z0-9]{20,255}$ ]] || die "token inválido"
 
 exec 9>"$dir/.deploy.lock"

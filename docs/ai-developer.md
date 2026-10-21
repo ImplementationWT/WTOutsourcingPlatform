@@ -9,7 +9,7 @@ Se abre desde el detalle de un proyecto listo: **AI Developer**
 
 ## Cómo funciona
 
-1. **Sesión.** Al empezar, la plataforma crea la rama `ai/<fecha>-<id>` desde
+1. **Sesión.** Al empezar, la plataforma crea la rama `claude-develop` desde
    `main` y una sesión de [Claude Managed Agents](https://platform.claude.com)
    con el repo montado en esa rama. Una sesión activa por proyecto.
 2. **Chat.** Las instrucciones llegan al agente; el panel muestra en vivo sus
@@ -74,7 +74,7 @@ Se abre desde el detalle de un proyecto listo: **AI Developer**
 Cada sesión tiene un **tope de gasto** (`AI_SESSION_BUDGET_USD`, 10 USD por
 defecto, a precio de lista de Anthropic). Al alcanzarlo el agente se pausa y el
 chat ofrece *Ampliar presupuesto* (suma otro tramo igual). El gasto se ve en la
-cabecera del chat y el detalle completo en *Rastro* (consola de Anthropic).
+cabecera del chat, y el detalle completo, en la consola de Anthropic (*Sessions*).
 
 Modelo: Claude Opus 5.5 con esfuerzo alto (`apps/api/src/ai/agent-definition.ts`).
 

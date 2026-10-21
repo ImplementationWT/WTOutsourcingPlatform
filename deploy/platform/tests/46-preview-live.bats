@@ -3,7 +3,7 @@
 # pnpm dev:preview; preview-live-update trae cada commit y se ve sin reiniciar nada.
 load helpers
 
-BRANCH=ai/20261020-abcdef12
+BRANCH=claude-develop
 TOKEN=ghs_tokenDePruebaSoloLectura0123456789
 GIT=/srv/test-git/testorg/acme-app.git
 
@@ -121,10 +121,11 @@ live() { # <ruta>
 
 @test "rechaza repos de otro cliente, ramas que no son de trabajo, tokens raros y vistas sin preparar" {
   for payload in \
-    "$(jq -cn --arg t "$TOKEN" '{repository: "testorg/beta-app", branch: "ai/20261020-abcdef12", token: $t}')" \
+    "$(jq -cn --arg t "$TOKEN" '{repository: "testorg/beta-app", branch: "claude-develop", token: $t}')" \
     "$(jq -cn --arg t "$TOKEN" '{repository: "testorg/acme-app", branch: "main", token: $t}')" \
-    "$(jq -cn --arg t "$TOKEN" '{repository: "testorg/acme-app", branch: "ai/20261020-abcdef12; id", token: $t}')" \
-    '{"repository":"testorg/acme-app","branch":"ai/20261020-abcdef12","token":"$(id)"}' \
+    "$(jq -cn --arg t "$TOKEN" '{repository: "testorg/acme-app", branch: "claude-develop; id", token: $t}')" \
+    "$(jq -cn --arg t "$TOKEN" '{repository: "testorg/acme-app", branch: "claude-develop-archivo-20261020-1200", token: $t}')" \
+    '{"repository":"testorg/acme-app","branch":"claude-develop","token":"$(id)"}' \
     'no es json'; do
     run /opt/platform/bin/preview-live-start acme <<<"$payload"
     [ "$status" -ne 0 ]

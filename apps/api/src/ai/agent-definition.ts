@@ -7,6 +7,8 @@ import { createHash } from "node:crypto";
  */
 export const AI_MODEL = "claude-opus-5-5";
 export const REPO_MOUNT_PATH = "/workspace/app";
+/** Rama de trabajo del agente (una sesión activa por proyecto, así que el nombre es fijo). */
+export const AGENT_BRANCH = "claude-develop";
 /** Identidad de los commits del agente (también sirve para detectar pushes a main). */
 export const AGENT_GIT_NAME = "Launchpad AI Developer";
 export const AGENT_GIT_EMAIL = "ai-developer@launchpad.invalid";

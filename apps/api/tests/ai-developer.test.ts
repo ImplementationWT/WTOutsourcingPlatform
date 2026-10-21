@@ -92,7 +92,7 @@ describe("AI Developer: sesiones", () => {
     const { api, agent, github, store } = await setup();
     const session = await startSession(api, "Agrega validaciones al formulario de registro");
 
-    expect(session.branch).toMatch(/^ai\/\d{8}-[0-9a-f]{8}$/);
+    expect(session.branch).toBe("claude-develop");
     expect(github.branches.has(`${REPO}/${session.branch}`)).toBe(true);
     const [agentSession] = [...agent.sessions.values()];
     expect(agentSession.input).toMatchObject({
@@ -337,6 +337,28 @@ describe("AI Developer: revisión, Pull Request y merge", () => {
     expect((await api("POST", `/api/ai/sessions/${session.id}/close`)).status).toBe(200);
     expect(github.branches.has(`${REPO}/${session.branch}`)).toBe(false);
     expect(await store.aiSessions.findOne({ _id: session.id })).toMatchObject({ status: "closed", closedBy: "admin" });
+  });
+
+  it("la rama es siempre claude-develop: la de una sesión cerrada se borra si no tiene cambios y se archiva si los tiene", async () => {
+    const { api, github, store } = await setup();
+    // Cerrada sin cambios: la siguiente sesión empieza con la rama limpia.
+    const first = await startSession(api);
+    await api("POST", `/api/ai/sessions/${first.id}/close`);
+    const second = await startSession(api);
+    expect(second.branch).toBe("claude-develop");
+    expect(github.branches.has(`${REPO}/claude-develop`)).toBe(true);
+
+    // Cerrada con cambios sin publicar: se conservan en una rama archivada.
+    const sha = github.pushCommit(REPO, "claude-develop", "trabajo sin publicar");
+    await api("POST", `/api/ai/sessions/${second.id}/close`);
+    expect(github.branches.has(`${REPO}/claude-develop`)).toBe(true);
+    const third = await startSession(api);
+    expect(third.branch).toBe("claude-develop");
+    const archived = [...github.branches.keys()].find((k) => k.startsWith(`${REPO}/claude-develop-archivo-`))!;
+    expect(github.branches.get(archived)!.at(-1)!.sha).toBe(sha);
+    // La nueva parte de main, sin el trabajo anterior.
+    expect((await github.compareBranches(REPO, "main", "claude-develop")).aheadBy).toBe(0);
+    expect(await store.auditLog.countDocuments({ action: "ai.branch_archived" })).toBe(1);
   });
 
   it("no se puede borrar el proyecto con una sesión activa", async () => {

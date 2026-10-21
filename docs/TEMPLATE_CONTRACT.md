@@ -236,7 +236,7 @@ El entorno `production` no debe restringir ramas de despliegue: el job
 cancela la vista previa anterior que siga en curso.
 
 ```bash
-gh workflow run preview.yml --repo <owner>/<repo> --ref ai/<rama>
+gh workflow run preview.yml --repo <owner>/<repo> --ref claude-develop
 ```
 
 ## 5. Protocolo con el servidor

@@ -108,6 +108,8 @@ export interface GithubAdapter {
   createBranch(repo: string, branch: string, sha: string): Promise<void>;
   /** Borra la rama. false si ya no existía. */
   deleteBranch(repo: string, branch: string): Promise<boolean>;
+  /** Renombra la rama (GitHub reapunta sus PR abiertos). */
+  renameBranch(repo: string, branch: string, newName: string): Promise<void>;
   compareBranches(repo: string, base: string, head: string): Promise<BranchComparison>;
   createPullRequest(repo: string, input: { head: string; base: string; title: string; body: string }): Promise<PullRequestInfo>;
   getPullRequest(repo: string, number: number): Promise<PullRequestInfo>;
@@ -450,6 +452,15 @@ export function createGithubAdapter(config: GithubConfig, octokit: Octokit = cre
         return classifyGithubError(error, "borrar la rama", AI_PERMISSIONS.contents);
       }
     },
+
+    renameBranch: (repo, branch, newName) =>
+      call(
+        "archivar la rama anterior del agente",
+        async () => {
+          await octokit.rest.repos.renameBranch({ owner, repo, branch, new_name: newName });
+        },
+        AI_PERMISSIONS.contents
+      ),
 
     compareBranches: (repo, base, head) =>
       call("comparar la rama con main", async () => {

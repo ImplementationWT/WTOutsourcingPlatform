@@ -295,6 +295,13 @@ export class FakeGithub extends Faulty implements GithubAdapter {
     this.hit("deleteBranch", repo, branch);
     return this.branches.delete(`${repo}/${branch}`);
   }
+  async renameBranch(repo: string, branch: string, newName: string) {
+    this.hit("renameBranch", repo, branch, newName);
+    const commits = this.branches.get(`${repo}/${branch}`);
+    if (!commits) throw new Error(`no existe ${repo}/${branch}`);
+    this.branches.delete(`${repo}/${branch}`);
+    this.branches.set(`${repo}/${newName}`, commits);
+  }
   async compareBranches(repo: string, base: string, head: string) {
     this.hit("compareBranches", repo, base, head);
     const baseCommits = this.commitsOf(repo, base) ?? [];

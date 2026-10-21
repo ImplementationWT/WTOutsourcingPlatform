@@ -2,7 +2,7 @@
 # preview-live-start <slug>  (root, vía sudo desde provisioner-dispatch)
 #
 # Vista previa en vivo del AI Developer (contrato §5.3). Por stdin, una línea JSON:
-#   {"repository":"<owner>/<slug>-app","branch":"ai/<fecha>-<id>","token":"ghs_…"}
+#   {"repository":"<owner>/<slug>-app","branch":"claude-develop","token":"ghs_…"}
 # El token es de solo lectura de ese repo y caduca en una hora: solo se usa para clonar
 # y no se guarda (ni en el clon, ni en disco, ni en los argumentos de los procesos).
 #   1. Exige la vista previa preparada (preview-install: puerto, certificado y nginx).
@@ -31,7 +31,8 @@ repository=$(jq -er '.repository | strings' <<<"$payload" 2>/dev/null) || die "f
 branch=$(jq -er '.branch | strings' <<<"$payload" 2>/dev/null) || die "falta branch"
 token=$(jq -er '.token | strings' <<<"$payload" 2>/dev/null) || die "falta token"
 [[ $repository =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?/${slug}-app$ ]] || die "repository inválido: debe ser <owner>/$slug-app"
-[[ $branch =~ ^ai/[0-9]{8}-[0-9a-f]{8}$ ]] || die "branch inválida"
+# Solo la rama de trabajo del agente (nunca main ni otra).
+[[ $branch == claude-develop ]] || die "branch inválida: solo claude-develop"
 [[ $token =~ ^gh[su]_[A-Za-z0-9]{20,255}$ ]] || die "token inválido"
 
 exec 9>"$dir/.deploy.lock"

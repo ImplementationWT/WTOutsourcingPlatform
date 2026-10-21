@@ -8,7 +8,7 @@ const session: AiSession = {
   clientId: "acme-crm",
   title: "Pantalla Referencia",
   status: "active",
-  branch: "ai/20261020-11111111",
+  branch: "claude-develop",
   baseBranch: "main",
   repository: "acme-crm",
   createdBy: "admin",

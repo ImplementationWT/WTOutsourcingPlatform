@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, ExternalLink, Loader2, Menu, PanelRightClose, PanelRightOpen, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2, Menu, PanelRightOpen, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,7 +19,6 @@ import { closeAiSession, formatUsd, raiseAiBudget, startAiPreview, useAiPreview,
 import { useAiEvents } from "./useAiEvents";
 
 const STATUS_BADGE: Record<AiSession["status"], string> = { active: "En curso", merged: "Publicada", closed: "Cerrada" };
-const PANEL_KEY = "ai-console-panel";
 
 type Tab = "preview" | "changes" | "publish";
 const TABS: [Tab, string][] = [
@@ -28,28 +27,8 @@ const TABS: [Tab, string][] = [
   ["publish", "Publicar"],
 ];
 
-/** Preferencia de este navegador (panel derecho abierto o cerrado); si no hay storage, abierto. */
-function usePanelOpen() {
-  const [open, setOpen] = useState(() => {
-    try {
-      return localStorage.getItem(PANEL_KEY) !== "closed";
-    } catch {
-      return true;
-    }
-  });
-  const toggle = (value: boolean) => {
-    setOpen(value);
-    try {
-      localStorage.setItem(PANEL_KEY, value ? "open" : "closed");
-    } catch {
-      // sin storage: solo dura esta visita
-    }
-  };
-  return [open, toggle] as const;
-}
-
 /** Panel de trabajo: vista previa, cambios en el código y publicación. */
-function WorkPanel({ session, agentBusy, onClose }: { session: AiSession; agentBusy: boolean; onClose: () => void }) {
+function WorkPanel({ session, agentBusy, onClose }: { session: AiSession; agentBusy: boolean; onClose?: () => void }) {
   const [tab, setTab] = useState<Tab>("preview");
   return (
     <div className="flex h-full min-h-0 flex-col bg-background/90 backdrop-blur-xl">
@@ -69,9 +48,11 @@ function WorkPanel({ session, agentBusy, onClose }: { session: AiSession; agentB
             {label}
           </button>
         ))}
-        <Button size="icon-sm" variant="ghost" className="ml-auto" onClick={onClose} aria-label="Cerrar panel">
-          <X />
-        </Button>
+        {onClose && (
+          <Button size="icon-sm" variant="ghost" className="ml-auto lg:hidden" onClick={onClose} aria-label="Cerrar panel">
+            <X />
+          </Button>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === "preview" && <PreviewPanel session={session} agentBusy={agentBusy} />}
@@ -82,9 +63,13 @@ function WorkPanel({ session, agentBusy, onClose }: { session: AiSession; agentB
   );
 }
 
-/** Una conversación: cabecera, chat y (si está abierto) el panel de trabajo a la derecha. */
-function SessionView({ session, panelOpen, setPanelOpen }: { session: AiSession; panelOpen: boolean; setPanelOpen: (open: boolean) => void }) {
+/**
+ * Una conversación: cabecera, chat y el panel de trabajo a la derecha (siempre visible en
+ * pantallas grandes; en estrechas se abre encima del chat con su icono).
+ */
+function SessionView({ session }: { session: AiSession }) {
   const queryClient = useQueryClient();
+  const [mobilePanel, setMobilePanel] = useState(false);
   const { data } = useAiSession(session.id);
   const chat = useAiEvents(session.id);
   const [closing, setClosing] = useState(false);
@@ -94,21 +79,20 @@ function SessionView({ session, panelOpen, setPanelOpen }: { session: AiSession;
   const agentBusy = chat.state === "running";
   const active = current.status === "active";
 
-  // La vista previa aparece al abrir la conversación: la consulta la arranca (y la mantiene al
-  // día con cada commit) aunque el panel esté cerrado; en pantallas grandes se abre el panel.
+  // La vista previa aparece al abrir la conversación: la consulta la arranca y la mantiene al
+  // día con cada commit (también con el panel cerrado en el móvil).
   const preview = useAiPreview(session.id, active);
   const opened = useRef(false);
   useEffect(() => {
     if (!active || opened.current || preview.isLoading) return;
     opened.current = true;
-    if (window.matchMedia?.("(min-width: 1024px)").matches) setPanelOpen(true);
     // Apagada a mano en otra visita: al volver a entrar se enciende de nuevo.
     if (preview.data?.status === "stopped") {
       void startAiPreview(session.id)
         .then(() => queryClient.invalidateQueries({ queryKey: ["ai-preview", session.id] }))
         .catch(() => undefined);
     }
-  }, [active, preview.isLoading, preview.data?.status, session.id, setPanelOpen, queryClient]);
+  }, [active, preview.isLoading, preview.data?.status, session.id, queryClient]);
 
   async function raiseBudget() {
     await raiseAiBudget(session.id);
@@ -142,27 +126,14 @@ function SessionView({ session, panelOpen, setPanelOpen }: { session: AiSession;
               {budget !== null && ` / ${formatUsd(budget)}`}
             </span>
           )}
-          {current.consoleUrl && (
-            <Button
-              size="xs"
-              variant="ghost"
-              render={<a href={current.consoleUrl} target="_blank" rel="noreferrer" />}
-              nativeButton={false}
-              title="Rastro técnico completo en la consola de Anthropic"
-            >
-              <ExternalLink />
-              Rastro
-            </Button>
-          )}
           {current.status === "active" && (
             <Button size="xs" variant="ghost" onClick={close} disabled={closing} title="Cerrar sin publicar">
               {closing ? <Loader2 className="animate-spin" /> : <X />}
               Cerrar
             </Button>
           )}
-          <Button size="xs" variant={panelOpen ? "secondary" : "outline"} onClick={() => setPanelOpen(!panelOpen)} aria-pressed={panelOpen}>
-            {panelOpen ? <PanelRightClose /> : <PanelRightOpen />}
-            Vista previa y publicar
+          <Button size="icon-xs" variant="ghost" className="lg:hidden" onClick={() => setMobilePanel(true)} aria-label="Vista previa">
+            <PanelRightOpen />
           </Button>
         </div>
         <div className="min-h-0 flex-1">
@@ -177,15 +148,17 @@ function SessionView({ session, panelOpen, setPanelOpen }: { session: AiSession;
         </div>
       </div>
 
-      {panelOpen && (
-        <>
-          {/* En pantallas estrechas el panel se abre encima del chat. */}
-          <button type="button" aria-label="Cerrar panel" className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setPanelOpen(false)} />
-          <aside className="fixed inset-y-0 right-0 z-40 w-full border-l border-foreground/10 sm:w-[34rem] lg:static lg:z-auto lg:w-[46%] lg:max-w-[52rem]">
-            <WorkPanel session={current} agentBusy={agentBusy} onClose={() => setPanelOpen(false)} />
-          </aside>
-        </>
+      {mobilePanel && (
+        <button type="button" aria-label="Cerrar panel" className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setMobilePanel(false)} />
       )}
+      <aside
+        className={cn(
+          "fixed inset-y-0 right-0 z-40 w-full border-l border-foreground/10 sm:w-[34rem] lg:static lg:z-auto lg:block lg:w-[46%] lg:max-w-[52rem]",
+          mobilePanel ? "block" : "hidden",
+        )}
+      >
+        <WorkPanel session={current} agentBusy={agentBusy} onClose={() => setMobilePanel(false)} />
+      </aside>
     </div>
   );
 }
@@ -217,7 +190,6 @@ export default function AiDeveloperPage() {
   const sessions = useAiSessions(slug);
   const [creating, setCreating] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [panelOpen, setPanelOpen] = usePanelOpen();
 
   const list = sessions.data ?? [];
   const projectName = client.data?.client.name ?? slug;
@@ -272,7 +244,7 @@ export default function AiDeveloperPage() {
   } else if (client.data?.client.status !== "ready") {
     body = <Notice>El proyecto debe terminar de aprovisionarse antes de usar el AI Developer.</Notice>;
   } else if (selected) {
-    body = <SessionView key={selected.id} session={selected} panelOpen={panelOpen} setPanelOpen={setPanelOpen} />;
+    body = <SessionView key={selected.id} session={selected} />;
   } else {
     body = (
       <Welcome
