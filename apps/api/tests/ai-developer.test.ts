@@ -361,6 +361,26 @@ describe("AI Developer: revisión, Pull Request y merge", () => {
     expect(await store.auditLog.countDocuments({ action: "ai.branch_archived" })).toBe(1);
   });
 
+  it("borrar conversaciones: una (cerrándola si sigue en curso) o todas las del proyecto", async () => {
+    const { api, github, store, agent } = await setup();
+    const first = await startSession(api);
+    expect((await api("POST", `/api/ai/sessions/${first.id}/delete`)).status).toBe(200);
+    // Estaba en curso: se cerró (agente parado, rama sin cambios borrada) y ya no aparece.
+    expect(agent.interrupts).toContain([...agent.sessions.keys()][0]);
+    expect(github.branches.has(`${REPO}/claude-develop`)).toBe(false);
+    expect((await api("GET", "/api/clients/acme-crm/ai/sessions")).body.sessions).toEqual([]);
+
+    const second = await startSession(api);
+    await api("POST", `/api/ai/sessions/${second.id}/close`);
+    await startSession(api);
+    expect((await api("POST", "/api/clients/acme-crm/ai/sessions/delete", { confirm: "otro" })).status).toBe(400);
+    const all = await api("POST", "/api/clients/acme-crm/ai/sessions/delete", { confirm: "acme-crm" });
+    expect(all.body).toEqual({ deleted: 2 });
+    expect(await store.aiSessions.countDocuments()).toBe(0);
+    // La auditoría se conserva.
+    expect(await store.auditLog.countDocuments({ action: "ai.session_deleted" })).toBe(3);
+  });
+
   it("no se puede borrar el proyecto con una sesión activa", async () => {
     const { api } = await setup();
     await startSession(api);

@@ -10,12 +10,23 @@ import { cn } from "@/lib/utils";
 import { useClient } from "@/features/projects/api";
 import type { AiSession } from "@/types/ai";
 import ChangesPanel from "./ChangesPanel";
-import ChatPanel, { ClaudeAvatar } from "./ChatPanel";
+import ChatPanel, { WillDooAvatar } from "./ChatPanel";
 import PreviewPanel from "./PreviewPanel";
 import PublishPanel from "./PublishPanel";
 import SessionSidebar from "./SessionSidebar";
 import Welcome from "./Welcome";
-import { closeAiSession, formatUsd, raiseAiBudget, startAiPreview, useAiPreview, useAiSession, useAiSessions, useAiStatus } from "./api";
+import {
+  closeAiSession,
+  deleteAiSession,
+  deleteAllAiSessions,
+  formatUsd,
+  raiseAiBudget,
+  startAiPreview,
+  useAiPreview,
+  useAiSession,
+  useAiSessions,
+  useAiStatus,
+} from "./api";
 import { useAiEvents } from "./useAiEvents";
 
 const STATUS_BADGE: Record<AiSession["status"], string> = { active: "En curso", merged: "Publicada", closed: "Cerrada" };
@@ -267,6 +278,16 @@ export default function AiDeveloperPage() {
       canCreate={!hasActive && !creating}
       onSelect={select}
       onNew={startNew}
+      onDelete={async (id) => {
+        await deleteAiSession(id);
+        if (id === selected?.id) setParams({}, { replace: true });
+        await refreshSessions();
+      }}
+      onDeleteAll={async () => {
+        await deleteAllAiSessions(slug);
+        setParams({}, { replace: true });
+        await refreshSessions();
+      }}
       onClose={onClose}
     />
   );
@@ -287,7 +308,7 @@ export default function AiDeveloperPage() {
         >
           <ArrowLeft />
         </Button>
-        <ClaudeAvatar className="size-6 [&_svg]:size-3" />
+        <WillDooAvatar className="size-7" />
         <p className="min-w-0 truncate text-sm">
           <span className="font-medium">Will Doo</span>
           <span className="text-muted-foreground"> · {projectName}</span>

@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Eye, Loader2, Monitor, Power, RefreshCw, Smartphone, Sparkles } from "lucide-react";
+import { AlertTriangle, Eye, Loader2, Monitor, Power, RefreshCw, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { AiPreview, AiSession } from "@/types/ai";
+import { WillDooAvatar } from "./ChatPanel";
 import { startAiPreview, stopAiPreview, useAiPreview } from "./api";
 
 const STEPS: Partial<Record<AiPreview["status"], string>> = {
@@ -77,9 +78,7 @@ export default function PreviewPanel({ session, agentBusy }: { session: AiSessio
           </div>
         )}
         <div className="flex flex-col items-center gap-3 py-6 text-center">
-          <div className="flex size-11 items-center justify-center rounded-full border border-foreground/10 bg-foreground/[0.04]">
-            <Sparkles className="size-5 text-violet-300" />
-          </div>
+          <WillDooAvatar className="size-12" />
           <p className="max-w-sm text-muted-foreground">
             {preview?.status === "stopped"
               ? "La vista previa se apagó. Ábrela de nuevo para ver los últimos cambios."

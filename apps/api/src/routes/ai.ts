@@ -331,4 +331,24 @@ export async function registerAiRoutes(
       return { ok: true };
     });
   });
+
+  /** Borra una conversación (si está en curso, antes la cierra). */
+  app.post("/api/ai/sessions/:id/delete", { preHandler: requireAdmin }, async (request, reply) => {
+    const session = await loadSession(request, reply);
+    if (!session) return reply;
+    return run(request, reply, async (ai) => {
+      await ai.deleteSession(session, request.user!.username);
+      return { ok: true };
+    });
+  });
+
+  /** Borra todas las conversaciones del proyecto: exige reenviar su identificador. */
+  app.post("/api/clients/:slug/ai/sessions/delete", { preHandler: requireAdmin }, async (request, reply) => {
+    const params = slugParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
+    if ((request.body as { confirm?: unknown } | null)?.confirm !== params.data.slug) {
+      return reply.code(400).send({ error: "Confirma con el identificador del proyecto." });
+    }
+    return run(request, reply, async (ai) => ({ deleted: await ai.deleteAllSessions(params.data.slug, request.user!.username) }));
+  });
 }

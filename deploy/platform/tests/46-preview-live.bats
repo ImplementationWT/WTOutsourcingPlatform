@@ -5,6 +5,8 @@ load helpers
 
 BRANCH=claude-develop
 TOKEN=ghs_tokenDePruebaSoloLectura0123456789
+# Los tokens de instalación actuales de GitHub superan los 255 caracteres.
+LONG_TOKEN="ghs_$(printf 'A%.0s' {1..400})"
 GIT=/srv/test-git/testorg/acme-app.git
 
 setup() { write_test_config; }
@@ -135,6 +137,11 @@ live() { # <ruta>
   [[ $output == *"no está preparada"* ]]
   # La vista que estaba en marcha sigue intacta.
   live / | grep -q "version 2"
+}
+
+@test "acepta tokens de GitHub largos (más de 255 caracteres)" {
+  run /opt/platform/bin/preview-live-update acme <<<"$(jq -cn --arg b "$BRANCH" --arg t "$LONG_TOKEN" '{branch: $b, token: $t}')"
+  [ "$status" -eq 0 ]
 }
 
 @test "un repo sin pnpm dev:preview se rechaza con un mensaje claro" {

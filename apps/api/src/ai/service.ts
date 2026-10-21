@@ -363,6 +363,23 @@ export class AiDeveloper {
     await this.audit(actor, "ai.session_closed", session);
   }
 
+  /**
+   * Borra la conversación del panel (la auditoría se conserva). Si sigue en curso, antes se
+   * cierra: para el agente, apaga la vista previa y borra la rama si no tiene cambios.
+   */
+  async deleteSession(session: AiSessionDoc, actor: string) {
+    if (session.status === "active") await this.close(session, actor);
+    await this.deps.store.aiSessions.deleteOne({ _id: session._id });
+    await this.audit(actor, "ai.session_deleted", session, { title: session.title.slice(0, 120) });
+  }
+
+  /** Borra todas las conversaciones de un proyecto (para empezar de cero). */
+  async deleteAllSessions(clientId: string, actor: string) {
+    const sessions = await this.deps.store.aiSessions.find({ clientId }).toArray();
+    for (const session of sessions) await this.deleteSession(session, actor);
+    return sessions.length;
+  }
+
   // ---- vista previa -------------------------------------------------------------
 
   private async setPreview(session: AiSessionDoc, preview: AiPreviewState) {

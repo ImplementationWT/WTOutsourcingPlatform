@@ -86,5 +86,8 @@ export const createAiPullRequest = (id: string) => post<{ pullRequest: AiSession
 export const mergeAiSession = (id: string) =>
   post<{ sha: string; deploying: boolean; actionsUrl: string }>(sessionUrl(id, "/merge"), { confirm: true });
 export const closeAiSession = (id: string) => post<{ ok: true }>(sessionUrl(id, "/close"));
+export const deleteAiSession = (id: string) => post<{ ok: true }>(sessionUrl(id, "/delete"));
+export const deleteAllAiSessions = (slug: string) =>
+  post<{ deleted: number }>(`/api/clients/${encodeURIComponent(slug)}/ai/sessions/delete`, { confirm: slug });
 
 export const formatUsd = (cents: number) => `$${(cents / 100).toFixed(2)}`;

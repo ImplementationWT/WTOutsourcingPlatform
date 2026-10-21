@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Bug, FormInput, LayoutTemplate, Palette, Type } from "lucide-react";
 import type { AiSession } from "@/types/ai";
-import { ClaudeAvatar } from "./ChatPanel";
 import Composer from "./Composer";
 import { sessionTitle } from "./session-title";
 import { startAiSession } from "./api";
@@ -57,7 +56,7 @@ export default function Welcome({
     <div className="flex h-full flex-col items-center justify-center overflow-y-auto px-4 py-10">
       <div className="w-full max-w-2xl space-y-6">
         <div className="flex flex-col items-center gap-3 text-center">
-          <ClaudeAvatar className="size-11 [&_svg]:size-5" />
+          <img src="/will-doo.png" alt="Will Doo" className="h-40 w-auto select-none drop-shadow-[0_12px_30px_rgba(139,92,246,0.25)]" draggable={false} />
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">¿Qué quieres cambiar en {projectName}?</h1>
           <p className="max-w-lg text-sm text-muted-foreground">
             Cuéntaselo a Will Doo con tus palabras. Trabaja en una copia aparte, te enseña el resultado en una vista previa y nada se publica sin tu

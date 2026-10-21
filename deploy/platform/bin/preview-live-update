@@ -29,7 +29,10 @@ token=$(jq -er '.token | strings' <<<"$payload" 2>/dev/null) || die "falta token
 [[ $branch == claude-develop ]] || die "branch inválida: solo claude-develop"
 # Token de instalación de GitHub: solo se comprueba que no tenga espacios ni comillas (su
 # formato cambia con el tiempo). Nunca se ejecuta: va en una variable de entorno de git.
-[[ $token =~ ^[A-Za-z0-9_.~+/=-]{20,4096}$ ]] || die "token inválido (${#token} caracteres, empieza por ${token:0:4})"
+# (La longitud va aparte: en las expresiones de bash una repetición no puede pasar de 255, y
+# los tokens actuales de GitHub son más largos.)
+((${#token} >= 20 && ${#token} <= 4096)) && [[ $token =~ ^[A-Za-z0-9_.~+/=-]+$ ]] ||
+  die "token inválido (${#token} caracteres, empieza por ${token:0:4})"
 
 exec 9>"$dir/.deploy.lock"
 flock -w 300 9 || die "hay otra operación de vista previa en curso para $slug"

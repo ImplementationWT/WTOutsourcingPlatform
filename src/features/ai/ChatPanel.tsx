@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Check, ChevronRight, FileText, Loader2, Search, ShieldAlert, Sparkles, Terminal, Wrench, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, FileText, Loader2, Search, ShieldAlert, Terminal, Wrench, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { AgentState, AiSession } from "@/types/ai";
@@ -84,11 +84,14 @@ function Steps({ calls, live }: { calls: ToolCall[]; live: boolean }) {
   );
 }
 
-export function ClaudeAvatar({ className }: { className?: string }) {
+/** Avatar de Will Doo, el bot de WhatEver (la cara del robot, recortada). */
+export function WillDooAvatar({ className }: { className?: string }) {
   return (
-    <div className={cn("flex size-7 shrink-0 items-center justify-center rounded-full border border-violet-400/40 bg-violet-500/15 text-violet-200", className)}>
-      <Sparkles className="size-3.5" />
-    </div>
+    <img
+      src="/will-doo-avatar.png"
+      alt="Will Doo"
+      className={cn("size-7 shrink-0 rounded-full border border-foreground/10 bg-[#0b0d18] object-cover", className)}
+    />
   );
 }
 
@@ -113,7 +116,7 @@ function Message({ item }: { item: Extract<ChatItem, { kind: "user" | "assistant
   }
   return (
     <div className="flex gap-3">
-      <ClaudeAvatar />
+      <WillDooAvatar />
       <div className="min-w-0 flex-1 pt-0.5">
         <Markdown>{item.text}</Markdown>
       </div>
