@@ -13,11 +13,21 @@ import { newProjectSchema, type NewProjectValues } from "./new-project/schema";
 import Stepper from "./new-project/Stepper";
 import SummaryStep from "./new-project/SummaryStep";
 import { useProvisioning } from "./provisioning";
+import { canOperate, useSession } from "@/features/auth/auth";
 
 const STEPS = ["Información", "Integraciones y despliegue", "Resumen", "Creación"];
 const FORM_STEPS = 3;
 
+/** Solo team leaders y developers crean proyectos (quedan en su equipo). */
 export default function NewProjectPage() {
+  const session = useSession();
+  if (session.data && !canOperate(session.data)) {
+    return <p className="text-sm text-muted-foreground">Los jefes tienen acceso de solo lectura: los proyectos los crean los team leaders y developers.</p>;
+  }
+  return <NewProjectWizard />;
+}
+
+function NewProjectWizard() {
   const { data: projects } = useProjects();
   const { data: catalog } = useIntegrationCatalog();
   const provisioning = useProvisioning();

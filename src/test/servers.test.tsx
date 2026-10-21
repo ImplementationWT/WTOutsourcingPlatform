@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import NewProjectPage from "@/features/projects/NewProjectPage";
 import IntegrationsPage from "@/features/servers/IntegrationsPage";
 import type { DeployServer } from "@/types/server";
+import { withSession } from "./session";
 
 const PUBKEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPublicaDePrueba launchpad-provisioner VPS Europa";
 const FINGERPRINT = "256 SHA256:abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ root@vps2 (ED25519)";
@@ -57,7 +58,7 @@ function mockFetch(routes: Record<string, (body: string | null) => { status?: nu
 }
 
 function renderWith(ui: ReactNode) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = withSession(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>{ui}</MemoryRouter>

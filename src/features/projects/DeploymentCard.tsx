@@ -8,6 +8,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import type { ClientDetail } from "@/types/project";
 import { redeployClient } from "./api";
 import { Code } from "./new-project/parts";
+import { useCanOperate } from "@/features/auth/auth";
 
 const dateTime = (iso: string) =>
   new Date(iso).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -32,7 +33,8 @@ export default function DeploymentCard({ client }: { client: ClientDetail["clien
   const [requesting, setRequesting] = useState(false);
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string; href?: string } | null>(null);
   const { deployment, deployEnabled } = client;
-  const canRedeploy = deployEnabled && !!deployment.certificate;
+  const canOperate = useCanOperate();
+  const canRedeploy = canOperate && deployEnabled && !!deployment.certificate;
 
   async function handleRedeploy() {
     setRequesting(true);

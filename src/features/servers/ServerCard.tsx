@@ -12,6 +12,7 @@ import type { DeployServer, ServerCheck } from "@/types/server";
 import { bootstrapCommands } from "./bootstrap";
 import CommandBlock from "./CommandBlock";
 import { deleteServer, pinHostKey, readFingerprint, rotateServerKey, verifyServer } from "./api";
+import { useSession } from "@/features/auth/auth";
 
 const STATUS: Record<DeployServer["status"], { label: string; className: string }> = {
   host_key: { label: "Falta confirmar la huella", className: "border-amber-400/30 text-amber-300" },
@@ -64,6 +65,8 @@ function Checks({ checks }: { checks: ServerCheck[] }) {
 /** Un servidor: datos, pasos para dejarlo listo (preparar, huella, verificar) y acciones. */
 export default function ServerCard({ server, ghcrOrg }: { server: DeployServer; ghcrOrg: string | null }) {
   const queryClient = useQueryClient();
+  // Los servidores son compartidos entre equipos: los gestionan los team leaders.
+  const canManage = useSession().data?.role === "lead";
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [consoleOutput, setConsoleOutput] = useState("");
@@ -103,7 +106,7 @@ export default function ServerCard({ server, ghcrOrg }: { server: DeployServer; 
           {server.sshPort && server.sshPort !== 22 ? `:${server.sshPort}` : ""} · IP {server.publicIp} · {server.projects} proyecto
           {server.projects === 1 ? "" : "s"}
         </CardDescription>
-        {!server.primary && server.status === "ready" && (
+        {canManage && !server.primary && server.status === "ready" && (
           <CardAction>
             <Button size="sm" variant="outline" onClick={() => act("verify", () => verifyServer(server.id))} disabled={busy !== null}>
               {busy === "verify" ? <Loader2 className="animate-spin" /> : <RefreshCw />}
@@ -119,6 +122,8 @@ export default function ServerCard({ server, ghcrOrg }: { server: DeployServer; 
             Definido en la configuración de la plataforma (DEPLOY_HOST, DEPLOY_HOST_KEY y la clave del provisioner del despliegue).
             Los proyectos creados antes de los servidores múltiples están aquí.
           </p>
+        ) : server.status !== "ready" && !canManage ? (
+          <p className="text-sm text-muted-foreground">Pendiente de configurar. Lo prepara y verifica un team leader.</p>
         ) : server.status !== "ready" ? (
           <ol className="space-y-5">
             <Step n={1} title="Prepara el VPS" done={server.status !== "host_key"}>
@@ -204,7 +209,7 @@ export default function ServerCard({ server, ghcrOrg }: { server: DeployServer; 
           </p>
         )}
 
-        {!server.primary && (
+        {canManage && !server.primary && (
           <div className="flex flex-wrap items-center gap-2 border-t border-foreground/10 pt-4">
             {confirmRotate ? (
               <>

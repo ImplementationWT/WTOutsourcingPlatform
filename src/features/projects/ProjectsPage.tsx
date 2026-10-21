@@ -24,6 +24,7 @@ import { searchProjects } from "./filters";
 import { accountStatusMeta, providerMeta } from "./meta";
 import StatusLabel from "./StatusLabel";
 import TopicsEditor from "./TopicsEditor";
+import { useCanOperate } from "@/features/auth/auth";
 
 type Platform = ReturnType<typeof usePlatform>["data"];
 type Account = LinkedAccount & { href?: string; hrefTitle?: string };
@@ -62,6 +63,7 @@ function linkedAccounts(repo: ProjectRepo, platform: Platform): Account[] {
 
 export default function ProjectsPage() {
   const { data: projects, isLoading, isError, error, refetch, isFetching } = useProjects();
+  const canOperate = useCanOperate();
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "";
   // La búsqueda vive en la URL para poder compartirla.
@@ -85,10 +87,12 @@ export default function ProjectsPage() {
             <RefreshCw className={cn(isFetching && "animate-spin")} />
             Actualizar
           </Button>
-          <Button render={<Link to="/projects/new" />} nativeButton={false}>
-            <Plus />
-            Nuevo proyecto
-          </Button>
+          {canOperate && (
+            <Button render={<Link to="/projects/new" />} nativeButton={false}>
+              <Plus />
+              Nuevo proyecto
+            </Button>
+          )}
         </div>
       </div>
 
@@ -148,12 +152,16 @@ export default function ProjectsPage() {
             </div>
             <p className="mt-4 font-medium">Aún no hay proyectos</p>
             <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-              Crea el primero y la plataforma generará su repositorio en GitHub.
+              {canOperate
+                ? "Crea el primero y la plataforma generará su repositorio en GitHub."
+                : "Los proyectos los crean los team leaders y developers de cada equipo."}
             </p>
-            <Button className="mt-6" render={<Link to="/projects/new" />} nativeButton={false}>
-              <Plus />
-              Nuevo proyecto
-            </Button>
+            {canOperate && (
+              <Button className="mt-6" render={<Link to="/projects/new" />} nativeButton={false}>
+                <Plus />
+                Nuevo proyecto
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : filtered.length === 0 ? (
@@ -179,6 +187,7 @@ function ProjectCard({
   onToggleTag: (tag: string) => void;
 }) {
   const platform = usePlatform().data;
+  const canOperate = useCanOperate();
   return (
     <Card className={cn(repo.archived && "opacity-70")}>
       <CardHeader>
@@ -205,7 +214,7 @@ function ProjectCard({
 
       <CardContent className="space-y-4">
         {repo.description && <p className="-mt-2 text-sm text-muted-foreground">{repo.description}</p>}
-        <TopicsEditor repo={repo} activeTags={activeTags} onToggleTag={onToggleTag} />
+        <TopicsEditor repo={repo} activeTags={activeTags} onToggleTag={onToggleTag} editable={canOperate && Boolean(repo.clientId)} />
         <div>
           <p className="mb-2 text-xs font-medium tracking-wider text-muted-foreground uppercase">
             Cuentas ligadas

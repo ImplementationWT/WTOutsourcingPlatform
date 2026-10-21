@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import type { ClientDetail, IntegrationProvider } from "@/types/project";
 import { removeIntegration, saveIntegration, useIntegrationCatalog } from "./api";
 import IntegrationFields from "./integrations/IntegrationFields";
+import { useCanOperate } from "@/features/auth/auth";
 
 const dateTime = (iso: string) => new Date(iso).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -18,7 +19,8 @@ function ProviderRow({ client, provider }: { client: ClientDetail["client"]; pro
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
-  const editable = client.status === "ready" || client.status === "failed";
+  const canOperate = useCanOperate();
+  const editable = canOperate && (client.status === "ready" || client.status === "failed");
   const complete = provider.fields.every((f) => (credentials[f.name] ?? "").length > 0);
 
   function close() {

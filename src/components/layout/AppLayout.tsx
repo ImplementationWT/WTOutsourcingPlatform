@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import { applyTheme, useTheme } from "@/lib/theme";
 import AppSidebar from "./AppSidebar";
+import TeamSelector from "./TeamSelector";
 import UserMenu from "./UserMenu";
 
 export default function AppLayout() {
@@ -18,7 +19,8 @@ export default function AppLayout() {
 
       <AppSidebar />
       <main className="relative min-w-0 flex-1">
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-end border-b border-foreground/10 bg-foreground/[0.02] px-8 backdrop-blur-xl">
+        <header className="sticky top-0 z-10 flex h-16 items-center justify-end gap-3 border-b border-foreground/10 bg-foreground/[0.02] px-8 backdrop-blur-xl">
+          <TeamSelector />
           <UserMenu />
         </header>
 

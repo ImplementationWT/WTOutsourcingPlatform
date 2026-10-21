@@ -5,15 +5,21 @@ import {
   FolderKanban,
   Layers3,
   Plug,
+  Users,
+  Wallet,
 } from "lucide-react";
+import { useSession, type UserRole } from "@/features/auth/auth";
 
-const links = [
+const links: { to: string; label: string; icon: typeof Activity; roles?: UserRole[] }[] = [
   { to: "/dashboard", label: "Dashboard", icon: Activity },
   { to: "/projects", label: "Proyectos", icon: FolderKanban },
+  { to: "/costs", label: "Costos", icon: Wallet },
   { to: "/integrations", label: "Integraciones", icon: Plug },
+  { to: "/users", label: "Usuarios", icon: Users, roles: ["boss"] },
 ];
 
 export default function AppSidebar() {
+  const role = useSession().data?.role;
   return (
     <aside className="sticky top-0 z-20 flex h-svh w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground backdrop-blur-xl">
       <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-5">
@@ -31,7 +37,7 @@ export default function AppSidebar() {
       </div>
 
       <nav className="flex-1 space-y-1 p-3">
-        {links.map(({ to, label, icon: Icon }) => (
+        {links.filter((link) => !link.roles || (role && link.roles.includes(role))).map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}

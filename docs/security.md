@@ -53,6 +53,52 @@ base64, no el valor. En producción la genera `deploy/activate.sh` una sola vez 
 sale del VPS y se monta de solo lectura en `/run/secrets/integration.key`. Sin la clave,
 la plataforma rechaza activar integraciones (503) y el resto sigue funcionando.
 
+## Usuarios, roles y equipos
+
+Cada persona entra con **su propio usuario y contraseña** (sin SSO). Las cuentas las crea
+un jefe en **Usuarios** (`/users`).
+
+| Rol | Ve | Puede |
+| --- | --- | --- |
+| **Jefe** (`boss`) | Todos los proyectos, incluidos los que aún no tienen equipo, y todos los costos | Solo lectura. Además administra usuarios y equipos y mueve proyectos entre equipos |
+| **Team leader** (`lead`) | Los proyectos de su equipo y los costos del equipo | Crear y operar proyectos, integraciones y secretos, usar el AI Developer, crear PR y fusionar. También da de alta y verifica servidores |
+| **Developer** (`developer`) | Los proyectos de su equipo y sus propias sesiones en Costos | Lo mismo que el team leader, salvo los servidores |
+
+- **Un equipo por proyecto.** El proyecto queda en el equipo de quien lo crea. Un proyecto
+  de otro equipo responde **404**, no 403, para no confirmar que existe. Esto vale para
+  clientes, trabajos, AI Developer, integraciones, panel y listado de proyectos.
+- **Jefes de solo lectura.** Cualquier petición que no sea GET a un jefe responde 403.
+  Las excepciones son `/api/auth/*` (su contraseña) y `/api/admin/*` (administración).
+- **Servidores.** Son infraestructura compartida entre equipos: los ve cualquier sesión y
+  solo los team leaders los añaden, verifican, rotan o quitan.
+- **Repos de GitHub sin proyecto de la plataforma** (por ejemplo, creados a mano) no
+  tienen equipo: en *Proyectos* solo los ven los jefes.
+
+**Sesión.** Es una cookie HttpOnly firmada (HMAC, 8 h) con el id de usuario, el usuario,
+el rol y el equipo. En cada petición el usuario se relee de la base, así que desactivar
+una cuenta o cambiarle el rol o el equipo tiene efecto al momento, sin esperar a que la
+cookie caduque.
+
+**Contraseñas.** Se guardan con scrypt y deben tener entre 10 y 128 caracteres, distintas
+del usuario. El jefe nunca elige la contraseña: al crear o restablecer una cuenta, la
+plataforma genera una **temporal** que se muestra **una sola vez** en la respuesta y no se
+guarda en logs ni en la auditoría. Con una contraseña temporal, la API solo deja usar
+`/api/auth/*` (403 `password_change_required`) hasta cambiarla en el primer ingreso. En la
+API el indicador se llama `mustChangeCredentials`: la redacción global oculta cualquier
+clave que contenga `password`.
+
+**Migración.** En el primer arranque, la cuenta de la configuración
+(`PANEL_ADMIN_USERNAME` / `PANEL_ADMIN_PASSWORD_HASH`) se copia como usuario **jefe**, con
+la misma contraseña. Es idempotente: si ya hay usuarios no hace nada. Mientras la
+colección `users` esté vacía, la cuenta de la configuración sigue entrando como antes.
+Los proyectos existentes quedan **sin equipo**: solo los ven los jefes hasta que uno los
+asigne desde el detalle del proyecto (tarjeta *Equipo*).
+
+**Auditoría.** Cada evento guarda el usuario (`actor`), su nombre real (`actorName`) y su
+equipo (`actorTeamId`), también los del AI Developer (`ai.*`). Las altas, cambios de rol o
+equipo, desactivaciones, restablecimientos, bloqueos y movimientos de proyecto quedan
+registrados (`user.*`, `team.*`, `client.team_changed`).
+
 ## Acceso al panel: límite de intentos
 
 El login cuenta los fallos en ventanas de 15 minutos:
@@ -64,6 +110,10 @@ El login cuenta los fallos en ventanas de 15 minutos:
 Durante el bloqueo, la contraseña ni se comprueba: el panel responde 429 con
 `Retry-After` aunque sea correcta. Un acierto borra los fallos de esa IP y ese usuario.
 Cada bloqueo queda en el log (`Login blocked after repeated failures`).
+
+Además, cada cuenta se **bloquea 15 minutos tras 5 contraseñas incorrectas seguidas**,
+aunque después acierte. El bloqueo se guarda en la base (sobrevive a reinicios), queda
+auditado (`user.locked`) y se levanta antes si un jefe restablece la contraseña.
 
 La IP es la que ve el nginx del panel. La API solo confía en el salto local
 (`trustProxy` 127.0.0.1), así que lo que el cliente añada a `X-Forwarded-For` no

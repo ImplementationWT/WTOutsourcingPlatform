@@ -79,7 +79,7 @@ export default function LoginPage() {
               <Input
                 id="username"
                 autoComplete="username"
-                placeholder="admin"
+                placeholder="tu.usuario"
                 className={glassInput}
                 aria-invalid={!!errors.username}
                 {...register("username", { onChange: () => setError(null) })}

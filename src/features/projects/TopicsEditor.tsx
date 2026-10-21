@@ -18,10 +18,13 @@ export default function TopicsEditor({
   repo,
   activeTags,
   onToggleTag,
+  editable = true,
 }: {
   repo: ProjectRepo;
   activeTags: string[];
   onToggleTag: (tag: string) => void;
+  /** Solo quien opera el proyecto (no los jefes) puede cambiar las etiquetas. */
+  editable?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -53,7 +56,7 @@ export default function TopicsEditor({
     setError(null);
     try {
       const result = await updateProjectTopics(repo.name, topics);
-      queryClient.setQueryData<ProjectRepo[]>(["projects"], (projects) =>
+      queryClient.setQueriesData<ProjectRepo[]>({ queryKey: ["projects"] }, (projects) =>
         projects?.map((p) => (p.id === repo.id ? { ...p, topics: result.topics } : p)),
       );
       setEditing(false);
@@ -87,10 +90,12 @@ export default function TopicsEditor({
             </button>
           );
         })}
-        <Button size="xs" variant="ghost" onClick={start} className="text-muted-foreground">
-          <Tag />
-          {repo.topics.length ? "Editar" : "Añadir etiquetas"}
-        </Button>
+        {editable && (
+          <Button size="xs" variant="ghost" onClick={start} className="text-muted-foreground">
+            <Tag />
+            {repo.topics.length ? "Editar" : "Añadir etiquetas"}
+          </Button>
+        )}
       </div>
     );
   }

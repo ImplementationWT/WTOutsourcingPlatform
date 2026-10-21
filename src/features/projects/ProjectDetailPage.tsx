@@ -14,6 +14,7 @@ import {
   Layers,
   Loader2,
   RotateCcw,
+  Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
@@ -28,6 +29,8 @@ import IntegrationsCard from "./IntegrationsCard";
 import JobStages from "./JobStages";
 import { Code } from "./new-project/parts";
 import { isFinished, retryJob, useJobStream } from "./provisioning";
+import { useCanOperate, useIsBoss } from "@/features/auth/auth";
+import TeamAssignCard from "@/features/admin/TeamAssignCard";
 
 function ResourceRow({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
   return (
@@ -47,6 +50,8 @@ export default function ProjectDetailPage() {
   const { slug = "" } = useParams();
   const queryClient = useQueryClient();
   const { data, isLoading, isError, error } = useClient(slug);
+  const canOperate = useCanOperate();
+  const isBoss = useIsBoss();
   const [generation, setGeneration] = useState(0);
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
@@ -96,8 +101,12 @@ export default function ProjectDetailPage() {
             <div>
               <h1 className="text-3xl font-semibold tracking-tight">{data.client.name}</h1>
               <p className="mt-2 text-muted-foreground">{data.client.description}</p>
+              <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Users className="size-4" />
+                {data.client.team ? data.client.team.name : "Sin equipo (solo lo ven los jefes)"}
+              </p>
             </div>
-            {data.client.status === "ready" && (
+            {canOperate && data.client.status === "ready" && (
               <Button render={<Link to={`/projects/${slug}/ai`} />} nativeButton={false}>
                 <Bot />
                 AI Developer
@@ -188,7 +197,7 @@ export default function ProjectDetailPage() {
                 <CardDescription>
                   {job ? `Trabajo ${job.id.slice(0, 8)} · ${job.status}` : "Sin trabajos"}
                 </CardDescription>
-                {job?.status === "failed" && (
+                {canOperate && job?.status === "failed" && (
                   <CardAction>
                     <Button size="sm" onClick={handleRetry} disabled={retrying}>
                       {retrying ? <Loader2 className="animate-spin" /> : <RotateCcw />}
@@ -211,8 +220,10 @@ export default function ProjectDetailPage() {
 
           <IntegrationsCard client={data.client} />
 
+          {isBoss && <TeamAssignCard slug={data.client.id} teamId={data.client.team?.id ?? null} />}
+
           {/* Sin borrar mientras se aprovisiona: el servidor lo rechazaría. */}
-          {job && isFinished(job) && (
+          {canOperate && job && isFinished(job) && (
             <DeleteProjectCard
               client={data.client}
               repository={data.resources.repository.fullName}

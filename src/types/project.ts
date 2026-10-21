@@ -29,6 +29,8 @@ export interface ProjectRepo {
   /** Cliente de la plataforma asociado ({slug}-app), si existe. */
   clientId: string | null;
   clientStatus: "provisioning" | "ready" | "failed" | null;
+  /** Equipo del proyecto (null: repo sin proyecto de la plataforma o proyecto sin equipo). */
+  teamId?: string | null;
 }
 
 /**
@@ -78,6 +80,8 @@ export interface ClientDetail {
     deployEnabled: boolean;
     /** Servidor donde se despliega (fijado al crear el proyecto). */
     server: { id: string; name: string; appsDomain: string };
+    /** Equipo dueño del proyecto (null: anterior a los equipos; solo lo ven los jefes). */
+    team: { id: string; name: string } | null;
     /** Estado y fechas por proveedor; nunca valores. */
     integrations: ClientIntegration[];
     createdAt: string;
@@ -118,7 +122,7 @@ export interface DashboardData {
   lastDeployAt: string | null;
   projects: DashboardProject[];
   attention: { clientId: string; name: string; kind: "job_failed" | "offline" | "password_pending"; message: string }[];
-  activity: { at: string; actor: string; action: string; clientId: string }[];
+  activity: { at: string; actor: string; actorName?: string | null; action: string; clientId: string }[];
 }
 
 /** Borrado de un proyecto (POST /delete y GET /deletion). */

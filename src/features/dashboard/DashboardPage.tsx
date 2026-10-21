@@ -10,6 +10,7 @@ import { Code } from "@/features/projects/new-project/parts";
 import StatusLabel from "@/features/projects/StatusLabel";
 import { cn } from "@/lib/utils";
 import type { DashboardData, DashboardProject } from "@/types/project";
+import { useCanOperate } from "@/features/auth/auth";
 
 const relative = new Intl.RelativeTimeFormat("es", { numeric: "auto" });
 
@@ -136,6 +137,7 @@ function StatTiles({ data }: { data: DashboardData }) {
 }
 
 function ProjectsTable({ data }: { data: DashboardData }) {
+  const canOperate = useCanOperate();
   return (
     <Card className="xl:col-span-2">
       <CardHeader>
@@ -145,7 +147,12 @@ function ProjectsTable({ data }: { data: DashboardData }) {
       <CardContent>
         {data.projects.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Aún no hay proyectos. <Link to="/projects/new" className="font-medium underline-offset-4 hover:underline">Crea el primero</Link>.
+            Aún no hay proyectos.{" "}
+            {canOperate && (
+              <>
+                <Link to="/projects/new" className="font-medium underline-offset-4 hover:underline">Crea el primero</Link>.
+              </>
+            )}
           </p>
         ) : (
           <Table>
@@ -231,7 +238,7 @@ function Activity({ data }: { data: DashboardData }) {
             {data.activity.map((entry, i) => (
               <li key={`${entry.at}-${i}`} className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="min-w-0">
-                  <span className="font-medium">{entry.actor === "admin" ? "Admin" : entry.actor}</span>{" "}
+                  <span className="font-medium">{entry.actorName ?? entry.actor}</span>{" "}
                   <span className="text-muted-foreground">{ACTIONS[entry.action] ?? entry.action}</span>{" "}
                   <span className="font-medium">{entry.clientId}</span>
                 </span>

@@ -3,6 +3,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { SESSION_KEY, useSession } from "./auth";
+import ChangePasswordPage from "./ChangePasswordPage";
 
 export default function RequireAuth() {
   const location = useLocation();
@@ -27,6 +28,9 @@ export default function RequireAuth() {
   if (!session.data) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
+
+  // Primer ingreso o contraseña restablecida: nada del panel hasta cambiarla.
+  if (session.data.mustChangeCredentials) return <ChangePasswordPage forced />;
 
   return <Outlet />;
 }

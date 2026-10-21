@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import ProjectsPage from "@/features/projects/ProjectsPage";
 import { normalizeTag, searchProjects } from "@/features/projects/filters";
 import type { ProjectRepo } from "@/types/project";
+import { BOSS, withSession } from "./session";
 
 const base = {
   fullName: "",
@@ -49,9 +50,9 @@ function LocationProbe() {
   return <output data-testid="search">{location.search}</output>;
 }
 
-function renderPage(fetchImpl: typeof fetch, initial = "/projects") {
+function renderPage(fetchImpl: typeof fetch, initial = "/projects", user = undefined as typeof BOSS | undefined) {
   globalThis.fetch = fetchImpl;
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = withSession(new QueryClient({ defaultOptions: { queries: { retry: false } } }), user);
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initial]}>
@@ -97,7 +98,7 @@ describe("página de Proyectos", () => {
         puts.push({ url, body: String(init.body) });
         return new Response(JSON.stringify({ topics: ["legacy", "sitio-web"] }), { headers: { "content-type": "application/json" } });
       }
-      const body = url === "/api/projects" ? { projects: [projects[3]] } : { appBaseDomain: "apps.example.com", atlas: { clusterName: "c", consoleUrl: null } };
+      const body = url === "/api/projects" ? { projects: [{ ...projects[3], clientId: "viejo" }] } : { appBaseDomain: "apps.example.com", atlas: { clusterName: "c", consoleUrl: null } };
       return new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
     }) as typeof fetch);
 
@@ -112,5 +113,20 @@ describe("página de Proyectos", () => {
     expect(puts[0]).toEqual({ url: "/api/projects/viejo/topics", body: JSON.stringify({ topics: ["legacy", "sitio-web"] }) });
     // La etiqueta guardada aparece en la tarjeta del proyecto.
     expect(await screen.findByRole("button", { name: /#sitio-web/ })).toBeTruthy();
+  });
+
+  it("un jefe solo consulta: sin crear proyectos ni editar etiquetas", async () => {
+    renderPage(
+      (async (input: RequestInfo | URL) => {
+        const url = String(input);
+        const body = url === "/api/projects" ? { projects } : { appBaseDomain: "apps.example.com", atlas: { clusterName: "c", consoleUrl: null } };
+        return new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
+      }) as typeof fetch,
+      "/projects",
+      BOSS,
+    );
+    await screen.findByText("4 de 4 proyectos");
+    expect(screen.queryByText(/Nuevo proyecto/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Añadir etiquetas|Editar/ })).toBeNull();
   });
 });

@@ -7,12 +7,14 @@ import { cn } from "@/lib/utils";
 import NewServerForm from "./NewServerForm";
 import ServerCard from "./ServerCard";
 import { useServers } from "./api";
+import { useSession } from "@/features/auth/auth";
 
 type Tab = "servers";
 const TABS: [Tab, string, typeof Server][] = [["servers", "Servidores", Server]];
 
 /** Integraciones de la plataforma. Servidores: donde se despliegan los proyectos (se elige al crearlos). */
 export default function IntegrationsPage() {
+  const canManage = useSession().data?.role === "lead";
   const [tab, setTab] = useState<Tab>("servers");
   const [adding, setAdding] = useState(false);
   const { data, isLoading, error } = useServers();
@@ -51,7 +53,7 @@ export default function IntegrationsPage() {
               con un usuario sin privilegios (<code className="font-mono">provisioner</code>) que solo puede ejecutar los scripts de la
               plataforma.
             </p>
-            {data?.available && !adding && (
+            {canManage && data?.available && !adding && (
               <Button size="sm" onClick={() => setAdding(true)}>
                 <Plus />
                 Añadir servidor

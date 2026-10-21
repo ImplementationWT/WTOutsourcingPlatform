@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import IntegrationsCard from "@/features/projects/IntegrationsCard";
 import NewProjectPage from "@/features/projects/NewProjectPage";
 import type { ClientDetail } from "@/types/project";
+import { withSession } from "./session";
 
 const TOKEN = "monday-token-secreto-0123456789-abcdef";
 
@@ -42,7 +43,7 @@ function mockFetch(routes: Record<string, (body: string | null) => { status?: nu
 }
 
 function renderWith(ui: ReactNode, path = "/") {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = withSession(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
   const view = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[path]}>

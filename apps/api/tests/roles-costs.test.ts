@@ -186,12 +186,14 @@ describe("roles", () => {
   it("solo los jefes administran usuarios y equipos", async () => {
     const { as } = await world();
     const lead = await as("admin");
+    expect((await lead("GET", "/api/teams")).body.teams).toEqual([{ id: TEST_TEAM_ID, name: "Equipo A" }]);
     const dev = await as("dev");
     for (const api of [lead, dev]) {
       expect((await api("GET", "/api/admin/users")).status).toBe(403);
       expect((await api("POST", "/api/admin/teams", { name: "Equipo C" })).status).toBe(403);
     }
     const boss = await as("jefe");
+    expect((await boss("GET", "/api/teams")).body.teams.map((t: { name: string }) => t.name)).toEqual(["Equipo A", "Equipo B"]);
     expect((await boss("GET", "/api/admin/users")).body.users.map((u: { username: string }) => u.username).sort()).toEqual(["admin", "dev", "jefe", "otro"]);
     expect(JSON.stringify((await boss("GET", "/api/admin/users")).body)).not.toContain("scrypt$");
   });

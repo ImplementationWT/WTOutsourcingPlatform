@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import type { RevealedCredentials } from "@/types/project";
 import { revealInitialPassword, useClient } from "./api";
 import { Code } from "./new-project/parts";
+import { useCanOperate } from "@/features/auth/auth";
 
 function CopyButton({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
@@ -48,6 +49,7 @@ const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-di
  * este componente (no en la caché de consultas) y el servidor ya la borró.
  */
 export default function InitialCredentialsCard({ slug }: { slug: string }) {
+  const canOperate = useCanOperate();
   const queryClient = useQueryClient();
   const { data } = useClient(slug);
   const [revealed, setRevealed] = useState<RevealedCredentials | null>(null);
@@ -83,10 +85,12 @@ export default function InitialCredentialsCard({ slug }: { slug: string }) {
     password = (
       <>
         <span className="font-mono tracking-widest text-muted-foreground">••••••••••••</span>
-        <Button type="button" size="xs" onClick={handleReveal} disabled={revealing}>
-          {revealing ? <Loader2 className="animate-spin" /> : <Eye />}
-          Mostrar contraseña inicial
-        </Button>
+        {canOperate && (
+          <Button type="button" size="xs" onClick={handleReveal} disabled={revealing}>
+            {revealing ? <Loader2 className="animate-spin" /> : <Eye />}
+            Mostrar contraseña inicial
+          </Button>
+        )}
       </>
     );
   } else if (status.state === "default") {

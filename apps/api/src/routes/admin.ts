@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
-import { requireBoss } from "../auth/session.js";
+import { requireAuth, requireBoss } from "../auth/session.js";
 import { UserDirectory, UserDirectoryError } from "../auth/users.js";
 import { slugSchema } from "../domain/naming.js";
 
@@ -47,6 +47,13 @@ export async function registerAdminRoutes(app: FastifyInstance, { users }: { use
       throw error;
     }
   }
+
+  /** Equipos visibles para la sesión (selector del jefe; el resto solo ve el suyo). */
+  app.get("/api/teams", { preHandler: requireAuth }, async (request) => {
+    const user = request.user!;
+    const teams = (await users.listTeams()).filter((team) => user.role === "boss" || team.id === user.teamId);
+    return { teams: teams.map(({ id, name }) => ({ id, name })) };
+  });
 
   app.get("/api/admin/users", { preHandler: requireBoss }, async () => ({ users: await users.listUsers() }));
 

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
+import { useTeamFilter, withTeam } from "@/features/admin/api";
 import type {
   ClientDetail,
   DashboardData,
@@ -21,8 +22,8 @@ export interface NewProjectInput {
   serverId?: string;
 }
 
-async function fetchProjects(): Promise<ProjectRepo[]> {
-  return (await apiFetch<{ projects: ProjectRepo[] }>("/api/projects")).projects;
+async function fetchProjects(teamId: string | null): Promise<ProjectRepo[]> {
+  return (await apiFetch<{ projects: ProjectRepo[] }>(withTeam("/api/projects", teamId))).projects;
 }
 
 export function useClient(slug: string) {
@@ -66,7 +67,9 @@ export function revealInitialPassword(slug: string) {
 
 /** Proyectos reales: repos de GitHub de la organización (sin internos AB/WT). */
 export function useProjects() {
-  return useQuery({ queryKey: ["projects"], queryFn: fetchProjects });
+  // Solo los del equipo del usuario; un jefe ve todos o los del equipo que elija.
+  const teamId = useTeamFilter();
+  return useQuery({ queryKey: ["projects", teamId], queryFn: () => fetchProjects(teamId) });
 }
 
 /** Reemplaza las etiquetas (topics de GitHub) de un proyecto. */
@@ -113,9 +116,10 @@ export function removeIntegration(slug: string, provider: string) {
 
 /** Panel principal con datos reales: estado, salud en vivo, atención y actividad. */
 export function useDashboard() {
+  const teamId = useTeamFilter();
   return useQuery({
-    queryKey: ["dashboard"],
-    queryFn: () => apiFetch<DashboardData>("/api/dashboard"),
+    queryKey: ["dashboard", teamId],
+    queryFn: () => apiFetch<DashboardData>(withTeam("/api/dashboard", teamId)),
     refetchInterval: 30_000,
   });
 }

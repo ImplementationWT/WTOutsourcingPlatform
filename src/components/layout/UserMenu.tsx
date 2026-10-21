@@ -10,14 +10,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { logout, useSession } from "@/features/auth/auth";
+import { logout, ROLE_LABELS, useSession } from "@/features/auth/auth";
+import { useTeams } from "@/features/admin/api";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/lib/theme";
 
 export default function UserMenu() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const username = useSession().data?.username ?? "Admin";
+  const user = useSession().data;
+  const username = user?.name ?? user?.username ?? "";
+  const team = useTeams().data?.find((t) => t.id === user?.teamId);
   const { theme, toggle } = useTheme();
   const dark = theme === "dark";
 
@@ -40,7 +43,10 @@ export default function UserMenu() {
         <DropdownMenuGroup>
           <DropdownMenuLabel>
             <p className="text-sm font-medium text-foreground">{username}</p>
-            <p className="text-xs font-normal text-muted-foreground">Administrador</p>
+            <p className="text-xs font-normal text-muted-foreground">
+              {user ? ROLE_LABELS[user.role] : ""}
+              {team ? ` · ${team.name}` : ""}
+            </p>
           </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />

@@ -5,7 +5,9 @@ cliente a partir de instrucciones en lenguaje natural, muestra los cambios en un
 una persona los aprueba.
 
 Se abre desde el detalle de un proyecto listo: **AI Developer**
-(`/projects/<slug>/ai`).
+(`/projects/<slug>/ai`). Lo usan los team leaders y developers del equipo del proyecto.
+Los jefes no lo abren (solo lectura) y las sesiones de otro equipo responden 404. Roles y
+equipos en [security.md](security.md#usuarios-roles-y-equipos).
 
 ## Cómo funciona
 
@@ -75,6 +77,65 @@ Cada sesión tiene un **tope de gasto** (`AI_SESSION_BUDGET_USD`, 10 USD por
 defecto, a precio de lista de Anthropic). Al alcanzarlo el agente se pausa y el
 chat ofrece *Ampliar presupuesto* (suma otro tramo igual). El gasto se ve en la
 cabecera del chat, y el detalle completo, en la consola de Anthropic (*Sessions*).
+
+### Costos por equipo, proyecto y persona
+
+La página **Costos** (`/costs`) reparte el gasto del agente. Solo cuenta Claude, en USD:
+no incluye servidores, Atlas ni GitHub.
+
+- **Origen.** Cada sesión guarda `costCents` (centavos de USD), `budgetCents`,
+  `startedByUserId`, `teamId`, `clientId` y `lastCostAt`. El costo sale del evento
+  `session.usage` de Anthropic (`usage.list_cost`), que es **acumulado**. Se actualiza en
+  cada evento de costo del chat, al consultar la sesión, al ampliar el presupuesto y al
+  cerrar o fusionar. Se guarda con `$max`: repetir un evento (historial más stream) no lo
+  duplica, y un evento antiguo no lo reduce.
+- **Es precio de lista, no la factura.** Descuentos, créditos, impuestos o redondeos de
+  Anthropic no se reflejan.
+- **Equipo y persona.** Se fijan al empezar la sesión: el equipo es el del proyecto en ese
+  momento y la persona es quien la inició. Mover después el proyecto no reasigna sesiones
+  pasadas.
+- **Borrar una conversación** del panel la marca como borrada (`deletedAt`): deja de
+  listarse, pero su costo sigue contando.
+- **Alcance.** El jefe ve todo (con tarjetas por equipo, tendencia mensual y proyectos más
+  caros) y puede filtrar por equipo. El team leader ve su equipo, con el gasto por
+  developer. El developer ve sus sesiones.
+- **Métricas.** Totales, tendencia mensual (por mes UTC de inicio de la sesión), número de
+  sesiones, PR fusionados y costo por PR fusionado (gasto ÷ PR fusionados).
+- **Filtros y exportación.** Rango de fechas (`from`/`to`, AAAA-MM-DD, `to` incluido) y CSV
+  (`/api/costs/export.csv`) con el mismo alcance del rol. Las celdas que empiezan por `=`,
+  `+`, `-` o `@` llevan un apóstrofo delante para que Excel no las ejecute como fórmula.
+
+API: `GET /api/costs/summary`, `GET /api/costs/sessions` y `GET /api/costs/export.csv`.
+
+**Sesiones anteriores.** Las sesiones creadas antes de esta versión no tienen costo
+guardado. El script de backfill lo lee de Anthropic (`getSession`) y rellena equipo y
+persona si faltan. Es idempotente y se puede repetir:
+
+```sh
+sudo docker exec launchpad-api node dist/scripts/backfill-ai-costs.js
+```
+
+Si Anthropic ya no tiene una sesión, esa sesión queda con costo 0 y aparece en el
+resumen como «sin costo disponible».
+
+### Conciliar con la factura de Anthropic
+
+1. Exporta el CSV del mes en *Costos*, sin filtro de equipo, con la sesión de un jefe.
+2. En la consola de Anthropic, abre *Usage* / *Cost* del workspace `ANTHROPIC_WORKSPACE`
+   para el mismo mes.
+3. La suma de `costo_usd` debería acercarse al costo de lista de las sesiones de Managed
+   Agents de ese workspace. Diferencias normales:
+   - descuentos o créditos de la factura;
+   - otro uso de la misma clave o del mismo workspace fuera del AI Developer;
+   - sesiones que empezaron a final de mes (el CSV las cuenta en el mes de inicio);
+   - sesiones todavía en curso.
+4. Para repartir la factura real, aplica a cada equipo su porcentaje del total del CSV.
+
+**Opción futura: un workspace y una clave por equipo.** Para que la factura venga ya
+separada, se puede crear un workspace de Anthropic por equipo, cada uno con su clave. La
+plataforma ya envía `anthropic-workspace-id` según `ANTHROPIC_WORKSPACE`. Habría que
+convertir esa variable en un mapa equipo → workspace/clave y elegirlo al empezar cada
+sesión. Hoy no está implementado: hay un solo workspace para todos.
 
 Modelo: Claude Opus 5.5 con esfuerzo alto (`apps/api/src/ai/agent-definition.ts`).
 

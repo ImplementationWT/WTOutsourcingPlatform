@@ -1,6 +1,8 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import AppLayout from "@/components/layout/AppLayout";
+import UsersPage from "@/features/admin/UsersPage";
 import LoginPage from "@/features/auth/LoginPage";
+import CostsPage from "@/features/costs/CostsPage";
 import RequireAuth from "@/features/auth/RequireAuth";
 import DashboardPage from "@/features/dashboard/DashboardPage";
 import NewProjectPage from "@/features/projects/NewProjectPage";
@@ -26,6 +28,8 @@ export const router = createBrowserRouter([
           { path: "/projects/new", element: <NewProjectPage /> },
           { path: "/projects/:slug", element: <ProjectDetailPage /> },
           { path: "/integrations", element: <IntegrationsPage /> },
+          { path: "/costs", element: <CostsPage /> },
+          { path: "/users", element: <UsersPage /> },
           { path: "/settings", element: <SettingsPage /> },
         ],
       },
