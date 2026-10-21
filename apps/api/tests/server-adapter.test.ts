@@ -5,10 +5,16 @@ import { parseSlug } from "../src/domain/naming.js";
 import { FatalError } from "../src/lib/errors.js";
 import { redactString } from "../src/lib/redact.js";
 
-const { Server, utils } = ssh2;
-const hostKey = utils.generateKeyPairSync("ed25519");
-const otherHostKey = utils.generateKeyPairSync("ed25519");
-const provisioner = utils.generateKeyPairSync("ed25519");
+const { Server } = ssh2;
+// Pares validados: el generador de ssh2 a veces da claves ed25519 inválidas (31 bytes) y el
+// test fallaría de forma intermitente.
+const validPair = (comment: string) => {
+  const { privateKey, publicKey } = generateClientKeyPair(comment);
+  return { private: privateKey, public: publicKey };
+};
+const hostKey = validPair("host");
+const otherHostKey = validPair("otro-host");
+const provisioner = validPair("provisioner");
 const keyBlob = (publicKey: string) => Buffer.from(publicKey.split(" ")[1], "base64");
 
 interface Received {
@@ -118,8 +124,10 @@ describe("adaptador SSH del orquestador", () => {
 
   it("clave del provisioner rechazada: error accionable", async () => {
     const { port } = await startServer(() => ({ code: 0 }));
-    const intruder = utils.generateKeyPairSync("ed25519");
-    const error = await adapter(port, { key: intruder.private }).clientStatus(parseSlug("acme-crm")).catch((e) => e);
+    // Con generateClientKeyPair: el generador de ssh2 a veces da claves inválidas de 31 bytes
+    // y el fallo sería otro (test intermitente).
+    const intruder = generateClientKeyPair("intruso");
+    const error = await adapter(port, { key: intruder.privateKey }).clientStatus(parseSlug("acme-crm")).catch((e) => e);
     expect(error.code).toBe("server_auth_failed");
     expect(error.message).toContain("--provisioner-pubkey");
   });
