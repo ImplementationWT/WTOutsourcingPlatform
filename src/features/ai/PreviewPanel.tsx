@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Eye, Loader2, Monitor, Power, RefreshCw, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,9 @@ import { cn } from "@/lib/utils";
 import type { AiPreview, AiSession } from "@/types/ai";
 import { WillDooAvatar } from "./ChatPanel";
 import { startAiPreview, stopAiPreview, useAiPreview } from "./api";
+
+/** Ancho al que se pinta la app en modo escritorio (después se reduce para caber en el panel). */
+const DESKTOP_WIDTH = 1280;
 
 const STEPS: Partial<Record<AiPreview["status"], string>> = {
   installing: "Preparando la dirección privada de la vista previa…",
@@ -23,6 +26,17 @@ export default function PreviewPanel({ session, agentBusy }: { session: AiSessio
   const { data: preview, isLoading } = useAiPreview(session.id, active);
   const [frame, setFrame] = useState<string | null>(null);
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
+  // Tamaño del hueco del iframe: el modo escritorio se pinta a DESKTOP_WIDTH y se escala para caber.
+  const [box, setBox] = useState({ width: 0, height: 0 });
+  const observer = useRef<ResizeObserver | null>(null);
+  const measure = useCallback((element: HTMLDivElement | null) => {
+    observer.current?.disconnect();
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const update = () => setBox({ width: element.clientWidth, height: element.clientHeight });
+    update();
+    observer.current = new ResizeObserver(update);
+    observer.current.observe(element);
+  }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,6 +61,12 @@ export default function PreviewPanel({ session, agentBusy }: { session: AiSessio
   }
 
   // Recargar a mano: pide un pase nuevo (el anterior ya se usó).
+  const scale = box.width > 16 ? Math.min(1, (box.width - 18) / DESKTOP_WIDTH) : 1;
+  const desktopStyle =
+    device === "desktop" && box.width > 16 && scale < 1
+      ? { width: DESKTOP_WIDTH, height: (box.height - 18) / scale, transform: `scale(${scale})` }
+      : null;
+
   const reload = async () => {
     setFrame(null);
     await refresh();
@@ -170,16 +190,27 @@ export default function PreviewPanel({ session, agentBusy }: { session: AiSessio
           {error}
         </p>
       )}
-      <div className="min-h-0 flex-1 bg-foreground/[0.03] p-2">
+      <div ref={measure} className="min-h-0 flex-1 overflow-hidden bg-foreground/[0.03] p-2">
         {frame ? (
-          <iframe
-            key={frame}
-            src={frame}
-            title={`Vista previa de ${session.title}`}
-            sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-downloads"
-            referrerPolicy="no-referrer"
-            className={cn("mx-auto h-full rounded-md border border-foreground/10 bg-white", device === "mobile" ? "w-[390px] max-w-full" : "w-full")}
-          />
+          // Siempre el mismo iframe (cambiar de elemento lo recargaría con un pase ya usado): solo
+          // cambian su tamaño y su escala. Escritorio: la app ve 1280 px (su diseño de PC) y se
+          // reduce para caber en el panel.
+          <div
+            className={cn(
+              "mx-auto h-full overflow-hidden rounded-md border border-foreground/10 bg-white",
+              device === "mobile" ? "w-[390px] max-w-full" : "w-full",
+            )}
+          >
+            <iframe
+              key={frame}
+              src={frame}
+              title={`Vista previa de ${session.title}`}
+              sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-downloads"
+              referrerPolicy="no-referrer"
+              className="origin-top-left border-0"
+              style={desktopStyle ?? { width: "100%", height: "100%" }}
+            />
+          </div>
         ) : (
           <p className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" /> Abriendo…

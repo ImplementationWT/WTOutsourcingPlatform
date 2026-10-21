@@ -164,7 +164,7 @@ function SessionView({ session }: { session: AiSession }) {
       )}
       <aside
         className={cn(
-          "fixed inset-y-0 right-0 z-40 w-full border-l border-foreground/10 sm:w-[34rem] lg:static lg:z-auto lg:block lg:w-[46%] lg:max-w-[52rem]",
+          "fixed inset-y-0 right-0 z-40 w-full border-l border-foreground/10 sm:w-[34rem] lg:static lg:z-auto lg:block lg:w-[52%] xl:w-[56%]",
           mobilePanel ? "block" : "hidden",
         )}
       >

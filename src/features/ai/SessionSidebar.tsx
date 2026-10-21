@@ -62,7 +62,7 @@ export default function SessionSidebar({
   }
 
   return (
-    <div className="flex h-full w-72 flex-col border-r border-foreground/10 bg-sidebar/80 backdrop-blur-xl">
+    <div className="flex h-full w-60 flex-col border-r border-foreground/10 bg-sidebar/80 backdrop-blur-xl">
       <div className="flex items-center gap-2 px-3 pt-3">
         <Button
           variant="outline"
