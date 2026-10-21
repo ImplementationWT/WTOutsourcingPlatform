@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowLeft, ExternalLink, Loader2, Menu, PanelRightClose, PanelRightOpen, X } from "lucide-react";
@@ -15,7 +15,7 @@ import PreviewPanel from "./PreviewPanel";
 import PublishPanel from "./PublishPanel";
 import SessionSidebar from "./SessionSidebar";
 import Welcome from "./Welcome";
-import { closeAiSession, formatUsd, raiseAiBudget, useAiSession, useAiSessions, useAiStatus } from "./api";
+import { closeAiSession, formatUsd, raiseAiBudget, startAiPreview, useAiPreview, useAiSession, useAiSessions, useAiStatus } from "./api";
 import { useAiEvents } from "./useAiEvents";
 
 const STATUS_BADGE: Record<AiSession["status"], string> = { active: "En curso", merged: "Publicada", closed: "Cerrada" };
@@ -92,6 +92,23 @@ function SessionView({ session, panelOpen, setPanelOpen }: { session: AiSession;
   const cost = chat.costCents ?? data?.agent?.costCents ?? null;
   const budget = data?.agent?.budgetCents ?? null;
   const agentBusy = chat.state === "running";
+  const active = current.status === "active";
+
+  // La vista previa aparece al abrir la conversación: la consulta la arranca (y la mantiene al
+  // día con cada commit) aunque el panel esté cerrado; en pantallas grandes se abre el panel.
+  const preview = useAiPreview(session.id, active);
+  const opened = useRef(false);
+  useEffect(() => {
+    if (!active || opened.current || preview.isLoading) return;
+    opened.current = true;
+    if (window.matchMedia?.("(min-width: 1024px)").matches) setPanelOpen(true);
+    // Apagada a mano en otra visita: al volver a entrar se enciende de nuevo.
+    if (preview.data?.status === "stopped") {
+      void startAiPreview(session.id)
+        .then(() => queryClient.invalidateQueries({ queryKey: ["ai-preview", session.id] }))
+        .catch(() => undefined);
+    }
+  }, [active, preview.isLoading, preview.data?.status, session.id, setPanelOpen, queryClient]);
 
   async function raiseBudget() {
     await raiseAiBudget(session.id);

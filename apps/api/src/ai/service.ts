@@ -469,9 +469,9 @@ export class AiDeveloper {
   }
 
   /**
-   * Estado de la vista previa (el panel lo consulta cada pocos segundos). Arranca sola en
-   * cuanto Claude sube su primer cambio (o al volver tras apagarse por inactividad) y se
-   * actualiza sola con cada commit nuevo de la rama.
+   * Estado de la vista previa (el panel lo consulta cada pocos segundos). Arranca sola al
+   * abrir la conversación (o al volver tras apagarse por inactividad), con la rama tal como
+   * esté, y se actualiza sola con cada commit nuevo.
    */
   async previewState(session: AiSessionDoc) {
     const preview = session.preview;
@@ -479,8 +479,7 @@ export class AiDeveloper {
     const now = this.now();
 
     if (!preview || (preview.status === "stopped" && preview.stopReason === "expired")) {
-      const hasChanges = Boolean(head && head !== session.baseSha);
-      if (session.status === "active" && this.deps.provisioning.deployEnabled && hasChanges) {
+      if (session.status === "active" && this.deps.provisioning.deployEnabled) {
         try {
           return await this.startPreview(session, "sistema");
         } catch (error) {

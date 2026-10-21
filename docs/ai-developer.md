@@ -22,8 +22,9 @@ Se abre desde el detalle de un proyecto listo: **AI Developer**
    uno y 600 KB en total. El chat y la auditoría solo muestran el nombre.
 3. **Código.** Claude edita, ejecuta `pnpm lint`, `typecheck`, `test` y `build`,
    hace commit y push **solo a su rama**.
-4. **Vista previa en vivo.** En cuanto Claude sube su primer cambio, la vista previa
-   arranca sola en `https://preview-<slug>.<dominio>`, embebida junto al chat. El
+4. **Vista previa en vivo.** Al abrir la conversación, la vista previa arranca sola en
+   `https://preview-<slug>.<dominio>`, embebida junto al chat, con la rama tal como
+   esté. El
    servidor del proyecto clona la rama y la ejecuta en modo desarrollo
    (`pnpm dev:preview`, con Vite en caliente), sin pasar por GitHub Actions.
    - Cada commit nuevo de Claude se trae solo y se ve en segundos, sin recargar ni

@@ -12,7 +12,7 @@ const STEPS: Partial<Record<AiPreview["status"], string>> = {
 };
 
 /**
- * Vista previa en vivo, embebida. Arranca sola con el primer cambio de Claude y cada commit
+ * Vista previa en vivo, embebida. Arranca sola al abrir la conversación y cada commit
  * nuevo se aplica en caliente (Vite), sin recargar el iframe. El pase del iframe es de un
  * solo uso: se fija la primera URL lista y solo se pide otra al recargar a mano.
  */
@@ -86,7 +86,7 @@ export default function PreviewPanel({ session, agentBusy }: { session: AiSessio
               : preview?.status === "failed"
                 ? "Pide a Claude que lo arregle o vuelve a intentarlo."
                 : active
-                  ? "Se abrirá sola en cuanto Claude suba su primer cambio: la app en vivo, con una base de datos vacía y sin tocar producción."
+                  ? "Preparando la vista previa: la app en vivo, con una base de datos vacía y sin tocar producción. Cada cambio de Claude se verá aquí al momento."
                   : "La sesión está cerrada."}
           </p>
           {active && start(preview ? "Abrir vista previa" : "Abrirla ya")}

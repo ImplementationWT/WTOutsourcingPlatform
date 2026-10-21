@@ -121,14 +121,14 @@ describe("AI Developer: vista previa", () => {
     expect(server.count("updateLivePreview")).toBe(1);
   });
 
-  it("arranca sola en cuanto Claude sube su primer cambio", async () => {
+  it("arranca sola al abrir la conversación, aunque Claude aún no haya cambiado nada", async () => {
     const { api, app, session, server, github } = await setup();
-    expect((await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview).toBeNull();
     expect(server.count("installPreview")).toBe(0);
-    github.pushCommit(REPO, session.branch, "primer cambio");
     expect((await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview.status).toBe("installing");
     await app.aiDeveloper!.previewIdle();
-    expect((await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview.status).toBe("ready");
+    const ready = (await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview;
+    expect(ready).toMatchObject({ status: "ready", sha: await github.getBranchSha(REPO, "main") });
+    expect(server.count("startLivePreview")).toBe(1);
   });
 
   it("solo redirige a rutas del mismo host tras canjear el pase", async () => {
@@ -185,8 +185,7 @@ describe("AI Developer: vista previa", () => {
     expect((await store.aiSessions.findOne({ _id: session.id }))?.preview?.status).toBe("stopped");
     expect(await nginx.check()).toBe(401);
 
-    // Al volver al panel, si la rama tiene cambios, se levanta de nuevo sola.
-    github.pushCommit(REPO, session.branch, "cambio");
+    // Al volver al panel se levanta de nuevo sola.
     expect((await api("GET", `/api/ai/sessions/${session.id}/preview`)).body.preview.status).toBe("installing");
     await app.aiDeveloper!.previewIdle();
     expect(server.count("startLivePreview")).toBe(2);
