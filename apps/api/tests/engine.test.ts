@@ -6,6 +6,7 @@ import type { AdminStore } from "../src/store/admin-store.js";
 import { STAGES } from "../src/store/models.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
 import { createFakes, silent } from "./helpers/fakes.js";
+import { TEST_TEAM_ID } from "./helpers/users.js";
 
 
 beforeAll(startDb);
@@ -21,7 +22,7 @@ async function setup() {
 }
 
 async function createClient(store: AdminStore, slug = "acme-crm") {
-  return store.createClientWithJob({ slug, name: "Acme CRM", description: "CRM interno de Acme", actor: "admin" });
+  return store.createClientWithJob({ teamId: TEST_TEAM_ID, slug, name: "Acme CRM", description: "CRM interno de Acme", actor: "admin" });
 }
 
 describe("motor de etapas", () => {
@@ -292,7 +293,7 @@ describe("motor de etapas", () => {
     const engine = new JobEngine(store, phase1, silent);
     expect(engine.stageNames).toEqual(["github_repository", "mongodb_database", "github_secrets"]);
 
-    const job = await store.createClientWithJob({ slug: "acme-crm", name: "Acme CRM", description: "CRM interno de Acme", actor: "admin", stages: engine.stageNames });
+    const job = await store.createClientWithJob({ teamId: TEST_TEAM_ID, slug: "acme-crm", name: "Acme CRM", description: "CRM interno de Acme", actor: "admin", stages: engine.stageNames });
     const result = await engine.run(job._id, "admin");
 
     expect(result?.status).toBe("succeeded");

@@ -4,6 +4,7 @@ import { PreviewPasses } from "./ai/preview-pass.js";
 import { AiDeveloper } from "./ai/service.js";
 import type { AiAgentAdapter, AiConfig } from "./ai/types.js";
 import { type AuthConfig, registerAuth } from "./auth/session.js";
+import { UserDirectory } from "./auth/users.js";
 import { JobEngine } from "./jobs/engine.js";
 import { Teardown } from "./jobs/teardown.js";
 import type { Deps } from "./jobs/types.js";
@@ -11,7 +12,9 @@ import { ProvisioningError } from "./lib/errors.js";
 import { loggerOptions } from "./lib/logger.js";
 import { redact } from "./lib/redact.js";
 import { registerAiRoutes } from "./routes/ai.js";
+import { registerAdminRoutes } from "./routes/admin.js";
 import { registerClientRoutes } from "./routes/clients.js";
+import { registerCostRoutes } from "./routes/costs.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerIntegrationRoutes } from "./routes/integrations.js";
 import { registerServerRoutes } from "./routes/servers.js";
@@ -93,7 +96,14 @@ export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStrea
 
   app.get("/health", async () => ({ status: "ok", service: "provisioning-api" }));
 
-  await registerAuth(app, auth);
+  // Usuarios: en el primer arranque la cuenta admin de la configuración pasa a ser un jefe.
+  const users = new UserDirectory(store);
+  if (await users.bootstrapFromConfig(auth.adminUsername, auth.adminPasswordHash)) {
+    app.log.info({ username: auth.adminUsername }, "Config admin migrated to a boss user");
+  }
+  await registerAuth(app, auth, users);
+  await registerAdminRoutes(app, { users });
+  await registerCostRoutes(app, { store });
   await registerClientRoutes(app, { store, engine, teardown, deps, servers });
   await registerServerRoutes(app, { store, servers });
   await registerDashboardRoutes(app, { store, deps });
@@ -105,5 +115,5 @@ export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStrea
     await Promise.all([engine.idle(), teardown.idle()]);
   });
 
-  return Object.assign(app, { engine, teardown, store, aiDeveloper, servers });
+  return Object.assign(app, { engine, teardown, store, aiDeveloper, servers, users });
 }

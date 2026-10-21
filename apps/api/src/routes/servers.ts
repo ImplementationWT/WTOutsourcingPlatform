@@ -1,6 +1,9 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
-import { requireAdmin } from "../auth/session.js";
+import { requireAuth, requireRole } from "../auth/session.js";
+
+/** Servidores: infraestructura compartida entre equipos. Los ve cualquiera; los cambian los team leaders. */
+const requireServerAdmin = requireRole("lead");
 import { ProvisioningError } from "../lib/errors.js";
 import { createRateLimiter } from "../lib/rate-limit.js";
 import { hostname, hostOrIp, ipv4 } from "../lib/validators.js";
@@ -47,13 +50,13 @@ export async function registerServerRoutes(app: FastifyInstance, { store, server
     return parsed.success ? parsed.data.id : null;
   };
 
-  app.get("/api/servers", { preHandler: requireAdmin }, async () => ({
+  app.get("/api/servers", { preHandler: requireAuth }, async () => ({
     available: servers.available,
     ghcrOrg: servers.ghcrOrg,
     servers: await servers.list()
   }));
 
-  app.post("/api/servers", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/servers", { preHandler: requireServerAdmin }, async (request, reply) => {
     const body = createSchema.safeParse(request.body);
     if (!body.success) {
       return reply.code(400).send({ error: "Datos inválidos.", issues: body.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
@@ -66,21 +69,21 @@ export async function registerServerRoutes(app: FastifyInstance, { store, server
     });
   });
 
-  app.get("/api/servers/:id", { preHandler: requireAdmin }, async (request, reply) => {
+  app.get("/api/servers/:id", { preHandler: requireAuth }, async (request, reply) => {
     const id = parseId(request.params, reply);
     if (!id) return reply;
     return run(reply, async () => ({ server: await servers.get(id) }));
   });
 
   /** Huella actual del host (para compararla con la consola del VPS; no se fija). */
-  app.post("/api/servers/:id/fingerprint", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/servers/:id/fingerprint", { preHandler: requireServerAdmin }, async (request, reply) => {
     const id = parseId(request.params, reply);
     if (!id) return reply;
     if (!sshLimiter.take(request.user!.username)) return reply.code(429).send({ error: "Demasiadas conexiones. Espera un minuto." });
     return run(reply, () => servers.readFingerprint(id));
   });
 
-  app.post("/api/servers/:id/host-key", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/servers/:id/host-key", { preHandler: requireServerAdmin }, async (request, reply) => {
     const id = parseId(request.params, reply);
     if (!id) return reply;
     const body = pinSchema.safeParse(request.body);
@@ -94,7 +97,7 @@ export async function registerServerRoutes(app: FastifyInstance, { store, server
     });
   });
 
-  app.post("/api/servers/:id/verify", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/servers/:id/verify", { preHandler: requireServerAdmin }, async (request, reply) => {
     const id = parseId(request.params, reply);
     if (!id) return reply;
     const actor = request.user!.username;
@@ -106,7 +109,7 @@ export async function registerServerRoutes(app: FastifyInstance, { store, server
     });
   });
 
-  app.post("/api/servers/:id/rotate-key", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/servers/:id/rotate-key", { preHandler: requireServerAdmin }, async (request, reply) => {
     const id = parseId(request.params, reply);
     if (!id) return reply;
     const actor = request.user!.username;
@@ -118,7 +121,7 @@ export async function registerServerRoutes(app: FastifyInstance, { store, server
   });
 
   /** Quitar un servidor: exige reenviar su dominio y que no tenga proyectos. */
-  app.post("/api/servers/:id/delete", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/servers/:id/delete", { preHandler: requireServerAdmin }, async (request, reply) => {
     const id = parseId(request.params, reply);
     if (!id) return reply;
     const body = deleteSchema.safeParse(request.body);

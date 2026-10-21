@@ -5,7 +5,7 @@ import { redact } from "../lib/redact.js";
 import type { AiAgentSettingsDoc } from "../ai/anthropic-adapter.js";
 import type { InitialPasswordDoc } from "./initial-password-vault.js";
 import type { ProvisioningSecretDoc } from "./provisioning-secrets.js";
-import type { AiSessionDoc, ClientServerRef, DeletionDoc, ServerDoc } from "./models.js";
+import type { AiSessionDoc, ClientServerRef, DeletionDoc, ServerDoc, TeamDoc, UserDoc } from "./models.js";
 import {
   type AuditDoc,
   type ClientDoc,
@@ -48,6 +48,9 @@ export class AdminStore {
   readonly aiAgentSettings;
   /** Servidores de despliegue dados de alta desde el panel (los gestiona ServerDirectory). */
   readonly servers;
+  /** Usuarios del panel y equipos (los gestiona UserDirectory). */
+  readonly users;
+  readonly teams;
 
   constructor(db: Db, private readonly now: () => Date = () => new Date()) {
     this.clients = db.collection<ClientDoc>("clients");
@@ -60,6 +63,8 @@ export class AdminStore {
     this.aiSessions = db.collection<AiSessionDoc>("ai_sessions");
     this.aiAgentSettings = db.collection<AiAgentSettingsDoc>("settings");
     this.servers = db.collection<ServerDoc>("servers");
+    this.users = db.collection<UserDoc>("users");
+    this.teams = db.collection<TeamDoc>("teams");
   }
 
   async init() {
@@ -74,7 +79,13 @@ export class AdminStore {
       this.aiSessions.createIndex({ clientId: 1, createdAt: -1 }),
       // Cada servidor tiene su dominio de apps: dos servidores no pueden compartirlo.
       this.servers.createIndex({ appsDomain: 1 }, { unique: true }),
-      this.clients.createIndex({ "server.id": 1 })
+      this.clients.createIndex({ "server.id": 1 }),
+      this.clients.createIndex({ teamId: 1 }),
+      this.users.createIndex({ username: 1 }, { unique: true }),
+      this.users.createIndex({ teamId: 1 }),
+      this.teams.createIndex({ name: 1 }, { unique: true }),
+      this.aiSessions.createIndex({ teamId: 1, createdAt: -1 }),
+      this.aiSessions.createIndex({ startedByUserId: 1, createdAt: -1 })
     ]);
   }
 
@@ -90,6 +101,8 @@ export class AdminStore {
     stages?: readonly string[];
     /** Servidor elegido (sin él, el principal de la configuración). */
     server?: ClientServerRef;
+    /** Equipo del proyecto (obligatorio desde las rutas; los tests antiguos lo omiten). */
+    teamId?: string | null;
   }) {
     const at = this.now();
     const jobId = randomUUID();
@@ -101,6 +114,7 @@ export class AdminStore {
         status: "provisioning",
         readiness: { ready: false },
         ...(input.server ? { server: input.server } : {}),
+        ...(input.teamId ? { teamId: input.teamId } : {}),
         latestJobId: jobId,
         createdBy: input.actor,
         createdAt: at,
@@ -331,8 +345,17 @@ export class AdminStore {
 
   // ---- auditoría -----------------------------------------------------------
 
-  async audit(entry: Omit<AuditDoc, "at">) {
+  /**
+   * Registra un evento. Si el actor es un usuario del panel, se guardan también su nombre real y
+   * su equipo en ese momento (aunque después cambien o se desactive).
+   */
+  async audit(entry: Omit<AuditDoc, "at" | "actorName" | "actorTeamId">) {
     assertNoSecrets(entry, "la auditoría");
-    await this.auditLog.insertOne({ ...entry, at: this.now() });
+    const user = await this.users.findOne({ username: entry.actor }, { projection: { name: 1, teamId: 1 } });
+    await this.auditLog.insertOne({
+      ...entry,
+      ...(user ? { actorName: user.name, actorTeamId: user.teamId } : {}),
+      at: this.now()
+    });
   }
 }

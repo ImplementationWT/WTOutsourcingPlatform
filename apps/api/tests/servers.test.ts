@@ -8,6 +8,7 @@ import { ServerDirectory } from "../src/servers/directory.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
 import { FakeAgent } from "./helpers/fake-agent.js";
 import { createFakes, FakeServer, TEST_CONFIG } from "./helpers/fakes.js";
+import { seedUser } from "./helpers/users.js";
 
 const ADMIN_PASSWORD = "correct horse battery staple";
 let passwordHash: string;
@@ -60,10 +61,11 @@ async function setup({ withKey = true } = {}) {
     deps: fakes.deps,
     servers,
     logLevel: "silent",
-    auth: { adminUsername: "admin", adminPasswordHash: passwordHash, sessionSecret: "x".repeat(40), secureCookies: false },
+    auth: { adminUsername: "jefe", adminPasswordHash: passwordHash, sessionSecret: "x".repeat(40), secureCookies: false },
     ai: { agent: new FakeAgent(), config: { sessionBudgetCents: 1000, workspace: "default" } }
   });
   apps.push(app);
+  await seedUser(store, passwordHash);
   const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "admin", password: ADMIN_PASSWORD } });
   const cookie = login.cookies.find((c) => c.name === "pp_session")!;
   const headers = { cookie: `pp_session=${cookie.value}` };

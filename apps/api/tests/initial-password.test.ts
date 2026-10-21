@@ -6,6 +6,7 @@ import { FatalError } from "../src/lib/errors.js";
 import { clearRegisteredSecrets } from "../src/lib/redact.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
 import { createFakes } from "./helpers/fakes.js";
+import { seedUser } from "./helpers/users.js";
 
 const ADMIN_PASSWORD = "correct horse battery staple";
 let passwordHash: string;
@@ -40,9 +41,10 @@ async function setup() {
     deps: fakes.deps,
     logStream,
     logLevel: "debug",
-    auth: { adminUsername: "admin", adminPasswordHash: passwordHash, sessionSecret: "x".repeat(40), secureCookies: false }
+    auth: { adminUsername: "jefe", adminPasswordHash: passwordHash, sessionSecret: "x".repeat(40), secureCookies: false }
   });
   apps.push(app);
+  await seedUser(store, passwordHash);
   const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "admin", password: ADMIN_PASSWORD } });
   const headers = { cookie: `pp_session=${login.cookies.find((c) => c.name === "pp_session")!.value}` };
   return { app, store, logs, headers, ...fakes };

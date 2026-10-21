@@ -6,6 +6,7 @@ import { clearRegisteredSecrets } from "../src/lib/redact.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
 import { FakeAgent } from "./helpers/fake-agent.js";
 import { createFakes, silent } from "./helpers/fakes.js";
+import { seedUser, TEST_TEAM_ID } from "./helpers/users.js";
 
 const ADMIN_PASSWORD = "correct horse battery staple";
 let passwordHash: string;
@@ -30,17 +31,18 @@ async function setup() {
   const store = await freshStore();
   const fakes = createFakes(store);
   const agent = new FakeAgent();
-  const job = await store.createClientWithJob({ slug: "acme-crm", name: "Acme CRM", description: "CRM interno de Acme", actor: "admin" });
+  const job = await store.createClientWithJob({ teamId: TEST_TEAM_ID, slug: "acme-crm", name: "Acme CRM", description: "CRM interno de Acme", actor: "admin" });
   expect((await new JobEngine(store, fakes.deps, silent).run(job._id, "admin"))?.status).toBe("succeeded");
   const time = { t: Date.now() };
   const app = await buildApp({
     store,
     deps: fakes.deps,
     logLevel: "silent",
-    auth: { adminUsername: "admin", adminPasswordHash: passwordHash, sessionSecret: "x".repeat(40), secureCookies: true },
+    auth: { adminUsername: "jefe", adminPasswordHash: passwordHash, sessionSecret: "x".repeat(40), secureCookies: true },
     ai: { agent, config: { sessionBudgetCents: 1000, workspace: "default" }, now: () => new Date(time.t) }
   });
   apps.push(app);
+  await seedUser(store, passwordHash);
   const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "admin", password: ADMIN_PASSWORD } });
   const headers = { cookie: `pp_session=${login.cookies.find((c) => c.name === "pp_session")!.value}` };
   const api = async (method: "GET" | "POST", url: string, payload?: unknown) => {

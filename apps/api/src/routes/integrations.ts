@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { requireAdmin } from "../auth/session.js";
+import { canSeeClient } from "../auth/access.js";
+import { requireAuth, requireOperator } from "../auth/session.js";
 import { deriveNames, parseSlug, slugSchema } from "../domain/naming.js";
 import { credentialsSchema, getProvider, publicCatalog, type ValidationCode } from "../integrations/catalog.js";
 import type { JobEngine } from "../jobs/engine.js";
@@ -58,13 +59,13 @@ export async function registerIntegrationRoutes(
     return { ok: true, provider, credentials: parsed.data as Record<string, string> };
   }
 
-  app.get("/api/integrations/catalog", { preHandler: requireAdmin }, async () => ({
+  app.get("/api/integrations/catalog", { preHandler: requireAuth }, async () => ({
     providers: publicCatalog(),
     available: deps.secrets.available
   }));
 
   /** "Probar conexión" antes de enviar el formulario. Responde ok o un código genérico. */
-  app.post("/api/integrations/:provider/validate", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/integrations/:provider/validate", { preHandler: requireOperator }, async (request, reply) => {
     const params = providerParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Proveedor inválido." });
     if (limited(request, reply)) return reply;
@@ -88,15 +89,15 @@ export async function registerIntegrationRoutes(
    * - failed con github_secrets ya completada: valida y la escribe en GitHub; el reintento despliega.
    * - en aprovisionamiento u otro estado: 409.
    */
-  app.put("/api/clients/:slug/integrations/:provider", { preHandler: requireAdmin }, async (request, reply) => {
+  app.put("/api/clients/:slug/integrations/:provider", { preHandler: requireOperator }, async (request, reply) => {
     const params = clientProviderParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Parámetros inválidos." });
     const { slug } = params.data;
+    const client = await store.getClient(slug);
+    if (!client || !canSeeClient(request.user!, client)) return reply.code(404).send({ error: "Proyecto no encontrado." });
     const result = parseCredentials(params.data.provider, request.body);
     if (!result.ok) return reply.code(result.code).send(result.body);
     const { provider, credentials } = result;
-    const client = await store.getClient(slug);
-    if (!client) return reply.code(404).send({ error: "Cliente no encontrado." });
     if (client.status !== "ready" && client.status !== "failed") {
       return reply.code(409).send({ error: "El cliente tiene un trabajo en curso; espera a que termine." });
     }
@@ -152,14 +153,14 @@ export async function registerIntegrationRoutes(
   });
 
   /** Quita la integración: borra los secrets y redespliega para que la variable desaparezca. */
-  app.delete("/api/clients/:slug/integrations/:provider", { preHandler: requireAdmin }, async (request, reply) => {
+  app.delete("/api/clients/:slug/integrations/:provider", { preHandler: requireOperator }, async (request, reply) => {
     const params = clientProviderParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Parámetros inválidos." });
     const { slug } = params.data;
     const provider = getProvider(params.data.provider);
     if (!provider) return reply.code(404).send({ error: "Integración desconocida." });
     const client = await store.getClient(slug);
-    if (!client) return reply.code(404).send({ error: "Cliente no encontrado." });
+    if (!client || !canSeeClient(request.user!, client)) return reply.code(404).send({ error: "Proyecto no encontrado." });
     if (client.status !== "ready") return reply.code(409).send({ error: "Solo se puede desactivar en un cliente listo." });
     if (!client.integrations?.[provider.id]) return reply.code(404).send({ error: `${provider.label} no está activada en este cliente.` });
 

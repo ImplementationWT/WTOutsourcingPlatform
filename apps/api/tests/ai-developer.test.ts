@@ -8,6 +8,7 @@ import { clearRegisteredSecrets } from "../src/lib/redact.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
 import { FakeAgent } from "./helpers/fake-agent.js";
 import { createFakes, silent } from "./helpers/fakes.js";
+import { seedUser, TEST_TEAM_ID } from "./helpers/users.js";
 
 const ADMIN_PASSWORD = "correct horse battery staple";
 let passwordHash: string;
@@ -32,17 +33,18 @@ async function setup({ withAi = true, provision = true } = {}) {
   const fakes = createFakes(store);
   const agent = new FakeAgent();
   if (provision) {
-    const job = await store.createClientWithJob({ slug: "acme-crm", name: "Acme CRM", description: "CRM interno de Acme", actor: "admin" });
+    const job = await store.createClientWithJob({ teamId: TEST_TEAM_ID, slug: "acme-crm", name: "Acme CRM", description: "CRM interno de Acme", actor: "admin" });
     expect((await new JobEngine(store, fakes.deps, silent).run(job._id, "admin"))?.status).toBe("succeeded");
   }
   const app = await buildApp({
     store,
     deps: fakes.deps,
     logLevel: "silent",
-    auth: { adminUsername: "admin", adminPasswordHash: passwordHash, sessionSecret: "x".repeat(40), secureCookies: false },
+    auth: { adminUsername: "jefe", adminPasswordHash: passwordHash, sessionSecret: "x".repeat(40), secureCookies: false },
     ai: withAi ? { agent, config: { sessionBudgetCents: 1000, workspace: "default" } } : undefined
   });
   apps.push(app);
+  await seedUser(store, passwordHash);
   const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "admin", password: ADMIN_PASSWORD } });
   const headers = { cookie: `pp_session=${login.cookies.find((c) => c.name === "pp_session")!.value}` };
   const api = async (method: "GET" | "POST", url: string, payload?: unknown) => {
@@ -376,7 +378,9 @@ describe("AI Developer: revisión, Pull Request y merge", () => {
     expect((await api("POST", "/api/clients/acme-crm/ai/sessions/delete", { confirm: "otro" })).status).toBe(400);
     const all = await api("POST", "/api/clients/acme-crm/ai/sessions/delete", { confirm: "acme-crm" });
     expect(all.body).toEqual({ deleted: 2 });
-    expect(await store.aiSessions.countDocuments()).toBe(0);
+    // Borrado lógico: desaparecen del panel pero se conservan para los costos.
+    expect(await store.aiSessions.countDocuments({ deletedAt: { $exists: false } })).toBe(0);
+    expect(await store.aiSessions.countDocuments({ deletedBy: "admin" })).toBe(3);
     // La auditoría se conserva.
     expect(await store.auditLog.countDocuments({ action: "ai.session_deleted" })).toBe(3);
   });

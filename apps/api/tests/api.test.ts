@@ -6,6 +6,7 @@ import { clearRegisteredSecrets } from "../src/lib/redact.js";
 import type { AdminStore } from "../src/store/admin-store.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
 import { createFakes } from "./helpers/fakes.js";
+import { seedUser } from "./helpers/users.js";
 
 const ADMIN_PASSWORD = "correct horse battery staple";
 let passwordHash: string;
@@ -40,9 +41,10 @@ async function setup() {
     deps: fakes.deps,
     logStream,
     logLevel: "debug",
-    auth: { adminUsername: "admin", adminPasswordHash: passwordHash, sessionSecret: "x".repeat(40), secureCookies: false }
+    auth: { adminUsername: "jefe", adminPasswordHash: passwordHash, sessionSecret: "x".repeat(40), secureCookies: false }
   });
   apps.push(app);
+  await seedUser(store, passwordHash);
   return { app, store, logs, ...fakes };
 }
 

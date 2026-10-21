@@ -5,6 +5,7 @@ import { clearRegisteredSecrets } from "../src/lib/redact.js";
 import type { AdminStore } from "../src/store/admin-store.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
 import { createFakes, TEST_CONFIG, silent } from "./helpers/fakes.js";
+import { TEST_TEAM_ID } from "./helpers/users.js";
 
 
 beforeAll(startDb);
@@ -20,7 +21,7 @@ async function setup(configPatch: Partial<ReturnType<typeof createFakes>["deps"]
 }
 
 async function createClient(store: AdminStore, slug = "acme-crm", name = "Acme CRM") {
-  return store.createClientWithJob({ slug, name, description: "CRM interno de Acme", actor: "admin" });
+  return store.createClientWithJob({ teamId: TEST_TEAM_ID, slug, name, description: "CRM interno de Acme", actor: "admin" });
 }
 
 /** Cuántas veces se escribió un secret concreto. */

@@ -2,7 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { type GithubAdapter, PLATFORM_TOPIC } from "../adapters/github.js";
 import type { Deps } from "../jobs/types.js";
-import { requireAdmin } from "../auth/session.js";
+import { accessibleClient, canSeeClient, clientScope, teamFilterOf } from "../auth/access.js";
+import { requireAuth, requireOperator, type SessionUser } from "../auth/session.js";
 import { deriveNames, parseSlug, slugSchema } from "../domain/naming.js";
 import { type JobEngine, toPublicJob } from "../jobs/engine.js";
 import { ActiveWorkError, type Teardown, toPublicDeletion } from "../jobs/teardown.js";
@@ -129,7 +130,7 @@ export async function registerClientRoutes(
   const namesFor = (client: ClientDoc) =>
     deriveNames(parseSlug(client._id), { targetOwner: github.owner, appsDomain: appsDomainOf(client, config) });
 
-  app.post("/api/clients", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/clients", { preHandler: requireOperator }, async (request, reply) => {
     registerIncomingSecrets((request.body as { integrations?: unknown } | null)?.integrations);
     const parsed = createClientSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -143,6 +144,9 @@ export async function registerClientRoutes(
       return reply.code(503).send({ error: "Las integraciones no están disponibles: falta INTEGRATION_ENCRYPTION_KEY_SECRET_REF en el servidor." });
     }
     const actor = request.user!.username;
+    // El proyecto es del equipo de quien lo crea.
+    const teamId = request.user!.teamId;
+    if (!teamId) return reply.code(409).send({ error: "Tu usuario no tiene equipo: pide a un jefe que te asigne uno." });
     let server: Awaited<ReturnType<ServerDirectory["select"]>>;
     try {
       server = await servers.select(parsed.data.serverId);
@@ -152,7 +156,7 @@ export async function registerClientRoutes(
     }
 
     try {
-      const job = await store.createClientWithJob({ slug, name, description, actor, stages: engine.stageNames, server });
+      const job = await store.createClientWithJob({ slug, name, description, actor, stages: engine.stageNames, server, teamId });
       await store.audit({ actor, action: "client.created", clientId: slug, target: slug, ...(server ? { details: { server: server.name } } : {}) });
       // Las credenciales quedan cifradas (TTL) hasta que github_secrets las escribe en GitHub.
       for (const [providerId, credentials] of integrations) {
@@ -164,17 +168,20 @@ export async function registerClientRoutes(
     } catch (error) {
       if (error instanceof DuplicateClientError || error instanceof ActiveJobExistsError) {
         const existing = await store.getClient(slug);
-        return reply.code(409).send({ error: `Ya existe un cliente con el identificador ${slug}.`, clientId: slug, jobId: existing?.latestJobId ?? null });
+        // A otro equipo no se le dice nada más que el identificador está ocupado.
+        const visible = existing && canSeeClient(request.user!, existing);
+        return reply.code(409).send({ error: `Ya existe un proyecto con el identificador ${slug}.`, clientId: visible ? slug : null, jobId: visible ? existing.latestJobId : null });
       }
       throw error;
     }
   });
 
-  app.get("/api/clients/:slug", { preHandler: requireAdmin }, async (request, reply) => {
+  app.get("/api/clients/:slug", { preHandler: requireAuth }, async (request, reply) => {
     const params = slugParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
-    const client = await store.getClient(params.data.slug);
-    if (!client) return reply.code(404).send({ error: "Cliente no encontrado." });
+    const client = await accessibleClient(store, request, reply, params.data.slug);
+    if (!client) return reply;
+    const team = client.teamId ? await store.teams.findOne({ _id: client.teamId }) : null;
 
     const names = namesFor(client);
     const [job, repo, pendingUntil] = await Promise.all([
@@ -199,6 +206,7 @@ export async function registerClientRoutes(
         deployment: deploymentView(client, names.baseUrl),
         deployEnabled: config.deployEnabled,
         server: client.server ?? { id: "principal", name: "Principal", appsDomain: config.appsDomain },
+        team: team ? { id: team._id, name: team.name } : null,
         createdAt: client.createdAt
       },
       resources: {
@@ -213,11 +221,11 @@ export async function registerClientRoutes(
   });
 
   /** Estado de la contraseña inicial del admin de la app (sin el valor). */
-  app.get("/api/clients/:slug/initial-password", { preHandler: requireAdmin }, async (request, reply) => {
+  app.get("/api/clients/:slug/initial-password", { preHandler: requireAuth }, async (request, reply) => {
     const params = slugParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
-    const client = await store.getClient(params.data.slug);
-    if (!client) return reply.code(404).send({ error: "Cliente no encontrado." });
+    const client = await accessibleClient(store, request, reply, params.data.slug);
+    if (!client) return reply;
     return initialAdminStatus(client, await vault.pendingUntil(client._id), vault.now());
   });
 
@@ -226,11 +234,11 @@ export async function registerClientRoutes(
    * La respuesta se envía ya serializada para que no pase por la redacción
    * global (que la ocultaría), con Cache-Control: no-store, y no se loguea.
    */
-  app.post("/api/clients/:slug/initial-password/reveal", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/clients/:slug/initial-password/reveal", { preHandler: requireOperator }, async (request, reply) => {
     const params = slugParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
-    const client = await store.getClient(params.data.slug);
-    if (!client) return reply.code(404).send({ error: "Cliente no encontrado." });
+    const client = await accessibleClient(store, request, reply, params.data.slug);
+    if (!client) return reply;
 
     const status = initialAdminStatus(client, await vault.pendingUntil(client._id), vault.now());
     const password = status.state === "available" ? await vault.take(client._id) : null;
@@ -256,7 +264,7 @@ export async function registerClientRoutes(
   });
 
   /** Configuración visible para el panel (sin secretos): evita duplicarla en el frontend. */
-  app.get("/api/platform", { preHandler: requireAdmin }, async () => ({
+  app.get("/api/platform", { preHandler: requireAuth }, async () => ({
     deployEnabled: config.deployEnabled,
     appBaseDomain: config.appsDomain,
     templateVersion: config.template.expectedVersion,
@@ -273,17 +281,19 @@ export async function registerClientRoutes(
    * reenviar el identificador del proyecto como confirmación. Responde 202 y el
    * progreso se consulta en /deletion.
    */
-  app.post("/api/clients/:slug/delete", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/clients/:slug/delete", { preHandler: requireOperator }, async (request, reply) => {
     const params = slugParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
     const slug = params.data.slug;
     const confirm = (request.body as { confirm?: unknown } | null)?.confirm;
     if (confirm !== slug) return reply.code(400).send({ error: "Escribe el identificador exacto del proyecto para confirmar." });
     const [client, previous] = await Promise.all([store.getClient(slug), store.deletions.findOne({ _id: slug })]);
-    // Se puede reintentar un borrado fallido aunque el cliente ya no exista en la base.
-    if (!client && previous?.status !== "failed") return reply.code(404).send({ error: "Cliente no encontrado." });
+    // Se puede reintentar un borrado fallido aunque el cliente ya no exista en la base (con el
+    // equipo que se guardó al pedirlo).
+    const teamId = client ? client.teamId ?? null : previous?.status === "failed" ? previous.teamId ?? null : undefined;
+    if (teamId === undefined || !canSeeClient(request.user!, { teamId })) return reply.code(404).send({ error: "Proyecto no encontrado." });
     try {
-      const doc = await teardown.start(slug, request.user!.username);
+      const doc = await teardown.start(slug, request.user!.username, teamId);
       return reply.code(202).send(toPublicDeletion(doc));
     } catch (error) {
       if (error instanceof ActiveWorkError) return reply.code(409).send({ error: error.message });
@@ -291,20 +301,22 @@ export async function registerClientRoutes(
     }
   });
 
-  app.get("/api/clients/:slug/deletion", { preHandler: requireAdmin }, async (request, reply) => {
+  app.get("/api/clients/:slug/deletion", { preHandler: requireAuth }, async (request, reply) => {
     const params = slugParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
-    const doc = await store.deletions.findOne({ _id: params.data.slug });
-    if (!doc) return reply.code(404).send({ error: "No hay ningún borrado de este proyecto." });
+    const [doc, client] = await Promise.all([store.deletions.findOne({ _id: params.data.slug }), store.getClient(params.data.slug)]);
+    if (!doc || !canSeeClient(request.user!, client ?? { teamId: doc.teamId ?? null })) {
+      return reply.code(404).send({ error: "No hay ningún borrado de este proyecto." });
+    }
     return toPublicDeletion(doc);
   });
 
   /** Estado en vivo en el servidor (consulta predefinida client-status). Sin variables de entorno. */
-  app.get("/api/clients/:slug/server-status", { preHandler: requireAdmin }, async (request, reply) => {
+  app.get("/api/clients/:slug/server-status", { preHandler: requireAuth }, async (request, reply) => {
     const params = slugParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
-    const client = await store.getClient(params.data.slug);
-    if (!client) return reply.code(404).send({ error: "Cliente no encontrado." });
+    const client = await accessibleClient(store, request, reply, params.data.slug);
+    if (!client) return reply;
     const target = config.deployEnabled ? await serverFor(deps, client).catch(() => undefined) : undefined;
     if (!target) return reply.code(409).send({ error: "El despliegue no está habilitado o el servidor del proyecto no está disponible." });
     try {
@@ -324,11 +336,11 @@ export async function registerClientRoutes(
   });
 
   /** Redesplegar: lanza el workflow Deploy del repo del cliente (workflow_dispatch) y lo audita. */
-  app.post("/api/clients/:slug/redeploy", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/clients/:slug/redeploy", { preHandler: requireOperator }, async (request, reply) => {
     const params = slugParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
-    const client = await store.getClient(params.data.slug);
-    if (!client) return reply.code(404).send({ error: "Cliente no encontrado." });
+    const client = await accessibleClient(store, request, reply, params.data.slug);
+    if (!client) return reply;
     if (!config.deployEnabled) return reply.code(409).send({ error: "El despliegue no está habilitado." });
     if (!client.deployment?.preparedAt) {
       return reply.code(409).send({ error: "El servidor aún no está preparado para este cliente; termina primero el aprovisionamiento." });
@@ -342,19 +354,27 @@ export async function registerClientRoutes(
     return reply.code(202).send({ requestedAt: at, actionsUrl: `https://github.com/${names.repositoryFullName}/actions` });
   });
 
-  app.get("/api/jobs/:id", { preHandler: requireAdmin }, async (request, reply) => {
+  /** Trabajo de un proyecto visible para el usuario (404 si es de otro equipo). */
+  async function visibleJob(id: string, user: SessionUser) {
+    const job = await store.getJob(id);
+    if (!job) return null;
+    const client = await store.getClient(job.clientId);
+    return client && canSeeClient(user, client) ? job : null;
+  }
+
+  app.get("/api/jobs/:id", { preHandler: requireAuth }, async (request, reply) => {
     const params = idParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Id inválido." });
-    const job = await store.getJob(params.data.id);
+    const job = await visibleJob(params.data.id, request.user!);
     if (!job) return reply.code(404).send({ error: "Trabajo no encontrado." });
     return toPublicJob(job);
   });
 
   /** Progreso en tiempo real (NDJSON): una instantánea del trabajo por línea. */
-  app.get("/api/jobs/:id/events", { preHandler: requireAdmin }, async (request, reply) => {
+  app.get("/api/jobs/:id/events", { preHandler: requireAuth }, async (request, reply) => {
     const params = idParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Id inválido." });
-    const job = await store.getJob(params.data.id);
+    const job = await visibleJob(params.data.id, request.user!);
     if (!job) return reply.code(404).send({ error: "Trabajo no encontrado." });
 
     reply.hijack();
@@ -391,10 +411,11 @@ export async function registerClientRoutes(
     if (current) send(toPublicJob(current), current.status);
   });
 
-  app.post("/api/jobs/:id/retry", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/jobs/:id/retry", { preHandler: requireOperator }, async (request, reply) => {
     const params = idParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Id inválido." });
     const actor = request.user!.username;
+    if (!(await visibleJob(params.data.id, request.user!))) return reply.code(404).send({ error: "Trabajo no encontrado." });
 
     try {
       const job = await store.prepareRetry(params.data.id, engine.retryableStageNames);
@@ -410,28 +431,39 @@ export async function registerClientRoutes(
     }
   });
 
-  /** Repos de GitHub de la organización (sin AB/WT), con el cliente asociado si lo hay. */
-  app.get("/api/projects", { preHandler: requireAdmin }, async () => {
+  /**
+   * Repos de GitHub de la organización (sin AB/WT), con el cliente asociado si lo hay. Un jefe ve
+   * todos (o los de un equipo con ?teamId=); el resto, solo los proyectos de su equipo.
+   */
+  app.get("/api/projects", { preHandler: requireAuth }, async (request) => {
+    const user = request.user!;
+    const teamFilter = teamFilterOf(request);
     const repos = await github.listProjectRepos();
-    const clients = new Map(
-      (await store.clients.find({}, { projection: { _id: 1, status: 1 } }).toArray()).map((c) => [c._id, c.status])
+    const visible = new Map(
+      (await store.clients.find(clientScope(user, teamFilter), { projection: { _id: 1, status: 1, teamId: 1 } }).toArray()).map((c) => [c._id, c])
     );
+    const showAll = user.role === "boss" && !teamFilter;
     return {
-      projects: repos.map((repo) => {
+      projects: repos.flatMap((repo) => {
         const slug = repo.name.match(/^(.+)-app$/)?.[1];
-        const status = slug ? clients.get(slug) : undefined;
-        return { ...repo, clientId: status ? slug : null, clientStatus: status ?? null };
+        const client = slug ? visible.get(slug) : undefined;
+        if (!client && !showAll) return [];
+        return [{ ...repo, clientId: client ? slug! : null, clientStatus: client?.status ?? null, teamId: client?.teamId ?? null }];
       }),
       platformTopic: PLATFORM_TOPIC
     };
   });
 
   /** Etiquetas (topics de GitHub) de un proyecto de la lista; los internos AB/WT y la plantilla no. */
-  app.put("/api/projects/:name/topics", { preHandler: requireAdmin }, async (request, reply) => {
+  app.put("/api/projects/:name/topics", { preHandler: requireOperator }, async (request, reply) => {
     const params = repoParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Repositorio inválido." });
     const body = topicsSchema.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ error: body.error.issues[0]?.message ?? "Etiquetas inválidas." });
+    // Solo repos de proyectos del equipo del usuario.
+    const slug = params.data.name.match(/^(.+)-app$/)?.[1];
+    const client = slug ? await store.getClient(slug) : null;
+    if (!client || !canSeeClient(request.user!, client)) return reply.code(404).send({ error: "Proyecto no encontrado." });
     const repo = (await github.listProjectRepos()).find((r) => r.name === params.data.name);
     if (!repo) return reply.code(404).send({ error: "Proyecto no encontrado." });
     const topics = [...new Set(body.data.topics)].sort();

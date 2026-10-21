@@ -121,6 +121,11 @@ export interface ClientDoc {
    * principal de la configuración (proyectos anteriores a los servidores múltiples).
    */
   server?: ClientServerRef;
+  /**
+   * Equipo al que pertenece (obligatorio en los proyectos nuevos). Los anteriores a los equipos
+   * no lo tienen: solo los ven los jefes hasta que lo asignen.
+   */
+  teamId?: string | null;
   latestJobId: string;
   createdBy: string;
   createdAt: Date;
@@ -198,11 +203,50 @@ export interface ResourceDoc {
 
 export interface AuditDoc {
   at: Date;
+  /** Usuario (username) o "sistema". */
   actor: string;
+  /** Nombre real y equipo del actor en el momento del evento (los añade AdminStore.audit). */
+  actorName?: string;
+  actorTeamId?: string | null;
   action: string;
   clientId: string;
   target: string;
   details?: Record<string, string | number | boolean | string[]>;
+}
+
+// ---- usuarios y equipos ------------------------------------------------------
+
+/** boss (jefe): solo lectura de todo. lead (team leader) y developer: operan los proyectos de su equipo. */
+export type UserRole = "boss" | "lead" | "developer";
+
+export interface UserDoc {
+  _id: string; // uuid
+  /** Único, en minúsculas. */
+  username: string;
+  name: string;
+  role: UserRole;
+  /** Equipo (null para los jefes). */
+  teamId: string | null;
+  /** scrypt (auth/password.ts). Nunca sale de la API. */
+  passwordHash: string;
+  /** Debe cambiarla en el próximo ingreso (alta o restablecimiento). */
+  mustChangePassword: boolean;
+  active: boolean;
+  /** Intentos fallidos seguidos y bloqueo temporal (sobreviven a reinicios). */
+  failedLogins: number;
+  lockedUntil?: Date;
+  lastLoginAt?: Date;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TeamDoc {
+  _id: string; // uuid
+  name: string;
+  leadUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export type DeletionStepStatus = "pending" | "running" | "done" | "skipped" | "warning" | "failed";
@@ -220,6 +264,8 @@ export interface DeletionDoc {
   status: "running" | "succeeded" | "failed";
   steps: DeletionStep[];
   requestedBy: string;
+  /** Equipo del proyecto al pedir el borrado (para reintentarlo aunque el proyecto ya no exista). */
+  teamId?: string | null;
   startedAt: Date;
   finishedAt?: Date;
   error?: { code: string; message: string };
@@ -255,6 +301,22 @@ export interface AiSessionDoc {
   closedBy?: string;
   /** Vista previa de la rama en preview-<slug>.<dominio> (una por proyecto a la vez). */
   preview?: AiPreviewState;
+  /** Quién la abrió y de qué equipo era el proyecto entonces (para los costos). */
+  startedByUserId?: string | null;
+  /** Nombre real de quien la abrió (para el contexto del agente). */
+  createdByName?: string | null;
+  teamId?: string | null;
+  /**
+   * Gasto del agente (Claude) en centavos de USD. Es el PRECIO DE LISTA que informa Anthropic
+   * (session.usage.list_cost), no la factura real: descuentos o créditos no se reflejan.
+   * Solo crece: se guarda el máximo visto (los eventos de coste son acumulados).
+   */
+  costCents?: number;
+  budgetCents?: number | null;
+  lastCostAt?: Date;
+  /** Borrada del panel: deja de listarse, pero su coste sigue contando. */
+  deletedAt?: Date;
+  deletedBy?: string;
 }
 
 export type AiPreviewStatus = "installing" | "building" | "ready" | "failed" | "stopped";

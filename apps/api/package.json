@@ -14,6 +14,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "hash-password": "tsx src/scripts/hash-password.ts",
+    "backfill:ai-costs": "tsx src/scripts/backfill-ai-costs.ts",
     "check:dist": "node scripts/check-dist.mjs"
   },
   "keywords": [],

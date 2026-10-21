@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { requireAdmin } from "../auth/session.js";
+import { clientScope, teamFilterOf } from "../auth/access.js";
+import { requireAuth } from "../auth/session.js";
 import { deriveNames, parseSlug } from "../domain/naming.js";
 import type { Deps } from "../jobs/types.js";
 import type { AdminStore } from "../store/admin-store.js";
@@ -33,9 +34,12 @@ function latestJobView(job: JobDoc | null) {
 
 /** Datos reales del panel principal: estado de los proyectos, salud en vivo y actividad. */
 export async function registerDashboardRoutes(app: FastifyInstance, { store, deps }: { store: AdminStore; deps: Deps }) {
-  app.get("/api/dashboard", { preHandler: requireAdmin }, async () => {
+  app.get("/api/dashboard", { preHandler: requireAuth }, async (request) => {
     const { config, github } = deps;
-    const clients = await store.clients.find({}).sort({ createdAt: -1 }).toArray();
+    const user = request.user!;
+    const teamFilter = teamFilterOf(request);
+    // Solo los proyectos (y su actividad) que ve el usuario.
+    const clients = await store.clients.find(clientScope(user, teamFilter)).sort({ createdAt: -1 }).toArray();
     const jobs = await store.jobs.find({ _id: { $in: clients.map((c) => c.latestJobId) } }).toArray();
     const jobById = new Map(jobs.map((j) => [j._id, j]));
 
@@ -81,8 +85,9 @@ export async function registerDashboardRoutes(app: FastifyInstance, { store, dep
       return items;
     });
 
+    const allActivity = user.role === "boss" && !teamFilter;
     const activity = await store.auditLog
-      .find({}, { projection: { _id: 0, at: 1, actor: 1, action: 1, clientId: 1 } })
+      .find(allActivity ? {} : { clientId: { $in: clients.map((c) => c._id) } }, { projection: { _id: 0, at: 1, actor: 1, actorName: 1, action: 1, clientId: 1 } })
       .sort({ at: -1 })
       .limit(ACTIVITY_LIMIT)
       .toArray();

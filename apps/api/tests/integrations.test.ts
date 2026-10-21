@@ -7,6 +7,7 @@ import { FatalError } from "../src/lib/errors.js";
 import { clearRegisteredSecrets } from "../src/lib/redact.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
 import { createFakes } from "./helpers/fakes.js";
+import { seedUser, TEST_TEAM_ID } from "./helpers/users.js";
 
 const ADMIN_PASSWORD = "correct horse battery staple";
 const TOKEN = "token-valido-eyJhbGciOiJIUzI1NiJ9-monday-0123456789";
@@ -41,9 +42,10 @@ async function setup() {
     deps: fakes.deps,
     logStream,
     logLevel: "debug",
-    auth: { adminUsername: "admin", adminPasswordHash: passwordHash, sessionSecret: "x".repeat(40), secureCookies: false }
+    auth: { adminUsername: "jefe", adminPasswordHash: passwordHash, sessionSecret: "x".repeat(40), secureCookies: false }
   });
   apps.push(app);
+  await seedUser(store, passwordHash);
   const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "admin", password: ADMIN_PASSWORD } });
   const headers = { cookie: `pp_session=${login.cookies.find((c) => c.name === "pp_session")!.value}` };
   const create = async (payload: Record<string, unknown> = {}) => {
@@ -312,7 +314,7 @@ describe("actualizar o quitar la integración de un cliente existente", () => {
 
   it("cliente en aprovisionamiento: 409", async () => {
     const ctx = await setup();
-    await ctx.store.createClientWithJob({ slug: "acme-crm", name: "Acme CRM", description: "CRM interno de Acme", actor: "admin" });
+    await ctx.store.createClientWithJob({ teamId: TEST_TEAM_ID, slug: "acme-crm", name: "Acme CRM", description: "CRM interno de Acme", actor: "admin" });
     expect((await ctx.put(TOKEN)).statusCode).toBe(409);
     expect((await ctx.app.inject({ method: "DELETE", url: "/api/clients/acme-crm/integrations/monday", headers: ctx.headers })).statusCode).toBe(409);
   });

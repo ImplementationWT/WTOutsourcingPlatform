@@ -6,6 +6,7 @@ import { FatalError } from "../src/lib/errors.js";
 import { clearRegisteredSecrets } from "../src/lib/redact.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
 import { createFakes } from "./helpers/fakes.js";
+import { seedUser, TEST_TEAM_ID } from "./helpers/users.js";
 
 const ADMIN_PASSWORD = "correct horse battery staple";
 let passwordHash: string;
@@ -38,9 +39,10 @@ async function setup() {
     deps: fakes.deps,
     logStream,
     logLevel: "debug",
-    auth: { adminUsername: "admin", adminPasswordHash: passwordHash, sessionSecret: "x".repeat(40), secureCookies: false }
+    auth: { adminUsername: "jefe", adminPasswordHash: passwordHash, sessionSecret: "x".repeat(40), secureCookies: false }
   });
   apps.push(app);
+  await seedUser(store, passwordHash);
   const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "admin", password: ADMIN_PASSWORD } });
   const headers = { cookie: `pp_session=${login.cookies.find((c) => c.name === "pp_session")!.value}` };
   const provision = async (slug = "acme-crm") => {
@@ -177,7 +179,7 @@ describe("borrar un proyecto", () => {
 
   it("no se puede borrar mientras se aprovisiona", async () => {
     const ctx = await setup();
-    await ctx.store.createClientWithJob({ slug: "acme-crm", name: "Acme CRM", description: "CRM interno de Acme", actor: "admin" });
+    await ctx.store.createClientWithJob({ teamId: TEST_TEAM_ID, slug: "acme-crm", name: "Acme CRM", description: "CRM interno de Acme", actor: "admin" });
     expect((await ctx.remove()).statusCode).toBe(409);
   });
 
@@ -209,7 +211,7 @@ describe("dashboard con datos reales", () => {
       expect.arrayContaining([expect.objectContaining({ clientId: "beta-shop", kind: "job_failed" })])
     );
     expect(data.activity.length).toBeGreaterThan(0);
-    expect(Object.keys(data.activity[0]).sort()).toEqual(["action", "actor", "at", "clientId"]);
+    expect(Object.keys(data.activity[0]).sort()).toEqual(["action", "actor", "actorName", "at", "clientId"]);
     expect(data.lastDeployAt).not.toBeNull();
   });
 

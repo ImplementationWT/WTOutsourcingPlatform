@@ -4,6 +4,7 @@ import type { ServerAdapter } from "../adapters/server.js";
 import { deriveNames, parseSlug } from "../domain/naming.js";
 import type { Logger, ProvisioningConfig } from "../jobs/types.js";
 import { redactString, registerSecret } from "../lib/redact.js";
+import type { SessionUser } from "../auth/users.js";
 import type { AdminStore } from "../store/admin-store.js";
 import type { AiPreviewState, AiSessionDoc, ClientDoc } from "../store/models.js";
 import type { ServerTargets } from "../servers/directory.js";
@@ -111,7 +112,34 @@ export class AiDeveloper {
     return token;
   }
 
-  async start(input: { clientId: string; title: string; message?: string; attachments?: readonly MessageAttachment[]; actor: string }) {
+  /**
+   * Guarda el gasto del agente en la sesión. Los eventos de costo de Anthropic son acumulados,
+   * así que se guarda el máximo visto: repetir un evento (historial + stream) no duplica.
+   * Es el precio de lista que informa Anthropic, no la factura real (ver docs/ai-developer.md).
+   */
+  async recordCost(session: Pick<AiSessionDoc, "_id">, costCents: number, budgetCents?: number | null) {
+    if (!Number.isFinite(costCents) || costCents < 0) return;
+    const set: Partial<AiSessionDoc> = { lastCostAt: this.now() };
+    if (typeof budgetCents === "number") set.budgetCents = budgetCents;
+    await this.deps.store.aiSessions.updateOne({ _id: session._id }, { $max: { costCents: Math.round(costCents) }, $set: set });
+  }
+
+  /** Lee el gasto actual del agente y lo guarda (best effort: Anthropic puede no responder). */
+  private async syncCost(session: AiSessionDoc) {
+    const current = await this.deps.agent.getSession(session.agentSessionId).catch(() => null);
+    if (current) await this.recordCost(session, current.costCents, current.budgetCents);
+  }
+
+  async start(input: {
+    clientId: string;
+    title: string;
+    message?: string;
+    attachments?: readonly MessageAttachment[];
+    actor: string;
+    /** Quién la inicia y el equipo del proyecto: para repartir el costo. */
+    user?: Pick<SessionUser, "id" | "name">;
+    teamId?: string | null;
+  }) {
     const { store, github, agent, config } = this.deps;
     const client = await store.getClient(input.clientId);
     if (!client) throw new AiDeveloperError(404, "Cliente no encontrado.");
@@ -175,6 +203,11 @@ export class AiDeveloper {
       baseBranch: "main",
       baseSha,
       createdBy: input.actor,
+      startedByUserId: input.user?.id ?? null,
+      createdByName: input.user?.name ?? null,
+      teamId: input.teamId ?? client.teamId ?? null,
+      costCents: 0,
+      budgetCents: config.sessionBudgetCents,
       createdAt: now,
       updatedAt: now
     };
@@ -194,7 +227,7 @@ export class AiDeveloper {
       `- Cliente: ${client?.name ?? session.clientId} (${session.clientId}). App en producción: ${names.baseUrl}`,
       `- Repositorio: ${names.repositoryFullName}, montado en ${REPO_MOUNT_PATH}.`,
       `- Rama de trabajo: ${session.branch} (creada desde main en ${session.baseSha.slice(0, 7)}). Haz commit y push solo a esta rama.`,
-      `- Te escribe ${session.createdBy}, administrador de la plataforma. Los cambios se revisan en una vista previa y como Pull Request antes de desplegarse.`
+      `- Te escribe ${session.createdByName ?? session.createdBy}, del equipo que desarrolla el proyecto. Los cambios se revisan en una vista previa y como Pull Request antes de desplegarse.`
     ].join("\n");
   }
 
@@ -234,7 +267,9 @@ export class AiDeveloper {
 
   /** Estado del agente y gasto (precio de lista) de la sesión. */
   async usage(session: AiSessionDoc) {
-    return this.deps.agent.getSession(session.agentSessionId);
+    const current = await this.deps.agent.getSession(session.agentSessionId);
+    await this.recordCost(session, current.costCents, current.budgetCents);
+    return current;
   }
 
   /** Amplía el tope de gasto en un tramo más (reanuda una sesión pausada por presupuesto). */
@@ -243,6 +278,7 @@ export class AiDeveloper {
     const current = await this.deps.agent.getSession(session.agentSessionId);
     const budgetCents = Math.max(current.budgetCents ?? 0, current.costCents) + this.deps.config.sessionBudgetCents;
     await this.deps.agent.setBudget(session.agentSessionId, budgetCents);
+    await this.recordCost(session, current.costCents, budgetCents);
     await this.audit(actor, "ai.budget_raised", session, { budgetCents });
     return { budgetCents };
   }
@@ -254,11 +290,20 @@ export class AiDeveloper {
     // Se abre el stream antes de leer el historial para no perder nada entre medias.
     let pending = live.next();
     const seen = new Set<string>();
+    let maxCost = session.costCents ?? 0;
+    const track = async (chat: ChatEvent) => {
+      if (chat.kind !== "cost" || chat.costCents <= maxCost) return;
+      maxCost = chat.costCents;
+      await this.recordCost(session, chat.costCents);
+    };
     for await (const event of agent.listEvents(session.agentSessionId)) {
       if (signal.aborted) return;
       seen.add(event.id);
       const chat = toChatEvent(event);
-      if (chat) yield chat;
+      if (chat) {
+        await track(chat);
+        yield chat;
+      }
     }
     while (!signal.aborted) {
       const result = await pending;
@@ -267,7 +312,10 @@ export class AiDeveloper {
       if (seen.has(result.value.id)) continue;
       seen.add(result.value.id);
       const chat = toChatEvent(result.value);
-      if (chat) yield chat;
+      if (chat) {
+        await track(chat);
+        yield chat;
+      }
     }
   }
 
@@ -335,6 +383,7 @@ export class AiDeveloper {
 
     const sha = await github.mergePullRequest(session.repository, pr.number, { sha: pr.headSha, title: `${session.title} (#${pr.number})` });
     await this.stopPreview(session, actor, "merged").catch(() => undefined);
+    await this.syncCost(session);
     const merge = { sha, at: this.now(), by: actor };
     await store.aiSessions.updateOne({ _id: session._id }, { $set: { status: "merged", merge, updatedAt: this.now() } });
     await this.audit(actor, "ai.merged", session, { number: pr.number, sha });
@@ -355,6 +404,7 @@ export class AiDeveloper {
     const { agent, github, store } = this.deps;
     await agent.interrupt(session.agentSessionId).catch(() => undefined);
     await this.stopPreview(session, actor, "closed").catch(() => undefined);
+    await this.syncCost(session);
     if (!session.pullRequest) {
       const comparison = await github.compareBranches(session.repository, session.baseBranch, session.branch).catch(() => null);
       if (comparison?.aheadBy === 0) await github.deleteBranch(session.repository, session.branch).catch(() => undefined);
@@ -365,17 +415,18 @@ export class AiDeveloper {
 
   /**
    * Borra la conversación del panel (la auditoría se conserva). Si sigue en curso, antes se
-   * cierra: para el agente, apaga la vista previa y borra la rama si no tiene cambios.
+   * cierra: para el agente, apaga la vista previa y borra la rama si no tiene cambios. El borrado
+   * es lógico (deletedAt): desaparece del panel pero su costo sigue contando en Costos.
    */
   async deleteSession(session: AiSessionDoc, actor: string) {
     if (session.status === "active") await this.close(session, actor);
-    await this.deps.store.aiSessions.deleteOne({ _id: session._id });
+    await this.deps.store.aiSessions.updateOne({ _id: session._id }, { $set: { deletedAt: this.now(), deletedBy: actor, updatedAt: this.now() } });
     await this.audit(actor, "ai.session_deleted", session, { title: session.title.slice(0, 120) });
   }
 
   /** Borra todas las conversaciones de un proyecto (para empezar de cero). */
   async deleteAllSessions(clientId: string, actor: string) {
-    const sessions = await this.deps.store.aiSessions.find({ clientId }).toArray();
+    const sessions = await this.deps.store.aiSessions.find({ clientId, deletedAt: { $exists: false } }).toArray();
     for (const session of sessions) await this.deleteSession(session, actor);
     return sessions.length;
   }

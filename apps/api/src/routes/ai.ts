@@ -4,7 +4,8 @@ import { z } from "zod";
 import { AI_MODEL } from "../ai/agent-definition.js";
 import { PREVIEW_COOKIE } from "../ai/preview-pass.js";
 import { AiDeveloper, AiDeveloperError } from "../ai/service.js";
-import { requireAdmin } from "../auth/session.js";
+import { accessibleClient, canSeeClient } from "../auth/access.js";
+import { requireAuth, requireOperator } from "../auth/session.js";
 import { slugSchema } from "../domain/naming.js";
 import { createRateLimiter } from "../lib/rate-limit.js";
 import { redact } from "../lib/redact.js";
@@ -71,8 +72,9 @@ function anthropicError(error: unknown): { status: number; message: string } | n
 }
 
 /**
- * AI Developer (solo con sesión de administrador). Claude edita el repo del
- * cliente en un sandbox de Anthropic; aquí se crean rama y PR y se fusiona.
+ * AI Developer. Claude edita el repo del cliente en un sandbox de Anthropic; aquí se crean rama
+ * y PR y se fusiona. Lo usan los team leaders y developers del equipo del proyecto; los jefes lo
+ * ven en solo lectura. Una sesión de otro equipo responde 404.
  */
 export async function registerAiRoutes(
   app: FastifyInstance,
@@ -128,42 +130,52 @@ export async function registerAiRoutes(
       void reply.code(400).send({ error: "Id inválido." });
       return null;
     }
-    const session = await store.aiSessions.findOne({ _id: params.data.id });
-    if (!session) void reply.code(404).send({ error: "Sesión no encontrada." });
+    const session = await store.aiSessions.findOne({ _id: params.data.id, deletedAt: { $exists: false } });
+    const client = session ? await store.getClient(session.clientId) : null;
+    // Sin proyecto (ya borrado) solo la ve un jefe; de otro equipo, como si no existiera.
+    const visible = session && request.user && (client ? canSeeClient(request.user, client) : request.user.role === "boss");
+    if (!session || !visible) {
+      void reply.code(404).send({ error: "Sesión no encontrada." });
+      return null;
+    }
     return session;
   }
 
-  app.get("/api/ai/status", { preHandler: requireAdmin }, async () => ({
+  app.get("/api/ai/status", { preHandler: requireAuth }, async () => ({
     enabled: Boolean(ai),
     model: AI_MODEL,
     // null si no se pudo consultar (la sesión lo volverá a intentar al empezar).
     missingPermissions: ai ? await ai.missingGithubPermissions().catch(() => null) : null
   }));
 
-  app.get("/api/clients/:slug/ai/sessions", { preHandler: requireAdmin }, async (request, reply) => {
+  app.get("/api/clients/:slug/ai/sessions", { preHandler: requireAuth }, async (request, reply) => {
     const params = slugParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
-    const sessions = await store.aiSessions.find({ clientId: params.data.slug }).sort({ createdAt: -1 }).limit(20).toArray();
+    if (!(await accessibleClient(store, request, reply, params.data.slug))) return reply;
+    const sessions = await store.aiSessions.find({ clientId: params.data.slug, deletedAt: { $exists: false } }).sort({ createdAt: -1 }).limit(20).toArray();
     return { sessions: sessions.map(publicSession) };
   });
 
-  app.post("/api/clients/:slug/ai/sessions", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/clients/:slug/ai/sessions", { preHandler: requireOperator }, async (request, reply) => {
     const params = slugParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
     const body = startSchema.safeParse(request.body);
     if (!body.success) {
       return reply.code(400).send({ error: `Indica un título (3-120 caracteres) y, opcionalmente, la primera instrucción. ${ATTACHMENTS_HELP}` });
     }
-    const actor = request.user!.username;
+    const user = request.user!;
+    const actor = user.username;
     if (!messageLimiter.take(actor)) return reply.code(429).send({ error: "Demasiados mensajes. Espera un minuto." });
     return run(request, reply, async (ai) => {
+      const client = await accessibleClient(store, request, reply, params.data.slug);
+      if (!client) return reply;
       const { title, message, attachments } = body.data;
-      const session = await ai.start({ clientId: params.data.slug, title, message, attachments, actor });
+      const session = await ai.start({ clientId: params.data.slug, title, message, attachments, actor, user, teamId: client.teamId ?? null });
       return reply.code(201).send({ session: publicSession(session) });
     });
   });
 
-  app.get("/api/ai/sessions/:id", { preHandler: requireAdmin }, async (request, reply) => {
+  app.get("/api/ai/sessions/:id", { preHandler: requireAuth }, async (request, reply) => {
     const session = await loadSession(request, reply);
     if (!session) return reply;
     return run(request, reply, async (ai) => {
@@ -173,7 +185,7 @@ export async function registerAiRoutes(
     });
   });
 
-  app.get("/api/ai/sessions/:id/events", { preHandler: requireAdmin }, async (request, reply) => {
+  app.get("/api/ai/sessions/:id/events", { preHandler: requireAuth }, async (request, reply) => {
     const session = await loadSession(request, reply);
     if (!session) return reply;
     if (!ai) return reply.code(503).send({ error: "El AI Developer no está configurado." });
@@ -209,7 +221,7 @@ export async function registerAiRoutes(
     }
   });
 
-  app.post("/api/ai/sessions/:id/messages", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/ai/sessions/:id/messages", { preHandler: requireOperator }, async (request, reply) => {
     const session = await loadSession(request, reply);
     if (!session) return reply;
     const body = messageSchema.safeParse(request.body);
@@ -224,7 +236,7 @@ export async function registerAiRoutes(
     });
   });
 
-  app.post("/api/ai/sessions/:id/confirm", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/ai/sessions/:id/confirm", { preHandler: requireOperator }, async (request, reply) => {
     const session = await loadSession(request, reply);
     if (!session) return reply;
     const body = confirmSchema.safeParse(request.body);
@@ -235,7 +247,7 @@ export async function registerAiRoutes(
     });
   });
 
-  app.post("/api/ai/sessions/:id/interrupt", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/ai/sessions/:id/interrupt", { preHandler: requireOperator }, async (request, reply) => {
     const session = await loadSession(request, reply);
     if (!session) return reply;
     return run(request, reply, async (ai) => {
@@ -244,31 +256,31 @@ export async function registerAiRoutes(
     });
   });
 
-  app.post("/api/ai/sessions/:id/budget", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/ai/sessions/:id/budget", { preHandler: requireOperator }, async (request, reply) => {
     const session = await loadSession(request, reply);
     if (!session) return reply;
     return run(request, reply, (ai) => ai.raiseBudget(session, request.user!.username));
   });
 
-  app.get("/api/ai/sessions/:id/diff", { preHandler: requireAdmin }, async (request, reply) => {
+  app.get("/api/ai/sessions/:id/diff", { preHandler: requireAuth }, async (request, reply) => {
     const session = await loadSession(request, reply);
     if (!session) return reply;
     return run(request, reply, (ai) => ai.diff(session));
   });
 
-  app.post("/api/ai/sessions/:id/pull-request", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/ai/sessions/:id/pull-request", { preHandler: requireOperator }, async (request, reply) => {
     const session = await loadSession(request, reply);
     if (!session) return reply;
     return run(request, reply, async (ai) => ({ pullRequest: await ai.createPullRequest(session, request.user!.username) }));
   });
 
-  app.get("/api/ai/sessions/:id/review", { preHandler: requireAdmin }, async (request, reply) => {
+  app.get("/api/ai/sessions/:id/review", { preHandler: requireAuth }, async (request, reply) => {
     const session = await loadSession(request, reply);
     if (!session) return reply;
     return run(request, reply, (ai) => ai.review(session));
   });
 
-  app.post("/api/ai/sessions/:id/merge", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/ai/sessions/:id/merge", { preHandler: requireOperator }, async (request, reply) => {
     const session = await loadSession(request, reply);
     if (!session) return reply;
     if (!mergeSchema.safeParse(request.body).success) return reply.code(400).send({ error: "Confirma la fusión." });
@@ -277,19 +289,19 @@ export async function registerAiRoutes(
 
   // ---- vista previa ------------------------------------------------------------
 
-  app.post("/api/ai/sessions/:id/preview", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/ai/sessions/:id/preview", { preHandler: requireOperator }, async (request, reply) => {
     const session = await loadSession(request, reply);
     if (!session) return reply;
     return run(request, reply, async (ai) => ({ preview: await ai.startPreview(session, request.user!.username) }));
   });
 
-  app.get("/api/ai/sessions/:id/preview", { preHandler: requireAdmin }, async (request, reply) => {
+  app.get("/api/ai/sessions/:id/preview", { preHandler: requireAuth }, async (request, reply) => {
     const session = await loadSession(request, reply);
     if (!session) return reply;
     return run(request, reply, async (ai) => ({ preview: await ai.previewState(session) }));
   });
 
-  app.post("/api/ai/sessions/:id/preview/stop", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/ai/sessions/:id/preview/stop", { preHandler: requireOperator }, async (request, reply) => {
     const session = await loadSession(request, reply);
     if (!session) return reply;
     return run(request, reply, async (ai) => {
@@ -323,7 +335,7 @@ export async function registerAiRoutes(
     return reply.code(ok ? 204 : 401).header("cache-control", "no-store").send();
   });
 
-  app.post("/api/ai/sessions/:id/close", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/ai/sessions/:id/close", { preHandler: requireOperator }, async (request, reply) => {
     const session = await loadSession(request, reply);
     if (!session) return reply;
     return run(request, reply, async (ai) => {
@@ -333,7 +345,7 @@ export async function registerAiRoutes(
   });
 
   /** Borra una conversación (si está en curso, antes la cierra). */
-  app.post("/api/ai/sessions/:id/delete", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/ai/sessions/:id/delete", { preHandler: requireOperator }, async (request, reply) => {
     const session = await loadSession(request, reply);
     if (!session) return reply;
     return run(request, reply, async (ai) => {
@@ -343,12 +355,13 @@ export async function registerAiRoutes(
   });
 
   /** Borra todas las conversaciones del proyecto: exige reenviar su identificador. */
-  app.post("/api/clients/:slug/ai/sessions/delete", { preHandler: requireAdmin }, async (request, reply) => {
+  app.post("/api/clients/:slug/ai/sessions/delete", { preHandler: requireOperator }, async (request, reply) => {
     const params = slugParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
     if ((request.body as { confirm?: unknown } | null)?.confirm !== params.data.slug) {
       return reply.code(400).send({ error: "Confirma con el identificador del proyecto." });
     }
+    if (!(await accessibleClient(store, request, reply, params.data.slug))) return reply;
     return run(request, reply, async (ai) => ({ deleted: await ai.deleteAllSessions(params.data.slug, request.user!.username) }));
   });
 }

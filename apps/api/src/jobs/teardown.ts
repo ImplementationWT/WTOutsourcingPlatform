@@ -55,7 +55,7 @@ export class Teardown {
   }
 
   /** Registra el borrado y lo lanza en segundo plano. */
-  async start(slug: string, actor: string) {
+  async start(slug: string, actor: string, teamId: string | null = null) {
     if (this.running.has(slug)) throw new ActiveWorkError("El borrado de este proyecto ya está en curso.");
     const active = await this.store.jobs.findOne({ clientId: slug, active: true });
     if (active) throw new ActiveWorkError("El proyecto tiene un aprovisionamiento en curso; espera a que termine.");
@@ -68,6 +68,7 @@ export class Teardown {
       status: "running",
       steps: STEPS.map((s) => ({ ...s, status: "pending" as const })),
       requestedBy: actor,
+      teamId,
       startedAt: new Date()
     };
     await this.store.deletions.replaceOne({ _id: slug }, doc, { upsert: true });
