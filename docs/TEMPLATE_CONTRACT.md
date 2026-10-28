@@ -7,17 +7,40 @@ el template espera recibir, lo que expone y lo que deliberadamente no hace.
 
 | Campo | Valor |
 | --- | --- |
-| Template | `node-typescript@1.7.0` |
+| Template | `node-typescript@1.8.0` |
 | Dónde se define | `package.json` → `template.name` y `template.version` |
 
 ```json
-"template": { "name": "node-typescript", "version": "1.7.0" }
+"template": { "name": "node-typescript", "version": "1.8.0" }
 ```
 
 `template.version` sigue SemVer y es independiente de `version` de
 `package.json`. El aprovisionador lo escribe como `templateVersion` en el
 documento de bootstrap (§8). Los repos ya generados quedan fijados a la versión
 con la que se crearon: este cambio no les afecta.
+
+### Cambios en 1.8.0 (respecto a 1.7.0): «Will Doo solo» conversa
+
+La app no cambia de esquema (sigue en 4) ni de variables. «Will Doo solo» (modo
+`basic`) sigue sin IA y sin costo, pero ahora conversa:
+
+- **Ruta de preguntas.** Cada consulta rápida tiene su pregunta («¿Qué usuarios
+  están desactivados?») y un tema. El panel empieza con las preguntas agrupadas
+  por tema.
+- **Continuaciones.** Cada respuesta sugiere 3 preguntas más: primero las que la
+  consulta declara en `next` y después las del orden de la ruta. Siempre son
+  preguntas que el usuario puede hacer con sus permisos.
+- **Chat sin IA.** `POST /api/willdoo/basic` reconoce la pregunta escrita por
+  palabras clave (`keywords` de cada consulta, en español e inglés, sin acentos y
+  con plurales) y responde con datos de la base. Si duda, ofrece hasta 3
+  opciones. A los «cómo…» responde con la guía de uso.
+- **Pronósticos y análisis.** No los hace: lo dice, muestra los datos que hay
+  sobre el tema y recuerda que eso lo hace «Will Doo + Claude». Si no hay nada
+  relacionado, responde en general con lo que sí puede consultar.
+- **Cómo lo adapta cada proyecto.** Las consultas de `src/modules/willdoo/quick.ts`
+  llevan `question`, `group`, `keywords` y `next`. Los textos del chat sin IA
+  están en `COPY` (`src/modules/willdoo/basic-chat.ts`), para traducirlos al
+  idioma de la app.
 
 ### Cambios en 1.7.0 (respecto a 1.6.0): Will Doo, el co-pilot
 
@@ -503,8 +526,9 @@ es `httpOnly`, `SameSite=Strict`, y en producción `Secure` con nombre `__Host-s
 | `GET /api/integrations` | `integrations.read` | `{ items: [{ id, label, configured }] }`, sin valores de credenciales |
 | `POST /api/integrations/:provider/test` | `integrations.manage` | Prueba de conexión (Monday: consulta `me`). `:provider` debe existir en el registro (si no, 404); 409 `not_configured` si falta la credencial. → `200 { ok: true }` o `200 { ok: false, error }`. Rate limit 10/min por IP. Auditada (`integration.test`) sin valores |
 | `GET /api/monday/boards` | `monday.read` | `{ items: [{ id, name, workspaceName, url }], total }`. 404 si Monday no está configurado. Errores: `502 auth_failed`, `504 timeout`, `503 rate_limited`, `503 unavailable` (nunca el mensaje del proveedor). Rate limit 30/min por IP. Auditada (`integration.monday.boards`) solo con el número de tableros |
-| `GET /api/willdoo/quick` | `willdoo.use` | Modos `basic` y `claude`. `{ mode, items: [{ id, label, description }] }`: solo las consultas rápidas cuya herramienta puede usar el usuario. 404 con `off` |
-| `POST /api/willdoo/quick/:id` | `willdoo.use` | `{ timeZone? }` → `{ id, label, summary, items: [{ title, subtitle?, meta?, link? }], link?, at }`. Una consulta inexistente o sin permiso responde 404. Sin IA ni costo. Rate limit 30/min por IP. Auditada (`willdoo.quick`) con la consulta y el número de resultados |
+| `GET /api/willdoo/quick` | `willdoo.use` | Modos `basic` y `claude`. `{ mode, items: [{ id, label, description, question, group }] }`, en el orden de la ruta: solo las consultas rápidas cuya herramienta puede usar el usuario. 404 con `off` |
+| `POST /api/willdoo/quick/:id` | `willdoo.use` | `{ timeZone? }` → `{ id, label, question, summary, items: [{ title, subtitle?, meta?, link? }], link?, at, suggestions: [{ id, label, question }] }` (hasta 3 continuaciones). Una consulta inexistente o sin permiso responde 404. Sin IA ni costo. Rate limit 30/min por IP. Auditada (`willdoo.quick`) con la consulta y el número de resultados |
+| `POST /api/willdoo/basic` | `willdoo.use` | Chat sin IA (modos `basic` y `claude`). `{ text (1–500), timeZone? }` → `{ kind, message, result?, guide?, suggestions }`. `kind` es `answer` (datos de una consulta), `analytics` (pronóstico o análisis: no lo hace y muestra los datos relacionados si los hay), `guide` (líneas de la guía), `clarify` (`suggestions` son las opciones) o `none`. Solo usa consultas que el usuario puede hacer. Rate limit 30/min por IP. Auditada (`willdoo.basic`) con la pregunta (≤ 500 caracteres), el tipo y la consulta |
 | `GET /api/willdoo/guide` | `willdoo.use` | Modos `basic` y `claude`. `{ guide }`: la guía del sistema en Markdown |
 | `POST /api/willdoo/messages` | `willdoo.use` | Solo en el modo `claude`; si no, 404. | `{ text (1–4000), conversationId?, screen?: { path, title?, recordId? }, timeZone? }`. Responde `application/x-ndjson`: un JSON por línea, `start` → `tool`* / `text`* → `done` o `error`. Antes de llamar a Claude: `429 willdoo_budget_exhausted` (presupuesto del mes agotado), `429 willdoo_daily_limit` (límite del usuario) y `404` si la conversación no es suya. Rate limit 20/min por IP. 404 si Will Doo no está configurado. Auditada (`willdoo.ask`): pregunta (≤ 500 caracteres), pantalla, herramientas con su entrada, consumo y costo. Nunca guarda en la auditoría la respuesta ni los datos consultados |
 | `GET /api/willdoo/conversations` | `willdoo.use` | Las 30 más recientes del usuario; `?userId=` exige `willdoo.audit` |
@@ -589,7 +613,7 @@ propio `expiresAt` (TTL 0), así que la retención cambia sin rehacer índices.
   db.app_metadata.insertOne({
     key: "bootstrap",
     clientId: "<slug>",            // string no vacío
-    templateVersion: "1.7.0"       // template.version de package.json
+    templateVersion: "1.8.0"       // template.version de package.json
   })
   ```
 
