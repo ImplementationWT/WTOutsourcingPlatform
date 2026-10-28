@@ -1,7 +1,8 @@
 # Seguridad: credenciales de clientes
 
 Cómo maneja la plataforma las credenciales que un operador introduce para un cliente
-(hoy, el token de Monday.com de la integración opcional del template 1.4.0).
+(hoy, el token de Monday.com del template 1.4.0 y la clave de Anthropic de Will Doo, el
+co-pilot del template 1.7.0). Las dos siguen el mismo recorrido.
 
 ## Recorrido de una credencial
 
@@ -24,11 +25,12 @@ Cómo maneja la plataforma las credenciales que un operador introduce para un cl
    así que un texto cifrado no se puede mover a otro cliente ni a otro proveedor. Nunca
    hay texto plano en la base.
 5. **Destino.** La etapa `github_secrets` (o el trabajo de integración) la escribe como
-   secret del entorno `production` del repo del cliente (`MONDAY_API_TOKEN`), cifrada
+   secret del entorno `production` del repo del cliente (`MONDAY_API_TOKEN` o
+   `ANTHROPIC_API_KEY`), cifrada
    con la clave pública del entorno, y **borra el documento transitorio** en ese mismo
    momento.
 6. **Servidor.** El workflow del template la envía a `deploy-client`, que solo acepta
-   las 6 variables del contrato y la escribe en el `.env` 0600 del cliente.
+   las 7 variables del contrato y la escribe en el `.env` 0600 del cliente.
 
 En el cliente de la base administrativa solo se guarda `{ enabled, requestedAt,
 configuredAt, updatedAt }`. El panel muestra estado y fechas: nunca valores, ni

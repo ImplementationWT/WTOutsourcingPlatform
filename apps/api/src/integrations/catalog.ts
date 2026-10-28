@@ -1,3 +1,4 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
 /**
@@ -82,7 +83,36 @@ const monday: IntegrationProvider = {
   }
 };
 
-export const INTEGRATIONS: Record<string, IntegrationProvider> = { [monday.id]: monday };
+/**
+ * Will Doo, el co-pilot de la app del cliente (plantilla 1.7.0): habla con Claude con la clave
+ * de Anthropic DE ESTE PROYECTO, así el gasto queda separado por cliente. No es la clave del AI
+ * Developer de Launchpad.
+ */
+const willDoo: IntegrationProvider = {
+  id: "anthropic",
+  label: "Will Doo (Claude)",
+  description: "El co-pilot de la app: responde con los datos del sistema según los permisos de cada usuario.",
+  help: [
+    "En console.anthropic.com: Settings → API keys → Create key. Usa una clave solo para este proyecto (mejor en un workspace propio) para separar y limitar su gasto.",
+    "La app la usa solo desde su servidor; nunca llega al navegador. Requiere la plantilla 1.7.0 o posterior y el permiso willdoo.use en los roles que deban usarlo."
+  ],
+  helpUrl: "https://docs.anthropic.com/en/api/admin-api/apikeys/get-api-key",
+  fields: [{ name: "apiKey", label: "Clave de la API de Anthropic", type: "secret", envVar: "ANTHROPIC_API_KEY", maxLength: 400 }],
+  async validate(credentials, fetchImpl = fetch) {
+    // Consulta mínima con el SDK oficial: lista un modelo (no genera ni gasta tokens).
+    const client = new Anthropic({ apiKey: credentials.apiKey, fetch: fetchImpl, maxRetries: 0, timeout: VALIDATION_TIMEOUT_MS });
+    try {
+      await client.models.list({ limit: 1 });
+      return { ok: true };
+    } catch (error) {
+      if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError) return { ok: false, code: "auth_failed" };
+      if (error instanceof Anthropic.APIConnectionTimeoutError) return { ok: false, code: "timeout" };
+      return { ok: false, code: "unavailable" };
+    }
+  }
+};
+
+export const INTEGRATIONS: Record<string, IntegrationProvider> = { [monday.id]: monday, [willDoo.id]: willDoo };
 
 export function getProvider(id: string) {
   return Object.hasOwn(INTEGRATIONS, id) ? INTEGRATIONS[id] : undefined;

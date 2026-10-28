@@ -163,10 +163,11 @@ valid_image() {
   [[ $2 =~ $re ]]
 }
 
-# Lista cerrada del contrato del template (§5.1, 1.4.0). PORT, HOST, NODE_ENV y
+# Lista cerrada del contrato del template (§5.1; MONDAY_API_TOKEN desde 1.4.0,
+# ANTHROPIC_API_KEY de Will Doo desde 1.7.0). PORT, HOST, NODE_ENV y
 # TRUST_PROXY_HOPS no se aceptan: los fija el compose generado.
 readonly ALLOWED_ENV_KEYS=(
-  MONGODB_URI MONGODB_DB SESSION_SECRET INITIAL_ADMIN_PASSWORD APP_DISPLAY_NAME MONDAY_API_TOKEN
+  MONGODB_URI MONGODB_DB SESSION_SECRET INITIAL_ADMIN_PASSWORD APP_DISPLAY_NAME MONDAY_API_TOKEN ANTHROPIC_API_KEY
 )
 
 env_key_allowed() {

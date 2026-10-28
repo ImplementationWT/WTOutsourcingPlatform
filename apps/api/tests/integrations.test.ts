@@ -79,10 +79,17 @@ describe("catálogo y prueba de conexión", () => {
         id: "monday",
         label: "Monday.com",
         fields: [{ name: "token", label: "Token de la API", type: "secret", maxLength: 2000 }]
+      }),
+      expect.objectContaining({
+        id: "anthropic",
+        label: "Will Doo (Claude)",
+        fields: [{ name: "apiKey", label: "Clave de la API de Anthropic", type: "secret", maxLength: 400 }]
       })
     ]);
     expect(catalog.providers[0].help.join(" ")).toContain("usuario dedicado");
+    expect(catalog.providers[1].help.join(" ")).toContain("1.7.0");
     expect(JSON.stringify(catalog)).not.toContain("MONDAY_API_TOKEN");
+    expect(JSON.stringify(catalog)).not.toContain("ANTHROPIC_API_KEY");
   });
 
   it("Probar conexión: ok, o un código genérico; auditado sin valores", async () => {
@@ -270,6 +277,20 @@ describe("actualizar o quitar la integración de un cliente existente", () => {
     expect((await ctx.detail()).job.id).toBe(job.id);
   });
 
+  it("Will Doo: la clave de Anthropic del proyecto se escribe como ANTHROPIC_API_KEY y redespliega", async () => {
+    const ctx = await setup();
+    await ctx.create();
+    // El validador falso acepta valores "token-valido…" (la validación real va en su propio test).
+    const key = "token-valido-anthropic-0123456789";
+    const response = await ctx.app.inject({ method: "PUT", url: "/api/clients/acme-crm/integrations/anthropic", headers: ctx.headers, payload: { apiKey: key } });
+    await ctx.app.engine.idle();
+    expect(response.statusCode).toBe(202);
+    expect(ctx.github.env("acme-crm-app").secrets.get("ANTHROPIC_API_KEY")).toBe(key);
+    expect(ctx.github.env("acme-crm-app").secrets.has("MONDAY_API_TOKEN")).toBe(false);
+    expect(JSON.stringify(await ctx.store.auditLog.find().toArray())).not.toContain(key);
+    expect(ctx.logs.join("\n")).not.toContain(key);
+  });
+
   it("cliente listo sin Monday: la activa (integration_enabled)", async () => {
     const ctx = await setup();
     await ctx.create();
@@ -372,5 +393,34 @@ describe("ninguna salida contiene credenciales", () => {
       })
     ].join("\n");
     for (const token of [TOKEN, TOKEN_2]) expect(outputs).not.toContain(token);
+  });
+});
+
+describe("validación de la clave de Anthropic (Will Doo)", () => {
+  const provider = INTEGRATIONS.anthropic!;
+  const KEY = "sk-ant-api03-clave-de-prueba-0123456789";
+  const fakeFetch = (respond: () => Response | Promise<Response>) => {
+    const calls: { url: string; headers: Headers }[] = [];
+    const impl = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+      calls.push({ url: String(input), headers: new Headers(init.headers) });
+      return respond();
+    }) as typeof fetch;
+    return { impl, calls };
+  };
+
+  it("lista un modelo con el SDK oficial y la clave solo en su cabecera", async () => {
+    const fake = fakeFetch(() => Response.json({ data: [{ type: "model", id: "claude-sonnet-5-5", display_name: "Claude Sonnet 5.5", created_at: "2026-01-01T00:00:00Z" }], has_more: false, first_id: null, last_id: null }));
+    expect(await provider.validate({ apiKey: KEY }, fake.impl)).toEqual({ ok: true });
+    expect(fake.calls[0]!.url).toMatch(/^https:\/\/api\.anthropic\.com\/v1\/models\?limit=1/);
+    expect(fake.calls[0]!.headers.get("x-api-key")).toBe(KEY);
+    expect(fake.calls[0]!.url).not.toContain(KEY);
+  });
+
+  it("clave rechazada → auth_failed; caída → unavailable (sin reintentos)", async () => {
+    const rejected = fakeFetch(() => Response.json({ type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } }, { status: 401 }));
+    expect(await provider.validate({ apiKey: KEY }, rejected.impl)).toEqual({ ok: false, code: "auth_failed" });
+    const down = fakeFetch(() => Response.json({ type: "error", error: { type: "api_error", message: "boom" } }, { status: 500 }));
+    expect(await provider.validate({ apiKey: KEY }, down.impl)).toEqual({ ok: false, code: "unavailable" });
+    expect(down.calls).toHaveLength(1);
   });
 });

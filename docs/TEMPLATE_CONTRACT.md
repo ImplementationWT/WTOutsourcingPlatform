@@ -7,17 +7,53 @@ el template espera recibir, lo que expone y lo que deliberadamente no hace.
 
 | Campo | Valor |
 | --- | --- |
-| Template | `node-typescript@1.6.0` |
+| Template | `node-typescript@1.7.0` |
 | Dónde se define | `package.json` → `template.name` y `template.version` |
 
 ```json
-"template": { "name": "node-typescript", "version": "1.6.0" }
+"template": { "name": "node-typescript", "version": "1.7.0" }
 ```
 
 `template.version` sigue SemVer y es independiente de `version` de
 `package.json`. El aprovisionador lo escribe como `templateVersion` en el
 documento de bootstrap (§8). Los repos ya generados quedan fijados a la versión
 con la que se crearon: este cambio no les afecta.
+
+### Cambios en 1.7.0 (respecto a 1.6.0): Will Doo, el co-pilot
+
+**Will Doo** conversa con cada usuario de la app usando Claude (API de
+Anthropic). Responde con datos vivos y entiende la pantalla abierta, siempre
+dentro de los permisos de quien pregunta. Es **opcional**: sin clave, la app
+funciona igual y Will no aparece. Esta versión solo consulta datos: no crea,
+cambia ni borra nada.
+
+- **Variables.**
+  - Secreto opcional `ANTHROPIC_API_KEY` (§2, §3), uno por proyecto. El
+    servidor debe aceptarlo en `env` (§5). Si el secreto no está definido,
+    `deploy.sh` no lo envía, así que un VPS sin actualizar sigue desplegando.
+  - Ajustes con valor por defecto: `WILL_DOO_MODEL` (`claude-sonnet-5-5`),
+    `WILL_DOO_MONTHLY_BUDGET_USD`, `WILL_DOO_USER_DAILY_MESSAGES` y
+    `WILL_DOO_RETENTION_DAYS`.
+- **Datos y migración.** Permisos `willdoo.use` y `willdoo.audit`. La
+  **migración 4** (esquema 4) los añade al catálogo y al rol `admin`, y crea
+  las colecciones `willdoo_conversations` y `willdoo_usage` con TTL (§8).
+- **Endpoints y features.**
+  - `/api/willdoo/*` (§7).
+  - `features` incluye `"willdoo"` con la clave configurada y el permiso
+    `willdoo.use`.
+  - El proveedor `anthropic` aparece en `/api/integrations`, con su prueba de
+    conexión.
+- **Permisos en la capa de datos.** Claude solo recibe las herramientas que el
+  usuario tiene permiso de usar. Cada herramienta consulta con la identidad y
+  el alcance de quien pregunta. La auditoría registra quién preguntó qué, qué
+  herramientas se usaron y el costo.
+- **Interfaz.** Botón y panel de chat 2D (pantalla completa en celular), con
+  sugerencias según los permisos, historial y enlaces solo a rutas de la app o
+  a monday.com.
+- **Cómo lo adapta cada proyecto.**
+  - La guía del sistema vive en `src/modules/willdoo/context.ts`.
+  - Las herramientas de lectura propias van en `src/modules/willdoo/tools.ts`,
+    cada una con su permiso.
 
 ### Cambios en 1.6.0 (respecto a 1.5.0): vista previa en vivo
 
@@ -131,6 +167,11 @@ cuenta como no definida.
 | `APP_DISPLAY_NAME` | No | Una línea, ≤ 80 caracteres. Se muestra en la UI vía `/api/meta`. | `Aplicación` |
 | `MONDAY_API_TOKEN` | No | Token de la API de Monday.com (sin espacios). Activa la integración. Nunca se registra ni se devuelve | — |
 | `MONDAY_MAX_BOARDS` | No | Máximo de tableros que se listan (1–5000; se piden de 100 en 100) | `500` |
+| `ANTHROPIC_API_KEY` | No | Clave de la API de Anthropic **de este proyecto** (sin espacios). Activa Will Doo. Nunca se registra ni se devuelve | — |
+| `WILL_DOO_MODEL` | No | Id del modelo de Claude (`claude-…`) | `claude-sonnet-5-5` |
+| `WILL_DOO_MONTHLY_BUDGET_USD` | No | Tope de gasto mensual de toda la app, a precio de lista (1–100000). Al alcanzarlo, Will responde `429 willdoo_budget_exhausted` hasta el mes siguiente (UTC) | `50` |
+| `WILL_DOO_USER_DAILY_MESSAGES` | No | Preguntas por usuario y día UTC (1–10000) | `100` |
+| `WILL_DOO_RETENTION_DAYS` | No | Días que se guarda una conversación después del último mensaje (1–3650). El consumo se guarda el mismo tiempo | `90` |
 | `SESSION_TTL_HOURS` | No | Expiración absoluta de la sesión (1–720) | `12` |
 | `SESSION_IDLE_MINUTES` | No | Expiración por inactividad (1–1440) | `30` |
 | `LOGIN_MAX_ATTEMPTS` | No | Intentos fallidos antes del bloqueo temporal | `5` |
@@ -163,6 +204,7 @@ Environments). Nombres exactos, sensibles a mayúsculas:
 | `SESSION_SECRET` | Sí | ≥ 32 caracteres aleatorios, generado por cliente (p. ej. 32 bytes en base64url) |
 | `INITIAL_ADMIN_PASSWORD` | No, **muy recomendado** | Contraseña inicial del `admin` (≥ 10 caracteres). Entregarla al cliente por un canal seguro |
 | `MONDAY_API_TOKEN` | No | Token de la API de Monday.com del cliente. Hereda los permisos de su dueño: la app solo ve los tableros que esa persona ve. Mejor un usuario de servicio con acceso de solo lectura a los tableros que deban mostrarse |
+| `ANTHROPIC_API_KEY` | No | Clave de la API de Anthropic del proyecto (una por proyecto, para separar el gasto). Activa Will Doo (desde 1.7.0) |
 
 ### Variables del entorno `production`
 
@@ -268,14 +310,15 @@ ese comando, y el comando sabe por su argumento a qué cliente corresponde.
     "SESSION_SECRET": "…",
     "INITIAL_ADMIN_PASSWORD": "…",
     "APP_DISPLAY_NAME": "…",
-    "MONDAY_API_TOKEN": "…"
+    "MONDAY_API_TOKEN": "…",
+    "ANTHROPIC_API_KEY": "…"
   },
   "registryToken": "<GITHUB_TOKEN del job>"
 }
 ```
 
 - `env` contiene **solo las variables definidas**: `INITIAL_ADMIN_PASSWORD`,
-  `APP_DISPLAY_NAME` y `MONDAY_API_TOKEN` no aparecen si no existen. El JSON se construye con `jq`
+  `APP_DISPLAY_NAME`, `MONDAY_API_TOKEN` y `ANTHROPIC_API_KEY` no aparecen si no existen. El JSON se construye con `jq`
   leyendo el entorno (los secretos no pasan por argumentos) y cada valor se
   enmascara con `::add-mask::` antes de usarse; nunca se imprime.
 - `registryToken` caduca cuando termina el job: el servidor debe hacer
@@ -287,7 +330,7 @@ ese comando, y el comando sabe por su argumento a qué cliente corresponde.
 1. Leer stdin completo y parsearlo como JSON; rechazar claves desconocidas en
    `env`. Lista de claves aceptadas: `MONGODB_URI`, `MONGODB_DB`,
    `SESSION_SECRET`, `INITIAL_ADMIN_PASSWORD`, `APP_DISPLAY_NAME` y
-   **`MONDAY_API_TOKEN`** (desde 1.4.0).
+   **`MONDAY_API_TOKEN`** (desde 1.4.0) y **`ANTHROPIC_API_KEY`** (desde 1.7.0).
 2. Validar `image` contra `^ghcr\.io/<owner>/<repo>@sha256:[a-f0-9]{64}$`
    (el repo de **ese** cliente) y `env.MONGODB_DB` contra `^client_[a-z0-9_]+$`.
 3. Escribir `env` en un archivo de entorno con permisos `0600` (más
@@ -420,7 +463,7 @@ es `httpOnly`, `SameSite=Strict`, y en producción `Secure` con nombre `__Host-s
 | `GET /api/meta` | — | `{ appName, clientId, templateVersion, schemaVersion }` |
 | `POST /api/auth/login` | — | `{ username, password }` → `{ user, permissions, features }` + cookie. Rate limit: 10 por IP cada 5 min |
 | `POST /api/auth/logout` | — | Cierra la sesión actual |
-| `GET /api/auth/me` | sesión | `{ user, permissions, features }`. `features: string[]` contiene `"monday"` solo si `MONDAY_API_TOKEN` está configurado **y** el usuario tiene `monday.read` |
+| `GET /api/auth/me` | sesión | `{ user, permissions, features }`. `features: string[]` contiene `"monday"` solo si `MONDAY_API_TOKEN` está configurado **y** el usuario tiene `monday.read`, y `"willdoo"` solo si `ANTHROPIC_API_KEY` está configurada **y** el usuario tiene `willdoo.use` |
 | `POST /api/auth/change-password` | sesión | `{ currentPassword, newPassword }`. Cierra las demás sesiones |
 | `GET /api/users` | `users.read` | Paginado; `q`, `sort` (`username`, `displayName`, `email`, `status`, `createdAt`, `lastLoginAt`), `status` |
 | `POST /api/users` | `users.create` | `{ username, displayName, password, email?, roleIds?, status? }` → `201` |
@@ -444,6 +487,11 @@ es `httpOnly`, `SameSite=Strict`, y en producción `Secure` con nombre `__Host-s
 | `GET /api/integrations` | `integrations.read` | `{ items: [{ id, label, configured }] }`, sin valores de credenciales |
 | `POST /api/integrations/:provider/test` | `integrations.manage` | Prueba de conexión (Monday: consulta `me`). `:provider` debe existir en el registro (si no, 404); 409 `not_configured` si falta la credencial. → `200 { ok: true }` o `200 { ok: false, error }`. Rate limit 10/min por IP. Auditada (`integration.test`) sin valores |
 | `GET /api/monday/boards` | `monday.read` | `{ items: [{ id, name, workspaceName, url }], total }`. 404 si Monday no está configurado. Errores: `502 auth_failed`, `504 timeout`, `503 rate_limited`, `503 unavailable` (nunca el mensaje del proveedor). Rate limit 30/min por IP. Auditada (`integration.monday.boards`) solo con el número de tableros |
+| `POST /api/willdoo/messages` | `willdoo.use` | `{ text (1–4000), conversationId?, screen?: { path, title?, recordId? }, timeZone? }`. Responde `application/x-ndjson`: un JSON por línea, `start` → `tool`* / `text`* → `done` o `error`. Antes de llamar a Claude: `429 willdoo_budget_exhausted` (presupuesto del mes agotado), `429 willdoo_daily_limit` (límite del usuario) y `404` si la conversación no es suya. Rate limit 20/min por IP. 404 si Will Doo no está configurado. Auditada (`willdoo.ask`): pregunta (≤ 500 caracteres), pantalla, herramientas con su entrada, consumo y costo. Nunca guarda en la auditoría la respuesta ni los datos consultados |
+| `GET /api/willdoo/conversations` | `willdoo.use` | Las 30 más recientes del usuario; `?userId=` exige `willdoo.audit` |
+| `GET /api/willdoo/conversations/:id` | `willdoo.use` | `{ id, title, createdAt, updatedAt, turns: [{ role, text, tools, at }] }`. Solo las propias, salvo con `willdoo.audit` (si no, 404) |
+| `DELETE /api/willdoo/conversations/:id` | `willdoo.use` | Solo las propias. Auditada (`willdoo.conversation.delete`) |
+| `GET /api/willdoo/usage` | `willdoo.audit` | Gasto del mes (UTC, precio de lista) frente al presupuesto, por persona |
 | `GET /api/dashboard` | `dashboard.read` | `?days=7\|14\|30` (14 por defecto) y `?tz=<zona IANA>` (UTC por defecto) → `{ range, kpis: { activeUsers, disabledUsers, roles, logins, failedLogins, uniqueUsers }, series: [{ date, logins, failures }] }`. Solo conteos agregados; días sin actividad en 0 |
 
 **Paginación**: `?page=&pageSize=&q=&sort=` (`pageSize` ≤ 100; `sort=-campo`
@@ -484,6 +532,8 @@ validadores (el usuario solo tiene `readWrite`); la validación es con Zod en la
 | `notifications` | `userId`, `type`, `title`, `body`, `readAt`, `createdAt` | `userId+readAt+createdAt` |
 | `audit_logs` | `actorId`, `action`, `entityType`, `entityId`, `metadata` (sin secretos), `ip`, `createdAt` | `createdAt`; `actorId+createdAt` |
 | `sessions` | `sessionIdHash` (HMAC), `userId`, `createdAt`, `lastSeenAt`, `expiresAt`, `absoluteExpiresAt` | `sessionIdHash` único; `userId`; TTL en `expiresAt` |
+| `willdoo_conversations` | `userId`, `title`, `messages` (transcripción para Claude, solo se añade), `turns` (lo que ve el panel), `costMicros`, fechas, `expiresAt` | `userId+updatedAt`; TTL en `expiresAt` |
+| `willdoo_usage` | `userId`, `conversationId`, `model`, `usage` (tokens), `costMicros`, `toolCalls`, `createdAt`, `expiresAt` | `createdAt`; `userId+createdAt`; TTL en `expiresAt` |
 | `app_metadata` | `bootstrap` (aprovisionador) y `schema` (app) | — |
 
 Datos sembrados por la migración 1: catálogo de 12 permisos
@@ -503,6 +553,11 @@ Migración 3 (esquema **3**): añade `integrations.read`,
 queda en `{ key: "schema", version: 3 }` y `/api/meta` devuelve
 `schemaVersion: 3`.
 
+Migración 4 (esquema **4**): añade `willdoo.use` y `willdoo.audit` al
+catálogo (18 permisos) y al rol `admin` con `$addToSet`, y crea los índices de
+`willdoo_conversations` y `willdoo_usage`. Las dos colecciones caducan por su
+propio `expiresAt` (TTL 0), así que la retención cambia sin rehacer índices.
+
 ## 9. Responsabilidades
 
 ### Lo hace el aprovisionador
@@ -515,7 +570,7 @@ queda en `{ key: "schema", version: 3 }` y `/api/meta` devuelve
   db.app_metadata.insertOne({
     key: "bootstrap",
     clientId: "<slug>",            // string no vacío
-    templateVersion: "1.6.0"       // template.version de package.json
+    templateVersion: "1.7.0"       // template.version de package.json
   })
   ```
 
@@ -531,6 +586,9 @@ queda en `{ key: "schema", version: 3 }` y `/api/meta` devuelve
   `MONDAY_API_TOKEN` del entorno `production` y aceptar esa clave en el
   comando del servidor (§5). Para quitar la integración, borrar el secret y
   redesplegar.
+- Opcional: para Will Doo, guardar la clave de Anthropic del proyecto como
+  secret `ANTHROPIC_API_KEY` del entorno `production` y aceptar esa clave en el
+  comando del servidor (§5). Para apagarlo, borrar el secret y redesplegar.
 - Disparar el primer `Deploy`.
 - Vista previa (opcional): preparar `preview-<slug>.<dominio>` en el VPS (puerto,
   certificado y nginx con acceso solo desde el panel), arrancar la rama en modo
@@ -547,6 +605,12 @@ queda en `{ key: "schema", version: 3 }` y `/api/meta` devuelve
   seguir redirecciones, con timeout de 10 s y caché en memoria de 60 s. Nada se
   conecta al arrancar: un token inválido no impide arrancar. Los enlaces se
   validan (https y host `*.monday.com`) en el servidor y en el navegador.
+- Will Doo: el bucle con Claude (SDK oficial, streaming, caché del prompt y
+  fallback del servidor ante rechazos), las herramientas de lectura con el
+  permiso y el alcance del usuario, la memoria con retención, el tope de
+  gasto, los límites y la auditoría. Las peticiones van solo a
+  `https://api.anthropic.com`. Lo que devuelven las herramientas y el contexto
+  de pantalla se tratan como datos, nunca como instrucciones.
 
 ### NO lo hace el template
 

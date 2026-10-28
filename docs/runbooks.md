@@ -87,9 +87,10 @@ Para revocar de inmediato (el cliente deja de poder desplegar):
 
 ## Actualizar el servidor con la lista de variables permitida
 
-Desde el template 1.4.0, `deploy-client` acepta exactamente las 6 variables del contrato
-(`MONGODB_URI`, `MONGODB_DB`, `SESSION_SECRET`, `INITIAL_ADMIN_PASSWORD`,
-`APP_DISPLAY_NAME`, `MONDAY_API_TOKEN`) y rechaza cualquier otra. Para instalar la
+`deploy-client` acepta exactamente las 7 variables del contrato (`MONGODB_URI`,
+`MONGODB_DB`, `SESSION_SECRET`, `INITIAL_ADMIN_PASSWORD`, `APP_DISPLAY_NAME`,
+`MONDAY_API_TOKEN` desde el template 1.4.0 y `ANTHROPIC_API_KEY` de Will Doo desde el
+1.7.0) y rechaza cualquier otra. Para instalar la
 versión nueva de los scripts:
 
 ```bash
@@ -113,6 +114,31 @@ No hace falta reiniciar nada: cada despliegue usa la versión instalada.
 
 Para quitar la integración: *Desactivar* (borra el secret y redespliega). Detalles en
 [security.md](security.md).
+
+## Activar Will Doo (co-pilot) en un proyecto
+
+Will Doo vive en la app del cliente (plantilla 1.7.0 o posterior) y usa la clave de
+Anthropic **de ese proyecto**, no la del AI Developer de Launchpad. Así el gasto queda
+separado por cliente.
+
+1. **Servidor actualizado.** El VPS del proyecto debe aceptar `ANTHROPIC_API_KEY`:
+   ver [Actualizar el servidor con la lista de variables permitida](#actualizar-el-servidor-con-la-lista-de-variables-permitida).
+   Con un servidor sin actualizar, el despliegue con la clave falla con
+   `DEPLOY_FAILED`; sin la clave, todo sigue igual.
+2. **Clave de Anthropic.** En console.anthropic.com crea una clave solo para este
+   proyecto, mejor en un workspace propio para separar y limitar su gasto.
+3. **Activación en el panel.** Detalle del proyecto → **Integraciones** →
+   **Will Doo (Claude)** → *Activar* → pega la clave → *Probar conexión* → *Guardar*.
+   Se escribe `ANTHROPIC_API_KEY` en el entorno `production` y se redespliega.
+4. **Permisos en la app del cliente.** El rol `admin` ya tiene `willdoo.use` y
+   `willdoo.audit`. Para los demás roles, dales `willdoo.use` desde *Roles* o desde los
+   permisos de cada usuario.
+5. **Proyectos anteriores a 1.7.0.** Primero hay que llevarles el cambio del template;
+   sin él, la clave se guarda pero Will no aparece.
+
+Para apagarlo: *Desactivar* en esa misma tarjeta (borra el secret y redespliega). El
+tope de gasto mensual es de 50 USD por defecto (`WILL_DOO_MONTHLY_BUDGET_USD` en la
+app; ver el contrato §2).
 
 ## Borrar un cliente
 
