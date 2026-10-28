@@ -26,6 +26,7 @@ import DeleteProjectCard from "./DeleteProjectCard";
 import DeploymentCard from "./DeploymentCard";
 import InitialCredentialsCard from "./InitialCredentialsCard";
 import IntegrationsCard from "./IntegrationsCard";
+import WillDooCard from "./WillDooCard";
 import JobStages from "./JobStages";
 import { Code } from "./new-project/parts";
 import { isFinished, retryJob, useJobStream } from "./provisioning";
@@ -219,6 +220,8 @@ export default function ProjectDetailPage() {
           </div>
 
           <IntegrationsCard client={data.client} />
+
+          <WillDooCard client={data.client} />
 
           {isBoss && <TeamAssignCard slug={data.client.id} teamId={data.client.team?.id ?? null} />}
 

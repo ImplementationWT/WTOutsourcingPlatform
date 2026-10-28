@@ -165,6 +165,13 @@ export async function registerIntegrationRoutes(
     if (!client.integrations?.[provider.id]) return reply.code(404).send({ error: `${provider.label} no está activada en este cliente.` });
 
     const actor = request.user!.username;
+    // Sin la clave, «Will Doo + Claude» no puede seguir: la app queda en «Will Doo solo».
+    if (provider.id === "anthropic" && client.willDoo?.mode === "claude") {
+      const repository = deriveNames(parseSlug(slug), { targetOwner: deps.github.owner, appsDomain: appsDomainOf(client, deps.config) }).repository;
+      await deps.github.setEnvironmentVariable(repository, deps.config.template.environment, "WILL_DOO_MODE", "basic");
+      await store.setClientFields(slug, { willDoo: { mode: "basic", updatedAt: new Date(), updatedBy: actor } });
+      await store.audit({ actor, action: "client.willdoo_mode_changed", clientId: slug, target: repository, details: { from: "claude", to: "basic", reason: "clave quitada" } });
+    }
     const deployed = deps.config.deployEnabled && !!client.deployment?.preparedAt;
     const stages: StageName[] = deployed ? ["integration_remove", "deploy", "health_check"] : ["integration_remove"];
     try {

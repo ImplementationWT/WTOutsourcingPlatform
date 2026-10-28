@@ -18,6 +18,7 @@ export type StageName = (typeof STAGES)[number]["name"] | (typeof INTEGRATION_ST
 export type StageStatus = "pending" | "running" | "succeeded" | "failed";
 export type JobStatus = "queued" | "running" | "failed" | "succeeded";
 export type ClientStatus = "provisioning" | "ready" | "failed";
+export type WillDooMode = "off" | "basic" | "claude";
 
 export type SubStepStatus = "pending" | "running" | "done" | "skipped" | "failed";
 
@@ -125,6 +126,11 @@ export interface ClientDoc {
    * Equipo al que pertenece (obligatorio en los proyectos nuevos). Los anteriores a los equipos
    * no lo tienen: solo los ven los jefes hasta que lo asignen.
    */
+  /**
+   * Will Doo de la app (plantilla 1.7.0): off, basic («Will Doo solo», sin IA) o claude (con la
+   * clave de Anthropic del cliente). Sin el campo, la app usa basic.
+   */
+  willDoo?: { mode: WillDooMode; updatedAt: Date; updatedBy: string };
   teamId?: string | null;
   latestJobId: string;
   createdBy: string;

@@ -90,10 +90,10 @@ const monday: IntegrationProvider = {
  */
 const willDoo: IntegrationProvider = {
   id: "anthropic",
-  label: "Will Doo (Claude)",
-  description: "El co-pilot de la app: responde con los datos del sistema según los permisos de cada usuario.",
+  label: "Will Doo + Claude",
+  description: "Clave de Anthropic de la cuenta del cliente para el modo «Will Doo + Claude» (elígelo en la tarjeta Will Doo).",
   help: [
-    "En console.anthropic.com: Settings → API keys → Create key. Usa una clave solo para este proyecto (mejor en un workspace propio) para separar y limitar su gasto.",
+    "Con la cuenta de Anthropic del cliente, en console.anthropic.com: Settings → API keys → Create key. El consumo se le factura a esa cuenta; usa una clave solo para este proyecto.",
     "La app la usa solo desde su servidor; nunca llega al navegador. Requiere la plantilla 1.7.0 o posterior y el permiso willdoo.use en los roles que deban usarlo."
   ],
   helpUrl: "https://docs.anthropic.com/en/api/admin-api/apikeys/get-api-key",

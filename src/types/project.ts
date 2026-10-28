@@ -84,6 +84,8 @@ export interface ClientDetail {
     team: { id: string; name: string } | null;
     /** Estado y fechas por proveedor; nunca valores. */
     integrations: ClientIntegration[];
+    /** Will Doo de la app (plantilla 1.7.0): off, basic (solo, sin IA) o claude. */
+    willDoo: { mode: WillDooMode; updatedAt: string | null };
     createdAt: string;
   };
   resources: {
@@ -145,6 +147,8 @@ export interface IntegrationProvider {
   helpUrl: string;
   fields: { name: string; label: string; type: "secret" | "text"; placeholder?: string; maxLength: number }[];
 }
+
+export type WillDooMode = "off" | "basic" | "claude";
 
 export interface ClientIntegration {
   provider: string;

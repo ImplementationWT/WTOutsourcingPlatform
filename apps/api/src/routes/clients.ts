@@ -51,6 +51,7 @@ const repoParams = z.object({ name: z.string().regex(/^[A-Za-z0-9._-]{1,100}$/) 
 
 const idParams = z.object({ id: z.string().uuid() });
 const slugParams = z.object({ slug: slugSchema });
+const willDooSchema = z.object({ mode: z.enum(["off", "basic", "claude"]) }).strict();
 
 export type InitialAdminState = "pending" | "default" | "available" | "revealed" | "expired" | "unavailable";
 
@@ -208,6 +209,7 @@ export async function registerClientRoutes(
           : null,
         initialAdmin: initialAdminStatus(client, pendingUntil, vault.now()),
         integrations: integrationsView(client),
+        willDoo: { mode: client.willDoo?.mode ?? "basic", updatedAt: client.willDoo?.updatedAt ?? null },
         deployment: deploymentView(client, names.baseUrl),
         deployEnabled: config.deployEnabled,
         server: client.server ?? { id: "principal", name: "Principal", appsDomain: config.appsDomain },
@@ -341,6 +343,37 @@ export async function registerClientRoutes(
   });
 
   /** Redesplegar: lanza el workflow Deploy del repo del cliente (workflow_dispatch) y lo audita. */
+  /**
+   * Modo de Will Doo en la app del cliente: variable WILL_DOO_MODE del entorno production y
+   * redespliegue. «Will Doo + Claude» exige la clave de Anthropic del cliente ya guardada.
+   */
+  app.put("/api/clients/:slug/willdoo", { preHandler: requireOperator }, async (request, reply) => {
+    const params = slugParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });
+    const body = willDooSchema.safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ error: "Elige off, basic o claude." });
+    const client = await accessibleClient(store, request, reply, params.data.slug);
+    if (!client) return reply;
+    if (client.status !== "ready") return reply.code(409).send({ error: "El proyecto debe estar listo para cambiar Will Doo." });
+    const { mode } = body.data;
+    if (mode === "claude" && !client.integrations?.anthropic?.configuredAt) {
+      return reply.code(409).send({ error: "Para «Will Doo + Claude» primero guarda la clave de Anthropic del cliente en Integraciones." });
+    }
+    const names = namesFor(client);
+    const actor = request.user!.username;
+    await github.setEnvironmentVariable(names.repository, config.template.environment, "WILL_DOO_MODE", mode);
+    const at = new Date();
+    await store.setClientFields(client._id, { willDoo: { mode, updatedAt: at, updatedBy: actor } });
+    await store.audit({ actor, action: "client.willdoo_mode_changed", clientId: client._id, target: names.repositoryFullName, details: { from: client.willDoo?.mode ?? "basic", to: mode } });
+    // The app reads the variable on start: redeploy so it takes effect.
+    const redeploy = config.deployEnabled && Boolean(client.deployment?.preparedAt);
+    if (redeploy) {
+      await github.dispatchWorkflow(names.repository, config.template.deployWorkflow, config.template.ref);
+      await store.setClientFields(client._id, { "deployment.redeployRequestedAt": at, "deployment.redeployRequestedBy": actor });
+    }
+    return { mode, redeploy, actionsUrl: `https://github.com/${names.repositoryFullName}/actions` };
+  });
+
   app.post("/api/clients/:slug/redeploy", { preHandler: requireOperator }, async (request, reply) => {
     const params = slugParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Identificador inválido." });

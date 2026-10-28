@@ -21,16 +21,23 @@ con la que se crearon: este cambio no les afecta.
 
 ### Cambios en 1.7.0 (respecto a 1.6.0): Will Doo, el co-pilot
 
-**Will Doo** conversa con cada usuario de la app usando Claude (API de
-Anthropic). Responde con datos vivos y entiende la pantalla abierta, siempre
-dentro de los permisos de quien pregunta. Es **opcional**: sin clave, la app
-funciona igual y Will no aparece. Esta versión solo consulta datos: no crea,
-cambia ni borra nada.
+**Will Doo** acompaña a cada usuario de la app con los datos del sistema, siempre
+dentro de sus permisos. En esta versión solo consulta: no crea, cambia ni borra
+nada. Tiene tres modos, que se eligen con `WILL_DOO_MODE`:
+
+| Modo | `WILL_DOO_MODE` | Qué hace | Requiere |
+| --- | --- | --- | --- |
+| **Will Doo + Claude** | `claude` | Chat libre con Claude: responde con datos vivos, entiende la pantalla abierta y analiza (tendencias, comparaciones) | `ANTHROPIC_API_KEY` de la cuenta del cliente |
+| **Will Doo solo** | `basic` (por defecto) | Informativo, sin IA y sin costo: consultas rápidas sobre los datos que existen y la guía de uso | — |
+| **Sin Will Doo** | `off` | No aparece | — |
+
+`claude` sin clave funciona como `basic`, y la app lo avisa en el log al arrancar.
 
 - **Variables.**
-  - Secreto opcional `ANTHROPIC_API_KEY` (§2, §3), uno por proyecto. El
-    servidor debe aceptarlo en `env` (§5). Si el secreto no está definido,
-    `deploy.sh` no lo envía, así que un VPS sin actualizar sigue desplegando.
+  - Variable opcional `WILL_DOO_MODE` (§2, §3).
+  - Secreto opcional `ANTHROPIC_API_KEY` (§2, §3), uno por proyecto.
+  - El servidor debe aceptar las dos en `env` (§5). `deploy.sh` solo las envía si
+    están definidas, así que un VPS sin actualizar sigue desplegando.
   - Ajustes con valor por defecto: `WILL_DOO_MODEL` (`claude-sonnet-5-5`),
     `WILL_DOO_MONTHLY_BUDGET_USD`, `WILL_DOO_USER_DAILY_MESSAGES` y
     `WILL_DOO_RETENTION_DAYS`.
@@ -38,22 +45,27 @@ cambia ni borra nada.
   **migración 4** (esquema 4) los añade al catálogo y al rol `admin`, y crea
   las colecciones `willdoo_conversations` y `willdoo_usage` con TTL (§8).
 - **Endpoints y features.**
-  - `/api/willdoo/*` (§7).
-  - `features` incluye `"willdoo"` con la clave configurada y el permiso
-    `willdoo.use`.
+  - `/api/willdoo/*` (§7): consultas rápidas y guía en `basic` y `claude`; el
+    chat, solo en `claude`.
+  - `features` incluye `"willdoo"` con el modo `basic` o `claude` y el permiso
+    `willdoo.use`, y además `"willdoo-ai"` en el modo `claude`.
   - El proveedor `anthropic` aparece en `/api/integrations`, con su prueba de
     conexión.
-- **Permisos en la capa de datos.** Claude solo recibe las herramientas que el
+- **Permisos en la capa de datos.** Las consultas rápidas y el chat usan las
+  mismas herramientas de lectura. Claude y el panel solo reciben las que el
   usuario tiene permiso de usar. Cada herramienta consulta con la identidad y
   el alcance de quien pregunta. La auditoría registra quién preguntó qué, qué
   herramientas se usaron y el costo.
-- **Interfaz.** Botón y panel de chat 2D (pantalla completa en celular), con
-  sugerencias según los permisos, historial y enlaces solo a rutas de la app o
-  a monday.com.
+- **Interfaz.** Botón y panel 2D (pantalla completa en celular).
+  - En `claude`: chat con sugerencias según los permisos e historial.
+  - En `basic`: lista de consultas rápidas con su resultado y la guía «Cómo se
+    usa».
+  - En los dos, los enlaces solo van a rutas de la app o a monday.com.
 - **Cómo lo adapta cada proyecto.**
   - La guía del sistema vive en `src/modules/willdoo/context.ts`.
   - Las herramientas de lectura propias van en `src/modules/willdoo/tools.ts`,
     cada una con su permiso.
+  - Sus consultas rápidas van en `src/modules/willdoo/quick.ts`.
 
 ### Cambios en 1.6.0 (respecto a 1.5.0): vista previa en vivo
 
@@ -167,7 +179,8 @@ cuenta como no definida.
 | `APP_DISPLAY_NAME` | No | Una línea, ≤ 80 caracteres. Se muestra en la UI vía `/api/meta`. | `Aplicación` |
 | `MONDAY_API_TOKEN` | No | Token de la API de Monday.com (sin espacios). Activa la integración. Nunca se registra ni se devuelve | — |
 | `MONDAY_MAX_BOARDS` | No | Máximo de tableros que se listan (1–5000; se piden de 100 en 100) | `500` |
-| `ANTHROPIC_API_KEY` | No | Clave de la API de Anthropic **de este proyecto** (sin espacios). Activa Will Doo. Nunca se registra ni se devuelve | — |
+| `WILL_DOO_MODE` | No | `off` · `basic` (consultas rápidas sin IA) · `claude` (chat con Claude; sin `ANTHROPIC_API_KEY` funciona como `basic`) | `basic` |
+| `ANTHROPIC_API_KEY` | No | Clave de la API de Anthropic de la cuenta del cliente (sin espacios). La usa el modo `claude`. Nunca se registra ni se devuelve | — |
 | `WILL_DOO_MODEL` | No | Id del modelo de Claude (`claude-…`) | `claude-sonnet-5-5` |
 | `WILL_DOO_MONTHLY_BUDGET_USD` | No | Tope de gasto mensual de toda la app, a precio de lista (1–100000). Al alcanzarlo, Will responde `429 willdoo_budget_exhausted` hasta el mes siguiente (UTC) | `50` |
 | `WILL_DOO_USER_DAILY_MESSAGES` | No | Preguntas por usuario y día UTC (1–10000) | `100` |
@@ -214,6 +227,7 @@ Environments). Nombres exactos, sensibles a mayúsculas:
 | `DEPLOY_KNOWN_HOSTS` | Sí | Línea(s) `known_hosts` del VPS (p. ej. salida de `ssh-keyscan -t ed25519 <host>` verificada). La clave del host se comprueba siempre |
 | `APP_HOSTNAME` | Sí | Subdominio público, solo el host: `<slug>.apps.<dominio>` (sin `https://` ni ruta) |
 | `APP_DISPLAY_NAME` | No | Nombre visible de la app (una línea, ≤ 80 caracteres) |
+| `WILL_DOO_MODE` | No | `off`, `basic` o `claude` (§2). Sin definir, `basic` (desde 1.7.0) |
 
 El workflow usa además el `GITHUB_TOKEN` automático del job (no hay que crearlo).
 
@@ -311,14 +325,15 @@ ese comando, y el comando sabe por su argumento a qué cliente corresponde.
     "INITIAL_ADMIN_PASSWORD": "…",
     "APP_DISPLAY_NAME": "…",
     "MONDAY_API_TOKEN": "…",
-    "ANTHROPIC_API_KEY": "…"
+    "ANTHROPIC_API_KEY": "…",
+    "WILL_DOO_MODE": "claude"
   },
   "registryToken": "<GITHUB_TOKEN del job>"
 }
 ```
 
 - `env` contiene **solo las variables definidas**: `INITIAL_ADMIN_PASSWORD`,
-  `APP_DISPLAY_NAME`, `MONDAY_API_TOKEN` y `ANTHROPIC_API_KEY` no aparecen si no existen. El JSON se construye con `jq`
+  `APP_DISPLAY_NAME`, `MONDAY_API_TOKEN`, `ANTHROPIC_API_KEY` y `WILL_DOO_MODE` no aparecen si no existen. El JSON se construye con `jq`
   leyendo el entorno (los secretos no pasan por argumentos) y cada valor se
   enmascara con `::add-mask::` antes de usarse; nunca se imprime.
 - `registryToken` caduca cuando termina el job: el servidor debe hacer
@@ -330,7 +345,8 @@ ese comando, y el comando sabe por su argumento a qué cliente corresponde.
 1. Leer stdin completo y parsearlo como JSON; rechazar claves desconocidas en
    `env`. Lista de claves aceptadas: `MONGODB_URI`, `MONGODB_DB`,
    `SESSION_SECRET`, `INITIAL_ADMIN_PASSWORD`, `APP_DISPLAY_NAME` y
-   **`MONDAY_API_TOKEN`** (desde 1.4.0) y **`ANTHROPIC_API_KEY`** (desde 1.7.0).
+   **`MONDAY_API_TOKEN`** (desde 1.4.0), **`ANTHROPIC_API_KEY`** y
+   **`WILL_DOO_MODE`** (desde 1.7.0).
 2. Validar `image` contra `^ghcr\.io/<owner>/<repo>@sha256:[a-f0-9]{64}$`
    (el repo de **ese** cliente) y `env.MONGODB_DB` contra `^client_[a-z0-9_]+$`.
 3. Escribir `env` en un archivo de entorno con permisos `0600` (más
@@ -463,7 +479,7 @@ es `httpOnly`, `SameSite=Strict`, y en producción `Secure` con nombre `__Host-s
 | `GET /api/meta` | — | `{ appName, clientId, templateVersion, schemaVersion }` |
 | `POST /api/auth/login` | — | `{ username, password }` → `{ user, permissions, features }` + cookie. Rate limit: 10 por IP cada 5 min |
 | `POST /api/auth/logout` | — | Cierra la sesión actual |
-| `GET /api/auth/me` | sesión | `{ user, permissions, features }`. `features: string[]` contiene `"monday"` solo si `MONDAY_API_TOKEN` está configurado **y** el usuario tiene `monday.read`, y `"willdoo"` solo si `ANTHROPIC_API_KEY` está configurada **y** el usuario tiene `willdoo.use` |
+| `GET /api/auth/me` | sesión | `{ user, permissions, features }`. `features: string[]` contiene `"monday"` solo si `MONDAY_API_TOKEN` está configurado **y** el usuario tiene `monday.read`, `"willdoo"` si Will Doo está en modo `basic` o `claude` **y** el usuario tiene `willdoo.use`, y `"willdoo-ai"` si además el modo es `claude` con `ANTHROPIC_API_KEY` |
 | `POST /api/auth/change-password` | sesión | `{ currentPassword, newPassword }`. Cierra las demás sesiones |
 | `GET /api/users` | `users.read` | Paginado; `q`, `sort` (`username`, `displayName`, `email`, `status`, `createdAt`, `lastLoginAt`), `status` |
 | `POST /api/users` | `users.create` | `{ username, displayName, password, email?, roleIds?, status? }` → `201` |
@@ -487,7 +503,10 @@ es `httpOnly`, `SameSite=Strict`, y en producción `Secure` con nombre `__Host-s
 | `GET /api/integrations` | `integrations.read` | `{ items: [{ id, label, configured }] }`, sin valores de credenciales |
 | `POST /api/integrations/:provider/test` | `integrations.manage` | Prueba de conexión (Monday: consulta `me`). `:provider` debe existir en el registro (si no, 404); 409 `not_configured` si falta la credencial. → `200 { ok: true }` o `200 { ok: false, error }`. Rate limit 10/min por IP. Auditada (`integration.test`) sin valores |
 | `GET /api/monday/boards` | `monday.read` | `{ items: [{ id, name, workspaceName, url }], total }`. 404 si Monday no está configurado. Errores: `502 auth_failed`, `504 timeout`, `503 rate_limited`, `503 unavailable` (nunca el mensaje del proveedor). Rate limit 30/min por IP. Auditada (`integration.monday.boards`) solo con el número de tableros |
-| `POST /api/willdoo/messages` | `willdoo.use` | `{ text (1–4000), conversationId?, screen?: { path, title?, recordId? }, timeZone? }`. Responde `application/x-ndjson`: un JSON por línea, `start` → `tool`* / `text`* → `done` o `error`. Antes de llamar a Claude: `429 willdoo_budget_exhausted` (presupuesto del mes agotado), `429 willdoo_daily_limit` (límite del usuario) y `404` si la conversación no es suya. Rate limit 20/min por IP. 404 si Will Doo no está configurado. Auditada (`willdoo.ask`): pregunta (≤ 500 caracteres), pantalla, herramientas con su entrada, consumo y costo. Nunca guarda en la auditoría la respuesta ni los datos consultados |
+| `GET /api/willdoo/quick` | `willdoo.use` | Modos `basic` y `claude`. `{ mode, items: [{ id, label, description }] }`: solo las consultas rápidas cuya herramienta puede usar el usuario. 404 con `off` |
+| `POST /api/willdoo/quick/:id` | `willdoo.use` | `{ timeZone? }` → `{ id, label, summary, items: [{ title, subtitle?, meta?, link? }], link?, at }`. Una consulta inexistente o sin permiso responde 404. Sin IA ni costo. Rate limit 30/min por IP. Auditada (`willdoo.quick`) con la consulta y el número de resultados |
+| `GET /api/willdoo/guide` | `willdoo.use` | Modos `basic` y `claude`. `{ guide }`: la guía del sistema en Markdown |
+| `POST /api/willdoo/messages` | `willdoo.use` | Solo en el modo `claude`; si no, 404. | `{ text (1–4000), conversationId?, screen?: { path, title?, recordId? }, timeZone? }`. Responde `application/x-ndjson`: un JSON por línea, `start` → `tool`* / `text`* → `done` o `error`. Antes de llamar a Claude: `429 willdoo_budget_exhausted` (presupuesto del mes agotado), `429 willdoo_daily_limit` (límite del usuario) y `404` si la conversación no es suya. Rate limit 20/min por IP. 404 si Will Doo no está configurado. Auditada (`willdoo.ask`): pregunta (≤ 500 caracteres), pantalla, herramientas con su entrada, consumo y costo. Nunca guarda en la auditoría la respuesta ni los datos consultados |
 | `GET /api/willdoo/conversations` | `willdoo.use` | Las 30 más recientes del usuario; `?userId=` exige `willdoo.audit` |
 | `GET /api/willdoo/conversations/:id` | `willdoo.use` | `{ id, title, createdAt, updatedAt, turns: [{ role, text, tools, at }] }`. Solo las propias, salvo con `willdoo.audit` (si no, 404) |
 | `DELETE /api/willdoo/conversations/:id` | `willdoo.use` | Solo las propias. Auditada (`willdoo.conversation.delete`) |
@@ -586,9 +605,10 @@ propio `expiresAt` (TTL 0), así que la retención cambia sin rehacer índices.
   `MONDAY_API_TOKEN` del entorno `production` y aceptar esa clave en el
   comando del servidor (§5). Para quitar la integración, borrar el secret y
   redesplegar.
-- Opcional: para Will Doo, guardar la clave de Anthropic del proyecto como
-  secret `ANTHROPIC_API_KEY` del entorno `production` y aceptar esa clave en el
-  comando del servidor (§5). Para apagarlo, borrar el secret y redesplegar.
+- Will Doo: elegir el modo con la variable `WILL_DOO_MODE` del entorno
+  `production` (sin definir, `basic`). Para `claude`, guardar además la clave
+  de Anthropic de la cuenta del cliente como secret `ANTHROPIC_API_KEY`. El
+  comando del servidor debe aceptar las dos (§5).
 - Disparar el primer `Deploy`.
 - Vista previa (opcional): preparar `preview-<slug>.<dominio>` en el VPS (puerto,
   certificado y nginx con acceso solo desde el panel), arrancar la rama en modo

@@ -8,6 +8,7 @@ import type {
   ProjectRepo,
   RevealedCredentials,
   ValidationOutcome,
+  WillDooMode,
 } from "@/types/project";
 
 /** Lo único que el navegador envía; el resto lo deriva el backend del slug. */
@@ -105,6 +106,14 @@ export function saveIntegration(slug: string, provider: string, credentials: Rec
     `/api/clients/${encodeURIComponent(slug)}/integrations/${encodeURIComponent(provider)}`,
     { method: "PUT", body: JSON.stringify(credentials) },
   );
+}
+
+/** Modo de Will Doo: escribe WILL_DOO_MODE en GitHub y redespliega. */
+export function setWillDooMode(slug: string, mode: WillDooMode) {
+  return apiFetch<{ mode: WillDooMode; redeploy: boolean; actionsUrl: string }>(`/api/clients/${encodeURIComponent(slug)}/willdoo`, {
+    method: "PUT",
+    body: JSON.stringify({ mode }),
+  });
 }
 
 export function removeIntegration(slug: string, provider: string) {

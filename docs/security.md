@@ -30,7 +30,7 @@ co-pilot del template 1.7.0). Las dos siguen el mismo recorrido.
    con la clave pública del entorno, y **borra el documento transitorio** en ese mismo
    momento.
 6. **Servidor.** El workflow del template la envía a `deploy-client`, que solo acepta
-   las 7 variables del contrato y la escribe en el `.env` 0600 del cliente.
+   las 8 variables del contrato y la escribe en el `.env` 0600 del cliente.
 
 En el cliente de la base administrativa solo se guarda `{ enabled, requestedAt,
 configuredAt, updatedAt }`. El panel muestra estado y fechas: nunca valores, ni

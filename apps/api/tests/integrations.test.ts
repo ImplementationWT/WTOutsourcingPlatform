@@ -82,7 +82,7 @@ describe("catálogo y prueba de conexión", () => {
       }),
       expect.objectContaining({
         id: "anthropic",
-        label: "Will Doo (Claude)",
+        label: "Will Doo + Claude",
         fields: [{ name: "apiKey", label: "Clave de la API de Anthropic", type: "secret", maxLength: 400 }]
       })
     ]);
@@ -289,6 +289,44 @@ describe("actualizar o quitar la integración de un cliente existente", () => {
     expect(ctx.github.env("acme-crm-app").secrets.has("MONDAY_API_TOKEN")).toBe(false);
     expect(JSON.stringify(await ctx.store.auditLog.find().toArray())).not.toContain(key);
     expect(ctx.logs.join("\n")).not.toContain(key);
+  });
+
+  it("modo de Will Doo: solo por defecto; + Claude exige la clave; quitar la clave vuelve a solo", async () => {
+    const ctx = await setup();
+    await ctx.create();
+    expect((await ctx.detail()).client.willDoo.mode).toBe("basic");
+    const setMode = async (mode: string) => {
+      const response = await ctx.app.inject({ method: "PUT", url: "/api/clients/acme-crm/willdoo", headers: ctx.headers, payload: { mode } });
+      await ctx.app.engine.idle();
+      return response;
+    };
+    const variable = () => ctx.github.env("acme-crm-app").variables.get("WILL_DOO_MODE");
+
+    expect((await setMode("full")).statusCode).toBe(400);
+    const withoutKey = await setMode("claude");
+    expect(withoutKey.statusCode).toBe(409);
+    expect(withoutKey.json().error).toContain("clave de Anthropic");
+    expect(variable()).toBeUndefined();
+
+    const dispatches = ctx.github.count("dispatchWorkflow");
+    const off = await setMode("off");
+    expect(off.statusCode).toBe(200);
+    expect(off.json()).toMatchObject({ mode: "off", redeploy: true });
+    expect(variable()).toBe("off");
+    expect(ctx.github.count("dispatchWorkflow")).toBe(dispatches + 1);
+    expect((await ctx.detail()).client.willDoo.mode).toBe("off");
+
+    const key = "token-valido-anthropic-0123456789";
+    await ctx.app.inject({ method: "PUT", url: "/api/clients/acme-crm/integrations/anthropic", headers: ctx.headers, payload: { apiKey: key } });
+    await ctx.app.engine.idle();
+    expect((await setMode("claude")).statusCode).toBe(200);
+    expect(variable()).toBe("claude");
+    expect(await ctx.store.auditLog.countDocuments({ action: "client.willdoo_mode_changed" })).toBe(2);
+
+    await ctx.app.inject({ method: "DELETE", url: "/api/clients/acme-crm/integrations/anthropic", headers: ctx.headers });
+    await ctx.app.engine.idle();
+    expect(variable()).toBe("basic");
+    expect((await ctx.detail()).client.willDoo.mode).toBe("basic");
   });
 
   it("cliente listo sin Monday: la activa (integration_enabled)", async () => {
