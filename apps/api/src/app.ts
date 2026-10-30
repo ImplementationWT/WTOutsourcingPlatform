@@ -11,13 +11,17 @@ import type { Deps } from "./jobs/types.js";
 import { ProvisioningError } from "./lib/errors.js";
 import { loggerOptions } from "./lib/logger.js";
 import { redact } from "./lib/redact.js";
+import type { MeetingAnalyzer } from "./meetings/analyzer.js";
+import { MeetingProcessing } from "./meetings/processing.js";
 import { registerAiRoutes } from "./routes/ai.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { registerClientRoutes } from "./routes/clients.js";
 import { registerCostRoutes } from "./routes/costs.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
+import { registerIngestRoutes } from "./routes/ingest.js";
 import { registerIntegrationRoutes } from "./routes/integrations.js";
 import { registerOpsRoutes } from "./routes/ops.js";
+import { registerSalesRoutes } from "./routes/sales.js";
 import { registerServerRoutes } from "./routes/servers.js";
 import { ServerDirectory } from "./servers/directory.js";
 import type { AdminStore } from "./store/admin-store.js";
@@ -35,9 +39,11 @@ export interface AppOptions {
   servers?: ServerDirectory;
   /** Clave AES-256 del vault de cuentas de Operativa; sin ella, esas rutas responden 503. */
   vaultKey?: Buffer;
+  /** Procesa las reuniones con Claude; sin él quedan pendientes y el reproceso responde 503. */
+  meetingAnalyzer?: MeetingAnalyzer;
 }
 
-export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStream, ai, servers: givenServers, vaultKey }: AppOptions) {
+export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStream, ai, servers: givenServers, vaultKey, meetingAnalyzer }: AppOptions) {
   const app = Fastify({
     logger: loggerOptions({ level: logLevel, stream: logStream }),
     // La API solo escucha en 127.0.0.1 detrás de nginx: se confía únicamente en ese salto, así
@@ -112,12 +118,15 @@ export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStrea
   await registerDashboardRoutes(app, { store, deps });
   await registerIntegrationRoutes(app, { store, engine, deps });
   await registerAiRoutes(app, { store, ai: aiDeveloper, secureCookies: auth.secureCookies });
-  await registerOpsRoutes(app, { store, vaultKey });
+  const meetings = new MeetingProcessing(meetingAnalyzer, app.log.child({ component: "meetings" }));
+  await registerOpsRoutes(app, { store, vaultKey, meetings });
+  await registerSalesRoutes(app, { store, meetings });
+  await registerIngestRoutes(app, { store });
 
   app.addHook("onClose", async () => {
     if (previewSweep) clearInterval(previewSweep);
-    await Promise.all([engine.idle(), teardown.idle()]);
+    await Promise.all([engine.idle(), teardown.idle(), meetings.idle()]);
   });
 
-  return Object.assign(app, { engine, teardown, store, aiDeveloper, servers, users });
+  return Object.assign(app, { engine, teardown, store, aiDeveloper, servers, users, meetings });
 }

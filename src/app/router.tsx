@@ -10,6 +10,10 @@ import OpsProjectsPage from "@/features/ops/OpsProjectsPage";
 import NewProjectPage from "@/features/projects/NewProjectPage";
 import ProjectDetailPage from "@/features/projects/ProjectDetailPage";
 import ProjectsPage from "@/features/projects/ProjectsPage";
+import CustomersPage from "@/features/sales/CustomersPage";
+import LeadDetailPage from "@/features/sales/LeadDetailPage";
+import LeadsPage from "@/features/sales/LeadsPage";
+import SourcesPage from "@/features/sales/SourcesPage";
 import IntegrationsPage from "@/features/servers/IntegrationsPage";
 import SettingsPage from "@/features/settings/SettingsPage";
 
@@ -25,6 +29,10 @@ export const router = createBrowserRouter([
       {
         element: <AppLayout />,
         children: [
+          { path: "/comercial", element: <LeadsPage /> },
+          { path: "/comercial/leads/:id", element: <LeadDetailPage /> },
+          { path: "/comercial/clientes", element: <CustomersPage /> },
+          { path: "/comercial/sources", element: <SourcesPage /> },
           { path: "/operativa", element: <OpsProjectsPage /> },
           { path: "/operativa/:id", element: <OpsProjectDetailPage /> },
           { path: "/dashboard", element: <DashboardPage /> },

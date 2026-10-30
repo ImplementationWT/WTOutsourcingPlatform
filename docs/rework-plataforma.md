@@ -1,6 +1,6 @@
 # Rework de la plataforma: Comercial, Operativa y Financiera
 
-Estado: **propuesta v1 + Fase 1 implementada** (29 de octubre de 2026).
+Estado: **Fase 1 (Operativa) y Fase 2 (Comercial) implementadas**; falta Read.ai y la Fase 3 (Financiera). 29 de octubre de 2026.
 
 El objetivo es que Launchpad deje de ser solo el orquestador de apps de clientes y pase a ser el
 sistema único de la empresa, reemplazando Monday. No se crea otro sistema: se extiende el actual
@@ -40,21 +40,41 @@ Las cuentas del vault solo las ven `boss` y los miembros del equipo del proyecto
 
 ## 3. Modelo de datos
 
-### 3.1 Comercial (Fase 2)
+### 3.1 Comercial (Fase 2, implementada)
 
-- **`leads`**: `source` (web, ads, referido, evento…), `status` (`new`, `contacted`, `demo`,
-  `proposal_sent`, `won`, `lost`), `contact`, `company`, `ownerUserId`, `raw` (payload original
-  tal cual llegó, sin normalizar) y `fields` (clave/valor ya extraídos). Como cada source trae datos
-  distintos, **no hay esquema fijo**: cada source tiene un `lead_source` con un mapeo
-  (`campoOrigen → campoLead`); lo que no se mapea queda en `raw` y se ve en el detalle.
-- **`lead_sources`**: `name`, `kind` (webhook | formulario | manual | import), `ingestKeyHash`
-  (clave del endpoint `POST /api/ingest/leads/:sourceId`), `mapping`.
-- **`demos`**: `leadId`, `url`, `notes`, `createdAt`.
-- **`proposals`**: `leadId | projectId`, `dealId?`, `url` (la web de propuesta), `status`
-  (`draft`, `sent`, `accepted`, `rejected`), `amountCents`, `sentAt`. Se generan desde Comercial o
-  desde Operativa.
-- **`customers`**: se crean al aceptarse una propuesta (`won`). Conversión = crea cliente +
-  proyecto operativo en etapa Kick Off con la propuesta enlazada.
+Solo para `boss` y `commercial` (`/api/sales/*`; el resto recibe 403).
+
+- **`sales_lead_sources`**: `name` (único), `kind` (`webhook | form | manual | import`),
+  `ingestKeyHash` (SHA-256 de la clave; la clave se muestra una sola vez al crearla o rotarla),
+  `keyHint`, `mapping` (`[{ from: "contact.email", to: "email" }]`), `active`, `received`,
+  `lastReceivedAt` y `sampleKeys` (campos del último envío, para armar el mapeo).
+- **`sales_leads`**: `status` (`new → contacted → demo → proposal_sent → won | lost`), `company`,
+  `contactName`, `email`, `phone`, `notes`, `ownerUserId`, `externalId`, `fields` (todo lo recibido,
+  aplanado a `clave.con.puntos → texto`) y `rawJson` (el envío original, máx. 64 KB). Como cada
+  source trae datos distintos **no hay esquema fijo**: se aplica el mapeo del source y lo que falte
+  se adivina por nombres habituales (email/correo, nombre/first+last name, teléfono/whatsapp,
+  empresa…). Nada se descarta.
+  - Registrar una novedad pasa el lead a `contacted`, agendar una demo a `demo` y enviar una
+    propuesta a `proposal_sent` (solo avanza, nunca retrocede).
+  - `won` no se elige a mano: se alcanza al convertir.
+- **`sales_demos`**: `leadId`, `title`, `scheduledAt`, `url`, `notes`, `status`
+  (`scheduled, done, cancelled, no_show`).
+- **`sales_proposals`**: `leadId?`, `projectId?`, `dealId?`, `title`, `url` (la web de la
+  propuesta), `amountCents?`, `status` (`draft, sent, accepted, rejected`), `area`
+  (`commercial | operations`), `sentAt`, `decidedAt`. Se crean desde el lead (Comercial) o desde el
+  proyecto (Operativa); la ligada a un deal queda como `proposalUrl` del deal.
+- **`sales_customers`**: nacen al convertir. **Conversión** (`POST /api/sales/leads/:id/convert`):
+  exige una propuesta aceptada (o acepta la indicada), crea el cliente y el proyecto operativo en
+  Kick Off con esa propuesta, el equipo y sus responsables; el lead queda `won` (de forma atómica:
+  no se convierte dos veces).
+- **`sales_lead_updates`** y **`sales_meetings`**: novedades y reuniones del lead, con el mismo
+  formato y procesamiento que las de Operativa.
+
+**Ingesta** (`POST /api/ingest/leads/:sourceId`, pública): clave en `X-Ingest-Key` o
+`Authorization: Bearer` (nunca en la URL, que se loguea). Acepta JSON u
+`application/x-www-form-urlencoded`, hasta 256 KB, 120 envíos por minuto por source e IP. Source
+inexistente y clave incorrecta dan el mismo 401. Si el mapeo incluye `externalId`, reenviar el
+mismo lead no lo duplica.
 
 ### 3.2 Operativa (Fase 1, implementada)
 
@@ -78,7 +98,17 @@ Las cuentas del vault solo las ven `boss` y los miembros del equipo del proyecto
   Un pool por proyecto evita rotar claves entre personas.
 - **`project_updates`**: bitácora de novedades del proyecto (autor, texto, fecha).
 - **`meetings`**: `projectId`, `title`, `heldAt`, `source` (`read_ai | manual`), `transcript`,
-  `summary`, `feedback[]`, `actionItems[]`, `status` (`pending | processed | failed`).
+  `summary`, `feedback[]`, `actionItems[]`, `sentimentSignal`, `status`
+  (`pending | processing | processed | failed`).
+  - **Procesamiento automático** (proyectos y leads): una reunión con transcripción y sin resumen se
+    procesa sola con Claude (`claude-sonnet-5-5`, la misma clave de Anthropic del AI Developer):
+    resumen, feedback del cliente, action items y sentimiento sugerido (0–100). La transcripción
+    se trata como datos, no como instrucciones, y se corta a 200 000 caracteres (tope de gasto por
+    reunión; salida máx. 4096 tokens). Se guardan los tokens usados.
+  - El sentimiento sugerido **no** cambia el proyecto solo: el Team Leader lo aplica con un botón,
+    y cada action item se puede convertir en tarea.
+  - Sin clave de Anthropic las reuniones quedan `pending` y el reproceso responde 503. Si falla,
+    queda `failed` con un mensaje genérico y se puede reintentar.
 
 ### 3.3 Financiera (Fase 3)
 
@@ -108,10 +138,10 @@ Las cuentas del vault solo las ven `boss` y los miembros del equipo del proyecto
 - **Leads multi-source**: endpoint de ingesta por source con clave propia (se guarda solo el
   hash), validación con Zod permisiva (objeto JSON libre con tope de tamaño), guardado de `raw` y
   aplicación del mapeo. Tolera campos desconocidos.
-- **Read.ai**: webhook de reunión finalizada → crea la reunión `pending` con el transcript →
-  procesamiento con Claude (resumen, feedback del cliente, action items, señal de sentimiento) →
-  `processed`. Los action items proponen tareas, **no las crean solos**. El formato exacto del
-  webhook de Read.ai y su autenticación se verifican con su documentación al implementarlo (Fase 2).
+- **Read.ai** (pendiente): webhook de reunión finalizada → crea la reunión `pending` con el
+  transcript y `externalId` (evita duplicados) → el procesamiento ya existente la deja
+  `processed`. Falta verificar el formato del webhook y su autenticación con la documentación de
+  Read.ai, y decidir cómo se asocia cada reunión a su proyecto o lead.
 - **Claude**: se reutiliza la clave de Anthropic ya configurada para el AI Developer; límite de
   gasto por reunión.
 
@@ -136,7 +166,7 @@ cuando termine la Fase 3; Monday se apaga después de validar el reporte.
 | Fase | Contenido | Estado |
 |---|---|---|
 | 1 | Roles nuevos, Operativa: proyectos, deals, tareas, vault, updates, reuniones (manual), menú por áreas | **Implementada** |
-| 2 | Comercial completo, ingesta de leads, Read.ai + procesamiento con Claude, conversión a proyecto | Pendiente |
+| 2 | Comercial completo, ingesta de leads, procesamiento de reuniones con Claude, conversión a proyecto, propuestas desde Operativa | **Implementada** (falta el webhook de Read.ai) |
 | 3 | Financiera: facturas, pagos, comisiones, reportes Q1–Q4 y ventas vs cobros; importación de Monday | Pendiente |
 
 ## 9. Supuestos y preguntas abiertas

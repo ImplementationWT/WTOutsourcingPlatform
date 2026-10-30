@@ -7,6 +7,7 @@ import { createHttpProbe } from "./adapters/http-probe.js";
 import { createMongoBootstrapAdapter } from "./adapters/mongo-bootstrap.js";
 import { createServerAdapter } from "./adapters/server.js";
 import { buildApp } from "./app.js";
+import { createClaudeMeetingAnalyzer } from "./meetings/analyzer.js";
 import {
   appBaseDomain,
   loadAccountVaultKey,
@@ -84,6 +85,8 @@ const app = await buildApp({
   logLevel: env.LOG_LEVEL,
   servers,
   vaultKey: accountVaultKey,
+  // Reuniones de Comercial y Operativa: la misma clave de Anthropic que el AI Developer.
+  meetingAnalyzer: anthropicKey ? createClaudeMeetingAnalyzer(anthropicKey, env.ANTHROPIC_WORKSPACE) : undefined,
   ai: anthropicKey
     ? {
         agent: createAnthropicAgentAdapter(anthropicKey, store.aiAgentSettings, env.ANTHROPIC_WORKSPACE),

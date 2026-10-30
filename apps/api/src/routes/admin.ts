@@ -48,10 +48,10 @@ export async function registerAdminRoutes(app: FastifyInstance, { users }: { use
     }
   }
 
-  /** Equipos visibles para la sesión (selector del jefe; el resto solo ve el suyo). */
+  /** Equipos visibles para la sesión (selector del jefe y conversión de leads en Comercial; el resto solo ve el suyo). */
   app.get("/api/teams", { preHandler: requireAuth }, async (request) => {
     const user = request.user!;
-    const teams = (await users.listTeams()).filter((team) => user.role === "boss" || team.id === user.teamId);
+    const teams = (await users.listTeams()).filter((team) => user.role === "boss" || user.role === "commercial" || team.id === user.teamId);
     return { teams: teams.map(({ id, name }) => ({ id, name })) };
   });
 

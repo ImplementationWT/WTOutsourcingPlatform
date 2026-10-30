@@ -13,8 +13,6 @@ import {
   type DealDoc,
   dealAmountCents,
   HEALTH_SCORES,
-  MEETING_SOURCES,
-  type MeetingDoc,
   type OpsProjectDoc,
   type OpsTaskDoc,
   PRIORITIES,
@@ -22,6 +20,10 @@ import {
   TASK_STATUSES,
   type VaultAccountDoc
 } from "../ops/models.js";
+import type { MeetingProcessing } from "../meetings/processing.js";
+import { registerMeetingRoutes } from "../meetings/routes.js";
+import type { ProposalDoc } from "../sales/models.js";
+import { createProposalSchema, PROPOSAL_LABELS, proposalView, statusDates, updateProposalSchema } from "../sales/proposals.js";
 import type { AdminStore } from "../store/admin-store.js";
 import type { UserDoc } from "../store/models.js";
 
@@ -125,19 +127,6 @@ const updateAccountSchema = z
 
 const updateNoteSchema = z.object({ body: text(4000).min(1) }).strict();
 
-const createMeetingSchema = z
-  .object({
-    title: text(160).min(3),
-    heldAt: z.string().datetime({ offset: true }),
-    source: z.enum(MEETING_SOURCES).optional(),
-    externalId: text(120).min(1).optional(),
-    transcript: z.string().max(300_000).optional(),
-    summary: text(8000).optional(),
-    feedback: z.array(text(1000).min(1)).max(50).optional(),
-    actionItems: z.array(text(500).min(1)).max(50).optional()
-  })
-  .strict();
-
 const listQuery = z.object({
   stage: z.enum(PROJECT_STAGES).optional(),
   health: z.enum(HEALTH_SCORES).optional(),
@@ -155,7 +144,7 @@ const invalid = (reply: FastifyReply, error: z.ZodError) =>
   reply.code(400).send({ error: "Datos inválidos.", issues: error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
 
 /** Operativa: proyectos del cliente, deals, tareas, cuentas (vault), novedades y reuniones. */
-export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey }: { store: AdminStore; vaultKey?: Buffer }) {
+export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey, meetings }: { store: AdminStore; vaultKey?: Buffer; meetings: MeetingProcessing }) {
   const auditOps = (user: SessionUser, project: Pick<OpsProjectDoc, "_id" | "name">, action: string, details?: Record<string, string | number | boolean>) =>
     store.audit({ actor: user.username, action, clientId: `ops:${project._id}`, target: project.name, ...(details ? { details } : {}) });
 
@@ -187,6 +176,8 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey 
       developer: project.developerUserId ? { id: project.developerUserId, name: userName.get(project.developerUserId) ?? null } : null,
       clientSlug: project.clientSlug,
       proposalUrl: project.proposalUrl,
+      customerId: project.customerId ?? null,
+      leadId: project.leadId ?? null,
       stage: project.stage,
       health: project.health,
       sentimentScore: project.sentimentScore,
@@ -239,27 +230,14 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey 
     updatedAt: account.updatedAt
   });
 
-  const meetingView = (meeting: MeetingDoc, withTranscript = false) => ({
-    id: meeting._id,
-    projectId: meeting.projectId,
-    title: meeting.title,
-    heldAt: meeting.heldAt,
-    source: meeting.source,
-    status: meeting.status,
-    summary: meeting.summary,
-    feedback: meeting.feedback,
-    actionItems: meeting.actionItems,
-    transcriptLength: meeting.transcript.length,
-    ...(withTranscript ? { transcript: meeting.transcript } : {})
-  });
-
   /** Miembros activos (team leaders y developers) de un equipo, para asignar responsables y tareas. */
   app.get("/api/ops/members", { preHandler: requireAuth }, async (request, reply) => {
     const query = z.object({ teamId: z.string().uuid().optional() }).safeParse(request.query);
     if (!query.success) return invalid(reply, query.error);
     const user = request.user!;
-    if (user.role !== "boss" && user.role !== "lead" && user.role !== "developer") return { members: [] };
-    const teamId = user.role === "boss" ? (query.data.teamId ?? null) : user.teamId;
+    if (user.role === "finance") return { members: [] };
+    // El CEO/CCO y Comercial (al convertir un lead) eligen el equipo; el resto ve el suyo.
+    const teamId = user.role === "boss" || user.role === "commercial" ? (query.data.teamId ?? null) : user.teamId;
     if (!teamId) return { members: [] };
     const members = await store.users.find({ teamId, active: true, role: { $in: ["lead", "developer"] } }, { projection: { name: 1, role: 1 } }).sort({ role: 1, name: 1 }).toArray();
     return { members: members.map((m) => ({ id: m._id, name: m.name, role: m.role })) };
@@ -689,60 +667,102 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey 
     return reply.code(201).send({ update: { id: doc._id, kind: doc.kind, body: doc.body, authorName: doc.authorName, createdAt: doc.createdAt } });
   });
 
-  // ---- reuniones ---------------------------------------------------------------
+  // ---- propuestas ---------------------------------------------------------------
 
-  app.get("/api/ops/projects/:id/meetings", { preHandler: requireAuth }, async (request, reply) => {
+  app.get("/api/ops/projects/:id/proposals", { preHandler: requireAuth }, async (request, reply) => {
     const params = idParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Id inválido." });
     const project = await readableProject(store, request, reply, params.data.id);
     if (!project) return reply;
-    const meetings = await store.meetings.find({ projectId: project._id }).sort({ heldAt: -1 }).limit(200).toArray();
-    return { meetings: meetings.map((m) => meetingView(m)) };
+    const proposals = await store.proposals.find({ projectId: project._id }).sort({ createdAt: -1 }).limit(200).toArray();
+    return { proposals: proposals.map(proposalView) };
   });
 
-  app.get("/api/ops/projects/:id/meetings/:childId", { preHandler: requireAuth }, async (request, reply) => {
-    const params = idsParams.safeParse(request.params);
-    if (!params.success) return reply.code(400).send({ error: "Id inválido." });
-    const project = await readableProject(store, request, reply, params.data.id);
-    if (!project) return reply;
-    const meeting = await store.meetings.findOne({ _id: params.data.childId, projectId: project._id });
-    if (!meeting) return reply.code(404).send({ error: "Reunión no encontrada." });
-    return { meeting: meetingView(meeting, true) };
-  });
+  /** Una propuesta ligada a un deal queda como la propuesta del deal. */
+  async function linkDeal(project: OpsProjectDoc, dealId: string | null | undefined, url: string, reply: FastifyReply) {
+    if (!dealId) return true;
+    const linked = await store.deals.updateOne({ _id: dealId, projectId: project._id }, { $set: { proposalUrl: url, updatedAt: new Date() } });
+    if (!linked.matchedCount) {
+      void reply.code(400).send({ error: "El deal no pertenece a este proyecto." });
+      return false;
+    }
+    return true;
+  }
 
-  app.post("/api/ops/projects/:id/meetings", { preHandler: requireAuth }, async (request, reply) => {
+  app.post("/api/ops/projects/:id/proposals", { preHandler: requireAuth }, async (request, reply) => {
     const params = idParams.safeParse(request.params);
-    const body = createMeetingSchema.safeParse(request.body);
+    const body = createProposalSchema.safeParse(request.body);
     if (!params.success) return reply.code(400).send({ error: "Id inválido." });
     if (!body.success) return invalid(reply, body.error);
     const project = await readableProject(store, request, reply, params.data.id);
     if (!project) return reply;
     const user = request.user!;
-    if (!canWorkOnProject(user, project)) return forbidden(reply);
-    if (body.data.externalId && (await store.meetings.findOne({ projectId: project._id, externalId: body.data.externalId }))) {
-      return reply.code(409).send({ error: "Esta reunión ya está registrada." });
-    }
+    if (!canManageProject(user, project)) return forbidden(reply);
+    if (!(await linkDeal(project, body.data.dealId, body.data.url, reply))) return reply;
     const at = new Date();
-    const processed = Boolean(body.data.summary);
-    const meeting: MeetingDoc = {
+    const status = body.data.status ?? "draft";
+    const proposal: ProposalDoc = {
       _id: randomUUID(),
+      leadId: project.leadId ?? null,
       projectId: project._id,
+      dealId: body.data.dealId ?? null,
       title: body.data.title,
-      heldAt: new Date(body.data.heldAt),
-      source: body.data.source ?? "manual",
-      externalId: body.data.externalId ?? null,
-      transcript: body.data.transcript ?? "",
-      summary: body.data.summary ?? "",
-      feedback: body.data.feedback ?? [],
-      actionItems: body.data.actionItems ?? [],
-      // El procesamiento automático de transcripciones (Read.ai + Claude) llega en la Fase 2.
-      status: processed ? "processed" : "pending",
+      url: body.data.url,
+      amountCents: body.data.amountCents ?? null,
+      currency: body.data.currency ?? "USD",
+      status,
+      area: "operations",
+      ...statusDates(status, null, at),
       createdBy: user.username,
       createdAt: at,
       updatedAt: at
     };
-    await store.meetings.insertOne(meeting);
-    await auditOps(user, project, "ops.meeting_created", { meeting: meeting.title });
-    return reply.code(201).send({ meeting: meetingView(meeting) });
+    await store.proposals.insertOne(proposal);
+    await note(user, project._id, `Nueva propuesta: «${proposal.title}» (${PROPOSAL_LABELS[status]}).`);
+    await auditOps(user, project, "ops.proposal_created", { proposal: proposal.title });
+    return reply.code(201).send({ proposal: proposalView(proposal) });
+  });
+
+  app.patch("/api/ops/projects/:id/proposals/:childId", { preHandler: requireAuth }, async (request, reply) => {
+    const params = idsParams.safeParse(request.params);
+    const body = updateProposalSchema.safeParse(request.body);
+    if (!params.success) return reply.code(400).send({ error: "Id inválido." });
+    if (!body.success) return invalid(reply, body.error);
+    const project = await readableProject(store, request, reply, params.data.id);
+    if (!project) return reply;
+    const user = request.user!;
+    if (!canManageProject(user, project)) return forbidden(reply);
+    const proposal = await store.proposals.findOne({ _id: params.data.childId, projectId: project._id });
+    if (!proposal) return reply.code(404).send({ error: "Propuesta no encontrada." });
+    const patch = body.data;
+    const dealId = patch.dealId === undefined ? proposal.dealId : patch.dealId;
+    if ((patch.dealId !== undefined || patch.url) && !(await linkDeal(project, dealId, patch.url ?? proposal.url, reply))) return reply;
+    const at = new Date();
+    await store.proposals.updateOne({ _id: proposal._id }, { $set: { ...patch, ...(patch.status ? statusDates(patch.status, proposal.status, at) : {}), updatedAt: at } });
+    if (patch.status && patch.status !== proposal.status) {
+      await note(user, project._id, `Propuesta «${proposal.title}»: ${PROPOSAL_LABELS[proposal.status]} → ${PROPOSAL_LABELS[patch.status]}`);
+      await auditOps(user, project, "ops.proposal_status_changed", { proposal: proposal.title, from: proposal.status, to: patch.status });
+    }
+    return { proposal: proposalView((await store.proposals.findOne({ _id: proposal._id }))!) };
+  });
+
+  // ---- reuniones ---------------------------------------------------------------
+
+  registerMeetingRoutes(app, {
+    base: "/api/ops/projects/:id",
+    collection: store.meetings,
+    ownerKey: "projectId",
+    processing: meetings,
+    resolve: async (request, reply, id) => {
+      const project = await readableProject(store, request, reply, id);
+      if (!project) return null;
+      return {
+        id: project._id,
+        canWork: canWorkOnProject(request.user!, project),
+        context: `Proyecto: ${project.name}. Cliente: ${project.customerName}. Etapa actual: ${LABELS.stage[project.stage]}.`,
+        note: (user, body) => note(user, project._id, body),
+        audit: (user, action, details) => auditOps(user, project, `ops.${action}`, details)
+      };
+    }
   });
 }

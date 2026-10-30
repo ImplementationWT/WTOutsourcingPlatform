@@ -4,6 +4,7 @@ import { OwnershipError } from "../lib/errors.js";
 import { redact } from "../lib/redact.js";
 import type { AiAgentSettingsDoc } from "../ai/anthropic-adapter.js";
 import type { DealDoc, MeetingDoc, OpsProjectDoc, OpsTaskDoc, ProjectUpdateDoc, VaultAccountDoc } from "../ops/models.js";
+import type { CustomerDoc, DemoDoc, LeadDoc, LeadMeetingDoc, LeadSourceDoc, LeadUpdateDoc, ProposalDoc } from "../sales/models.js";
 import type { InitialPasswordDoc } from "./initial-password-vault.js";
 import type { ProvisioningSecretDoc } from "./provisioning-secrets.js";
 import type { AiSessionDoc, ClientServerRef, DeletionDoc, ServerDoc, TeamDoc, UserDoc } from "./models.js";
@@ -59,6 +60,14 @@ export class AdminStore {
   readonly vaultAccounts;
   readonly projectUpdates;
   readonly meetings;
+  /** Comercial: sources, leads, demos, propuestas (también de Operativa), clientes, novedades y reuniones. */
+  readonly leadSources;
+  readonly leads;
+  readonly demos;
+  readonly proposals;
+  readonly customers;
+  readonly leadUpdates;
+  readonly leadMeetings;
 
   constructor(db: Db, private readonly now: () => Date = () => new Date()) {
     this.clients = db.collection<ClientDoc>("clients");
@@ -79,6 +88,13 @@ export class AdminStore {
     this.vaultAccounts = db.collection<VaultAccountDoc>("ops_vault_accounts");
     this.projectUpdates = db.collection<ProjectUpdateDoc>("ops_project_updates");
     this.meetings = db.collection<MeetingDoc>("ops_meetings");
+    this.leadSources = db.collection<LeadSourceDoc>("sales_lead_sources");
+    this.leads = db.collection<LeadDoc>("sales_leads");
+    this.demos = db.collection<DemoDoc>("sales_demos");
+    this.proposals = db.collection<ProposalDoc>("sales_proposals");
+    this.customers = db.collection<CustomerDoc>("sales_customers");
+    this.leadUpdates = db.collection<LeadUpdateDoc>("sales_lead_updates");
+    this.leadMeetings = db.collection<LeadMeetingDoc>("sales_meetings");
   }
 
   async init() {
@@ -108,7 +124,19 @@ export class AdminStore {
       this.vaultAccounts.createIndex({ projectId: 1, label: 1 }),
       this.projectUpdates.createIndex({ projectId: 1, createdAt: -1 }),
       this.meetings.createIndex({ projectId: 1, heldAt: -1 }),
-      this.meetings.createIndex({ projectId: 1, externalId: 1 }, { unique: true, partialFilterExpression: { externalId: { $type: "string" } }, name: "one_meeting_per_external_id" })
+      this.meetings.createIndex({ projectId: 1, externalId: 1 }, { unique: true, partialFilterExpression: { externalId: { $type: "string" } }, name: "one_meeting_per_external_id" }),
+      this.leadSources.createIndex({ name: 1 }, { unique: true }),
+      this.leadSources.createIndex({ ingestKeyHash: 1 }, { unique: true, partialFilterExpression: { ingestKeyHash: { $type: "string" } }, name: "one_source_per_key" }),
+      this.leads.createIndex({ status: 1, updatedAt: -1 }),
+      this.leads.createIndex({ email: 1 }),
+      this.leads.createIndex({ sourceId: 1, externalId: 1 }, { unique: true, partialFilterExpression: { externalId: { $type: "string" } }, name: "one_lead_per_external_id" }),
+      this.demos.createIndex({ leadId: 1, scheduledAt: -1 }),
+      this.proposals.createIndex({ leadId: 1, createdAt: -1 }),
+      this.proposals.createIndex({ projectId: 1, createdAt: -1 }),
+      this.customers.createIndex({ name: 1 }),
+      this.leadUpdates.createIndex({ leadId: 1, createdAt: -1 }),
+      this.leadMeetings.createIndex({ leadId: 1, heldAt: -1 }),
+      this.leadMeetings.createIndex({ leadId: 1, externalId: 1 }, { unique: true, partialFilterExpression: { externalId: { $type: "string" } }, name: "one_lead_meeting_per_external_id" })
     ]);
   }
 

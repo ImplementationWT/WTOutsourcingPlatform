@@ -24,6 +24,8 @@ const project: OpsProject = {
   developer: { id: "u-dev", name: "Diego" },
   clientSlug: null,
   proposalUrl: "https://demo.example.com/manpersa",
+  customerId: null,
+  leadId: null,
   stage: "structure",
   health: "at_risk",
   sentimentScore: 35,
@@ -77,9 +79,9 @@ describe("menú por áreas", () => {
     expect(sections()).toEqual(["Operativa", "Infraestructura"]);
   });
 
-  it("las áreas aún no construidas no son enlaces", () => {
+  it("Comercial ya es un enlace; Financiera, que aún no existe, no", () => {
     renderAt("/operativa", BOSS, (async () => json({ projects: [] })) as typeof fetch);
-    expect(screen.queryByRole("link", { name: /Leads y propuestas/ })).toBeNull();
+    expect(screen.getByRole("link", { name: /Leads y propuestas/ })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /Cobros y comisiones/ })).toBeNull();
     expect(screen.getByRole("link", { name: /Proyectos del cliente/ })).toBeTruthy();
   });

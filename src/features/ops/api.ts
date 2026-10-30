@@ -88,6 +88,8 @@ export interface OpsProject {
   developer: { id: string; name: string | null } | null;
   clientSlug: string | null;
   proposalUrl: string | null;
+  customerId: string | null;
+  leadId: string | null;
   stage: Stage;
   health: Health;
   sentimentScore: number;
@@ -140,24 +142,25 @@ export interface VaultAccount {
   rotatedAt: string | null;
 }
 
-export interface ProjectUpdate {
-  id: string;
-  kind: "manual" | "system";
-  body: string;
-  authorName: string;
-  createdAt: string;
-}
+export const PROPOSAL_STATUSES = ["draft", "sent", "accepted", "rejected"] as const;
+export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
+export const PROPOSAL_STATUS_LABELS: Record<ProposalStatus, string> = { draft: "Borrador", sent: "Enviada", accepted: "Aceptada", rejected: "Rechazada" };
 
-export interface Meeting {
+/** Propuesta (web) de Comercial o de Operativa; la de un deal queda como su propuesta. */
+export interface Proposal {
   id: string;
+  leadId: string | null;
+  projectId: string | null;
+  dealId: string | null;
   title: string;
-  heldAt: string;
-  source: "read_ai" | "manual";
-  status: "pending" | "processed" | "failed";
-  summary: string;
-  feedback: string[];
-  actionItems: string[];
-  transcriptLength: number;
+  url: string;
+  amountCents: number | null;
+  currency: string;
+  status: ProposalStatus;
+  area: "commercial" | "operations";
+  sentAt: string | null;
+  decidedAt: string | null;
+  createdAt: string;
 }
 
 // ---- consultas ---------------------------------------------------------------------
@@ -166,7 +169,7 @@ export const opsKeys = {
   projects: (filters: ProjectFilters = {}) => ["ops", "projects", filters] as const,
   allProjects: ["ops", "projects"] as const,
   project: (id: string) => ["ops", "project", id] as const,
-  part: (id: string, part: "deals" | "tasks" | "accounts" | "updates" | "meetings") => ["ops", "project", id, part] as const,
+  part: (id: string, part: "deals" | "tasks" | "accounts" | "proposals") => ["ops", "project", id, part] as const,
 };
 
 export interface ProjectFilters {
@@ -198,7 +201,7 @@ export function useOpsProject(id: string) {
   });
 }
 
-const list = <T,>(id: string, part: "deals" | "tasks" | "accounts" | "updates" | "meetings", key: string, enabled = true) => ({
+const list = <T,>(id: string, part: "deals" | "tasks" | "accounts" | "proposals", key: string, enabled = true) => ({
   queryKey: opsKeys.part(id, part),
   queryFn: async () => (await apiFetch<Record<string, T[]>>(`/api/ops/projects/${id}/${part}`))[key],
   enabled,
@@ -207,8 +210,7 @@ const list = <T,>(id: string, part: "deals" | "tasks" | "accounts" | "updates" |
 export const dealsQuery = (id: string) => list<Deal>(id, "deals", "deals");
 export const tasksQuery = (id: string) => list<OpsTask>(id, "tasks", "tasks");
 export const accountsQuery = (id: string, enabled: boolean) => ({ ...list<VaultAccount>(id, "accounts", "accounts", enabled), retry: false });
-export const updatesQuery = (id: string) => list<ProjectUpdate>(id, "updates", "updates");
-export const meetingsQuery = (id: string) => list<Meeting>(id, "meetings", "meetings");
+export const proposalsQuery = (id: string) => list<Proposal>(id, "proposals", "proposals");
 
 export interface TeamMember {
   id: string;
@@ -230,6 +232,8 @@ export function useTeamMembers(teamId?: string | null, enabled = true) {
 
 const send = (method: string, body?: unknown): RequestInit => ({ method, body: body === undefined ? undefined : JSON.stringify(body) });
 const base = (id: string) => `/api/ops/projects/${id}`;
+/** Ruta del proyecto para los paneles de reuniones y novedades. */
+export const opsBase = base;
 
 export const createProject = (input: {
   name: string;
@@ -261,9 +265,10 @@ export const deleteAccount = (id: string, accountId: string) => apiFetch<{ ok: t
 /** El valor se muestra en pantalla y no se guarda en la caché de consultas. */
 export const revealAccount = (id: string, accountId: string) => apiFetch<{ username: string | null; credential: string }>(`${base(id)}/accounts/${accountId}/reveal`, send("POST"));
 
-export const createUpdate = (id: string, body: string) => apiFetch<{ update: ProjectUpdate }>(`${base(id)}/updates`, send("POST", { body }));
-export const createMeeting = (id: string, input: { title: string; heldAt: string; transcript?: string; summary?: string; feedback?: string[]; actionItems?: string[] }) =>
-  apiFetch<{ meeting: Meeting }>(`${base(id)}/meetings`, send("POST", input));
+export const createProposal = (id: string, input: { title: string; url: string; dealId?: string | null; amountCents?: number | null; status?: ProposalStatus }) =>
+  apiFetch<{ proposal: Proposal }>(`${base(id)}/proposals`, send("POST", input));
+export const updateProposal = (id: string, proposalId: string, patch: Partial<{ title: string; url: string; dealId: string | null; amountCents: number | null; status: ProposalStatus }>) =>
+  apiFetch<{ proposal: Proposal }>(`${base(id)}/proposals/${proposalId}`, send("PATCH", patch));
 
 // ---- formato ---------------------------------------------------------------------
 

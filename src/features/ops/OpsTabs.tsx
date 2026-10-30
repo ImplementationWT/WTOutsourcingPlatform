@@ -5,40 +5,46 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import { selectClass } from "@/features/admin/TeamAssignCard";
 import { ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { Empty, ErrorLine, Loading, MeetingsPanel, UpdatesPanel } from "@/features/activity/ActivityPanels";
+import { activityKeys, dateText } from "@/features/activity/api";
 import {
   ACCOUNT_KIND_LABELS,
   ACCOUNT_KINDS,
   accountsQuery,
   createAccount,
   createDeal,
-  createMeeting,
+  createProposal,
   createTask,
-  createUpdate,
   DEAL_STATUS_LABELS,
   DEAL_STATUSES,
   dealsQuery,
   deleteAccount,
   hoursText,
-  meetingsQuery,
   money,
+  opsBase,
   opsKeys,
+  PROPOSAL_STATUS_LABELS,
+  PROPOSAL_STATUSES,
+  proposalsQuery,
   revealAccount,
   rotateAccount,
   TASK_STATUS_LABELS,
   TASK_STATUSES,
   tasksQuery,
   updateDeal,
+  updateProject,
+  updateProposal,
   updateTask,
-  updatesQuery,
   useTeamMembers,
   type AccountKind,
   type Deal,
   type DealStatus,
   type OpsTask,
+  type Proposal,
+  type ProposalStatus,
   type TaskStatus,
   type VaultAccount,
 } from "./api";
@@ -50,33 +56,12 @@ function useRefresh(projectId: string) {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: opsKeys.project(projectId) }),
       queryClient.invalidateQueries({ queryKey: opsKeys.allProjects }),
+      queryClient.invalidateQueries({ queryKey: activityKeys.updates(opsBase(projectId)) }),
     ]);
   };
 }
 
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
-const dateText = (iso: string) => new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
-
-function ErrorLine({ error }: { error: string | null }) {
-  return error ? (
-    <p role="alert" className="text-sm text-destructive">
-      {error}
-    </p>
-  ) : null;
-}
-
-function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="rounded-lg border border-dashed border-foreground/15 p-6 text-center text-sm text-muted-foreground">{children}</p>;
-}
-
-function Loading() {
-  return (
-    <div className="space-y-2">
-      <Skeleton className="h-12 w-full" />
-      <Skeleton className="h-12 w-full" />
-    </div>
-  );
-}
 
 // ---- Deals --------------------------------------------------------------------------
 
@@ -554,96 +539,114 @@ export function AccountsTab({ projectId, canManage }: { projectId: string; canMa
   );
 }
 
-// ---- Reuniones ----------------------------------------------------------------------
+// ---- Propuestas ---------------------------------------------------------------------
 
-export function MeetingsTab({ projectId, canWork }: { projectId: string; canWork: boolean }) {
+export function ProposalsTab({ projectId, canManage }: { projectId: string; canManage: boolean }) {
   const refresh = useRefresh(projectId);
-  const { data: meetings, isLoading, error } = useQuery(meetingsQuery(projectId));
+  const { data: proposals, isLoading, error } = useQuery(proposalsQuery(projectId));
+  const { data: deals } = useQuery(dealsQuery(projectId));
   const [title, setTitle] = useState("");
-  const [heldAt, setHeldAt] = useState("");
-  const [summary, setSummary] = useState("");
-  const [feedback, setFeedback] = useState("");
+  const [url, setUrl] = useState("");
+  const [dealId, setDealId] = useState("");
+  const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const lines = (value: string) => value.split("\n").map((l) => l.trim()).filter(Boolean);
+  const dealName = new Map((deals ?? []).map((d) => [d.id, d.title]));
+  const valid = title.trim().length >= 3 && /^https?:\/\//i.test(url.trim()) && (amount === "" || Number(amount) >= 0);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
-    if (title.trim().length < 3 || !heldAt) return;
+    if (!valid) return;
     setBusy(true);
     setFormError(null);
     try {
-      await createMeeting(projectId, {
-        title: title.trim(),
-        heldAt: new Date(heldAt).toISOString(),
-        ...(summary.trim() ? { summary: summary.trim() } : {}),
-        ...(lines(feedback).length ? { feedback: lines(feedback) } : {}),
-      });
+      await createProposal(projectId, { title: title.trim(), url: url.trim(), dealId: dealId || null, ...(amount ? { amountCents: Math.round(Number(amount) * 100) } : {}) });
       setTitle("");
-      setHeldAt("");
-      setSummary("");
-      setFeedback("");
+      setUrl("");
+      setDealId("");
+      setAmount("");
       await refresh();
     } catch (err) {
-      setFormError(message(err, "No se pudo registrar la reunión."));
+      setFormError(message(err, "No se pudo crear la propuesta."));
     } finally {
       setBusy(false);
     }
   }
 
+  async function setStatus(proposal: Proposal, status: ProposalStatus) {
+    setFormError(null);
+    try {
+      await updateProposal(projectId, proposal.id, { status });
+      await refresh();
+    } catch (err) {
+      setFormError(message(err, "No se pudo cambiar el estado."));
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Log de reuniones del proyecto. El procesamiento automático de las reuniones de Read.ai (resumen, feedback y action items) llega en la siguiente fase; por ahora se registran a mano.
-      </p>
-      {canWork && (
-        <form onSubmit={add} className="grid gap-3 rounded-lg border border-foreground/10 p-4 sm:grid-cols-2">
+      <p className="text-sm text-muted-foreground">Propuestas del proyecto: la inicial de Comercial y las que se arman aquí para nuevos módulos. Si se liga a un deal, queda como la propuesta de ese deal.</p>
+      {canManage && (
+        <form onSubmit={add} className="grid items-end gap-3 rounded-lg border border-foreground/10 p-4 sm:grid-cols-2 lg:grid-cols-[1.5fr_2fr_1.2fr_0.8fr_auto]">
           <div className="space-y-1.5">
-            <Label htmlFor="meet-title">Reunión</Label>
-            <Input id="meet-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Kick Off con el cliente" />
+            <Label htmlFor="prop-title">Propuesta</Label>
+            <Input id="prop-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ampliación: módulo de pagos" />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="meet-date">Fecha y hora</Label>
-            <Input id="meet-date" type="datetime-local" value={heldAt} onChange={(e) => setHeldAt(e.target.value)} />
+            <Label htmlFor="prop-url">Enlace</Label>
+            <Input id="prop-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
           </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="meet-summary">Resumen (opcional)</Label>
-            <textarea id="meet-summary" rows={3} className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50" value={summary} onChange={(e) => setSummary(e.target.value)} />
+          <div className="space-y-1.5">
+            <Label htmlFor="prop-deal">Deal</Label>
+            <select id="prop-deal" className={cn(selectClass, "w-full")} value={dealId} onChange={(e) => setDealId(e.target.value)}>
+              <option value="">Sin deal</option>
+              {(deals ?? []).map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.title}
+                </option>
+              ))}
+            </select>
           </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="meet-feedback">Feedback del cliente (uno por línea, opcional)</Label>
-            <textarea id="meet-feedback" rows={3} className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50" value={feedback} onChange={(e) => setFeedback(e.target.value)} />
+          <div className="space-y-1.5">
+            <Label htmlFor="prop-amount">Monto (USD)</Label>
+            <Input id="prop-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Opcional" />
           </div>
-          <div>
-            <Button type="submit" disabled={title.trim().length < 3 || !heldAt || busy}>
-              {busy ? <Loader2 className="animate-spin" /> : <Plus />}
-              Registrar reunión
-            </Button>
-          </div>
+          <Button type="submit" disabled={!valid || busy}>
+            {busy ? <Loader2 className="animate-spin" /> : <Plus />}
+            Agregar
+          </Button>
         </form>
       )}
-      <ErrorLine error={formError ?? (error ? message(error, "No se pudieron cargar las reuniones.") : null)} />
+      <ErrorLine error={formError ?? (error ? message(error, "No se pudieron cargar las propuestas.") : null)} />
       {isLoading ? (
         <Loading />
-      ) : !meetings?.length ? (
-        <Empty>Aún no hay reuniones registradas.</Empty>
+      ) : !proposals?.length ? (
+        <Empty>Este proyecto aún no tiene propuestas.</Empty>
       ) : (
         <ul className="space-y-2">
-          {meetings.map((m) => (
-            <li key={m.id} className="rounded-lg border border-foreground/10 p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-medium">{m.title}</p>
-                <Badge variant="outline">{m.source === "read_ai" ? "Read.ai" : "Manual"}</Badge>
-                {m.status === "pending" && <Badge variant="secondary">Pendiente de procesar</Badge>}
-                <span className="ml-auto text-xs text-muted-foreground">{dateText(m.heldAt)}</span>
+          {proposals.map((p) => (
+            <li key={p.id} className="grid items-center gap-3 rounded-lg border border-foreground/10 p-3 sm:grid-cols-[2fr_1fr_1fr_auto]">
+              <div className="min-w-0">
+                <a className="truncate font-medium text-primary underline-offset-4 hover:underline" href={p.url} target="_blank" rel="noreferrer">
+                  {p.title}
+                </a>
+                <p className="truncate text-xs text-muted-foreground">
+                  {p.area === "commercial" ? "Comercial" : "Operativa"}
+                  {p.dealId ? ` · ${dealName.get(p.dealId) ?? "Deal"}` : ""}
+                </p>
               </div>
-              {m.summary && <p className="mt-2 text-sm whitespace-pre-wrap">{m.summary}</p>}
-              {m.feedback.length > 0 && (
-                <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm text-muted-foreground">
-                  {m.feedback.map((f, i) => (
-                    <li key={i}>{f}</li>
+              <p className="text-sm tabular-nums">{p.amountCents !== null ? money(p.amountCents, p.currency) : "—"}</p>
+              <p className="text-xs text-muted-foreground">{p.sentAt ? `Enviada ${dateText(p.sentAt)}` : ""}</p>
+              {canManage ? (
+                <select aria-label={`Estado de ${p.title}`} className={selectClass} value={p.status} onChange={(e) => void setStatus(p, e.target.value as ProposalStatus)}>
+                  {PROPOSAL_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {PROPOSAL_STATUS_LABELS[s]}
+                    </option>
                   ))}
-                </ul>
+                </select>
+              ) : (
+                <Badge variant="outline">{PROPOSAL_STATUS_LABELS[p.status]}</Badge>
               )}
             </li>
           ))}
@@ -653,69 +656,36 @@ export function MeetingsTab({ projectId, canWork }: { projectId: string; canWork
   );
 }
 
-// ---- Updates ------------------------------------------------------------------------
+// ---- Reuniones y updates ---------------------------------------------------------------
+
+/** Reuniones del proyecto: el Team Leader puede aplicar el sentimiento sugerido y convertir action items en tareas. */
+export function MeetingsTab({ projectId, canWork, canManage }: { projectId: string; canWork: boolean; canManage: boolean }) {
+  const refresh = useRefresh(projectId);
+  return (
+    <MeetingsPanel
+      base={opsBase(projectId)}
+      canWork={canWork}
+      onApplySentiment={
+        canManage
+          ? async (value) => {
+              await updateProject(projectId, { sentimentScore: value });
+              await refresh();
+            }
+          : undefined
+      }
+      onCreateTask={
+        canManage
+          ? async (title) => {
+              await createTask(projectId, { title: title.slice(0, 160) });
+              await refresh();
+            }
+          : undefined
+      }
+    />
+  );
+}
 
 export function UpdatesTab({ projectId, canWork }: { projectId: string; canWork: boolean }) {
   const refresh = useRefresh(projectId);
-  const { data: updates, isLoading, error } = useQuery(updatesQuery(projectId));
-  const [body, setBody] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  async function add(e: React.FormEvent) {
-    e.preventDefault();
-    if (!body.trim()) return;
-    setBusy(true);
-    setFormError(null);
-    try {
-      await createUpdate(projectId, body.trim());
-      setBody("");
-      await refresh();
-    } catch (err) {
-      setFormError(message(err, "No se pudo publicar la novedad."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      {canWork && (
-        <form onSubmit={add} className="space-y-2">
-          <Label htmlFor="update-body">Nueva novedad del proyecto</Label>
-          <textarea
-            id="update-body"
-            rows={3}
-            className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="¿Qué pasó con el proyecto?"
-          />
-          <Button type="submit" disabled={!body.trim() || busy}>
-            {busy && <Loader2 className="animate-spin" />}
-            Publicar
-          </Button>
-        </form>
-      )}
-      <ErrorLine error={formError ?? (error ? message(error, "No se pudieron cargar las novedades.") : null)} />
-      {isLoading ? (
-        <Loading />
-      ) : !updates?.length ? (
-        <Empty>Aún no hay novedades.</Empty>
-      ) : (
-        <ol className="space-y-2">
-          {updates.map((u) => (
-            <li key={u.id} className={cn("rounded-lg border p-3", u.kind === "system" ? "border-dashed border-foreground/15 bg-foreground/[0.02]" : "border-foreground/10")}>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">{u.kind === "system" ? "Sistema" : u.authorName}</span>
-                {u.kind === "system" && <span>· {u.authorName}</span>}
-                <span className="ml-auto">{dateText(u.createdAt)}</span>
-              </div>
-              <p className="mt-1 text-sm whitespace-pre-wrap">{u.body}</p>
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
-  );
+  return <UpdatesPanel base={opsBase(projectId)} canWork={canWork} onPosted={refresh} />;
 }

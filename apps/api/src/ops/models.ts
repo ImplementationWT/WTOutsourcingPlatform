@@ -10,7 +10,7 @@ export const DEAL_STATUSES = ["draft", "proposed", "approved", "in_progress", "d
 export const TASK_STATUSES = ["todo", "in_progress", "review", "done"] as const;
 export const ACCOUNT_KINDS = ["web", "email", "api", "database", "server", "social", "other"] as const;
 export const MEETING_SOURCES = ["read_ai", "manual"] as const;
-export const MEETING_STATUSES = ["pending", "processed", "failed"] as const;
+export const MEETING_STATUSES = ["pending", "processing", "processed", "failed"] as const;
 
 export type ProjectStage = (typeof PROJECT_STAGES)[number];
 export type HealthScore = (typeof HEALTH_SCORES)[number];
@@ -34,6 +34,9 @@ export interface OpsProjectDoc {
   clientSlug: string | null;
   /** Propuesta (web) con la que arrancó el proyecto. */
   proposalUrl: string | null;
+  /** Cliente y lead de Comercial, si el proyecto nació de una conversión. */
+  customerId?: string | null;
+  leadId?: string | null;
   stage: ProjectStage;
   health: HealthScore;
   /** Entero de 0 a 100. */
@@ -110,9 +113,9 @@ export interface ProjectUpdateDoc {
   createdAt: Date;
 }
 
-export interface MeetingDoc {
+/** Reunión de un proyecto (Operativa) o de un lead (Comercial): mismo formato y procesamiento. */
+export interface MeetingCore {
   _id: string;
-  projectId: string;
   title: string;
   heldAt: Date;
   source: (typeof MEETING_SOURCES)[number];
@@ -123,9 +126,19 @@ export interface MeetingDoc {
   feedback: string[];
   actionItems: string[];
   status: (typeof MEETING_STATUSES)[number];
+  /** Sentimiento del cliente (0–100) que propone el procesamiento; no cambia el proyecto solo. */
+  sentimentSignal?: number | null;
+  /** Motivo del último fallo de procesamiento, sin detalles internos. */
+  processingError?: string | null;
+  processedAt?: Date;
+  usage?: { inputTokens: number; outputTokens: number };
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface MeetingDoc extends MeetingCore {
+  projectId: string;
 }
 
 // ---- reglas de negocio ---------------------------------------------------------

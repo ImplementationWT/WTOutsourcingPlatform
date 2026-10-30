@@ -25,9 +25,9 @@ import {
   type Stage,
 } from "./api";
 import { HealthBadge, PriorityBadge, SentimentBar, StageTrack } from "./OpsBadges";
-import { AccountsTab, DealsTab, MeetingsTab, TasksTab, UpdatesTab } from "./OpsTabs";
+import { AccountsTab, DealsTab, MeetingsTab, ProposalsTab, TasksTab, UpdatesTab } from "./OpsTabs";
 
-type TabId = "deals" | "tasks" | "accounts" | "meetings" | "updates";
+type TabId = "deals" | "tasks" | "proposals" | "accounts" | "meetings" | "updates";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -176,6 +176,7 @@ export default function OpsProjectDetailPage() {
   const tabs: { id: TabId; label: string; visible: boolean }[] = [
     { id: "deals", label: "Deals", visible: true },
     { id: "tasks", label: "Tasks", visible: true },
+    { id: "proposals", label: "Propuestas", visible: true },
     // Comercial y Financiera no ven las cuentas: la API tampoco se las da.
     { id: "accounts", label: "Cuentas", visible: permissions.work },
     { id: "meetings", label: "Reuniones", visible: true },
@@ -218,6 +219,11 @@ export default function OpsProjectDetailPage() {
                 Propuesta <ExternalLink className="size-3.5" />
               </a>
             )}
+            {project.leadId && (session?.role === "boss" || session?.role === "commercial") && (
+              <Link className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline" to={`/comercial/leads/${project.leadId}`}>
+                Lead en Comercial
+              </Link>
+            )}
             {project.clientSlug && (
               <Link className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline" to={`/projects/${project.clientSlug}`}>
                 App en Infraestructura
@@ -251,7 +257,8 @@ export default function OpsProjectDetailPage() {
         {tab === "deals" && <DealsTab projectId={project.id} canManage={permissions.manage} />}
         {tab === "tasks" && <TasksTab projectId={project.id} teamId={project.team.id} canWork={permissions.work} canManage={permissions.manage} currentUserId={session?.id ?? ""} />}
         {tab === "accounts" && permissions.work && <AccountsTab projectId={project.id} canManage={permissions.manage} />}
-        {tab === "meetings" && <MeetingsTab projectId={project.id} canWork={permissions.work} />}
+        {tab === "proposals" && <ProposalsTab projectId={project.id} canManage={permissions.manage} />}
+        {tab === "meetings" && <MeetingsTab projectId={project.id} canWork={permissions.work} canManage={permissions.manage} />}
         {tab === "updates" && <UpdatesTab projectId={project.id} canWork={permissions.work} />}
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Activity, BriefcaseBusiness, FolderKanban, Landmark, Layers3, Megaphone, Plug, type LucideIcon } from "lucide-react";
+import { Activity, BriefcaseBusiness, Building2, FolderKanban, Inbox, Landmark, Layers3, Megaphone, Plug, type LucideIcon } from "lucide-react";
 import { useSession, type UserRole } from "@/features/auth/auth";
 
 interface Item {
@@ -8,6 +8,8 @@ interface Item {
   icon: LucideIcon;
   /** Áreas que aún no existen: se muestran, pero sin enlace. */
   soon?: boolean;
+  /** Solo activo en la ruta exacta (no en sus subrutas). */
+  end?: boolean;
 }
 
 interface Group {
@@ -21,7 +23,11 @@ const groups: Group[] = [
   {
     title: "Comercial",
     roles: ["boss", "commercial"],
-    items: [{ to: "/comercial", label: "Leads y propuestas", icon: Megaphone, soon: true }],
+    items: [
+      { to: "/comercial", label: "Leads y propuestas", icon: Megaphone, end: true },
+      { to: "/comercial/clientes", label: "Clientes", icon: Building2 },
+      { to: "/comercial/sources", label: "Sources de leads", icon: Inbox },
+    ],
   },
   {
     title: "Operativa",
@@ -71,7 +77,7 @@ export default function AppSidebar() {
         {visible.map((group) => (
           <div key={group.title} className="space-y-1">
             <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">{group.title}</p>
-            {group.items.map(({ to, label, icon: Icon, soon }) =>
+            {group.items.map(({ to, label, icon: Icon, soon, end }) =>
               soon ? (
                 <span key={to} aria-disabled="true" className="flex cursor-not-allowed items-center gap-3 rounded-md px-3 py-2.5 text-sm text-muted-foreground/60">
                   <Icon className="size-4" />
@@ -79,7 +85,7 @@ export default function AppSidebar() {
                   <span className="ml-auto rounded-full border border-foreground/15 px-1.5 text-[10px] uppercase">Pronto</span>
                 </span>
               ) : (
-                <NavLink key={to} to={to} className={linkClass}>
+                <NavLink key={to} to={to} end={end} className={linkClass}>
                   <Icon className="size-4" />
                   {label}
                 </NavLink>
