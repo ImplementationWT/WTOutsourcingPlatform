@@ -9,6 +9,7 @@ import { createServerAdapter } from "./adapters/server.js";
 import { buildApp } from "./app.js";
 import {
   appBaseDomain,
+  loadAccountVaultKey,
   loadAnthropicKey,
   loadEnv,
   loadInitialPasswordKey,
@@ -32,6 +33,7 @@ const server = loadServerConfig(env);
 // Antes de conectar: una clave mal configurada detiene el arranque con un mensaje claro.
 const initialPasswordKey = loadInitialPasswordKey(env);
 const integrationKey = loadIntegrationKey(env);
+const accountVaultKey = loadAccountVaultKey(env);
 const serverKeysKey = loadServerKeysKey(env);
 const anthropicKey = loadAnthropicKey(env);
 registerSecret(anthropicKey);
@@ -81,6 +83,7 @@ const app = await buildApp({
   store,
   logLevel: env.LOG_LEVEL,
   servers,
+  vaultKey: accountVaultKey,
   ai: anthropicKey
     ? {
         agent: createAnthropicAgentAdapter(anthropicKey, store.aiAgentSettings, env.ANTHROPIC_WORKSPACE),

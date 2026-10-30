@@ -3,6 +3,7 @@ import { type Db, MongoServerError } from "mongodb";
 import { OwnershipError } from "../lib/errors.js";
 import { redact } from "../lib/redact.js";
 import type { AiAgentSettingsDoc } from "../ai/anthropic-adapter.js";
+import type { DealDoc, MeetingDoc, OpsProjectDoc, OpsTaskDoc, ProjectUpdateDoc, VaultAccountDoc } from "../ops/models.js";
 import type { InitialPasswordDoc } from "./initial-password-vault.js";
 import type { ProvisioningSecretDoc } from "./provisioning-secrets.js";
 import type { AiSessionDoc, ClientServerRef, DeletionDoc, ServerDoc, TeamDoc, UserDoc } from "./models.js";
@@ -51,6 +52,13 @@ export class AdminStore {
   /** Usuarios del panel y equipos (los gestiona UserDirectory). */
   readonly users;
   readonly teams;
+  /** Operativa: proyectos del cliente, deals, tareas, cuentas, novedades y reuniones. */
+  readonly opsProjects;
+  readonly deals;
+  readonly opsTasks;
+  readonly vaultAccounts;
+  readonly projectUpdates;
+  readonly meetings;
 
   constructor(db: Db, private readonly now: () => Date = () => new Date()) {
     this.clients = db.collection<ClientDoc>("clients");
@@ -65,6 +73,12 @@ export class AdminStore {
     this.servers = db.collection<ServerDoc>("servers");
     this.users = db.collection<UserDoc>("users");
     this.teams = db.collection<TeamDoc>("teams");
+    this.opsProjects = db.collection<OpsProjectDoc>("ops_projects");
+    this.deals = db.collection<DealDoc>("ops_deals");
+    this.opsTasks = db.collection<OpsTaskDoc>("ops_tasks");
+    this.vaultAccounts = db.collection<VaultAccountDoc>("ops_vault_accounts");
+    this.projectUpdates = db.collection<ProjectUpdateDoc>("ops_project_updates");
+    this.meetings = db.collection<MeetingDoc>("ops_meetings");
   }
 
   async init() {
@@ -85,7 +99,16 @@ export class AdminStore {
       this.users.createIndex({ teamId: 1 }),
       this.teams.createIndex({ name: 1 }, { unique: true }),
       this.aiSessions.createIndex({ teamId: 1, createdAt: -1 }),
-      this.aiSessions.createIndex({ startedByUserId: 1, createdAt: -1 })
+      this.aiSessions.createIndex({ startedByUserId: 1, createdAt: -1 }),
+      this.opsProjects.createIndex({ teamId: 1, stage: 1 }),
+      this.opsProjects.createIndex({ clientSlug: 1 }, { unique: true, partialFilterExpression: { clientSlug: { $type: "string" } }, name: "one_project_per_app" }),
+      this.deals.createIndex({ projectId: 1, createdAt: -1 }),
+      this.opsTasks.createIndex({ projectId: 1, createdAt: -1 }),
+      this.opsTasks.createIndex({ dealId: 1 }),
+      this.vaultAccounts.createIndex({ projectId: 1, label: 1 }),
+      this.projectUpdates.createIndex({ projectId: 1, createdAt: -1 }),
+      this.meetings.createIndex({ projectId: 1, heldAt: -1 }),
+      this.meetings.createIndex({ projectId: 1, externalId: 1 }, { unique: true, partialFilterExpression: { externalId: { $type: "string" } }, name: "one_meeting_per_external_id" })
     ]);
   }
 

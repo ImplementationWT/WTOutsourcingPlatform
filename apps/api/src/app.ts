@@ -17,6 +17,7 @@ import { registerClientRoutes } from "./routes/clients.js";
 import { registerCostRoutes } from "./routes/costs.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerIntegrationRoutes } from "./routes/integrations.js";
+import { registerOpsRoutes } from "./routes/ops.js";
 import { registerServerRoutes } from "./routes/servers.js";
 import { ServerDirectory } from "./servers/directory.js";
 import type { AdminStore } from "./store/admin-store.js";
@@ -32,9 +33,11 @@ export interface AppOptions {
   ai?: { agent: AiAgentAdapter; config: AiConfig; now?: () => Date };
   /** Servidores de despliegue; sin él, solo el principal de la configuración (sin alta desde el panel). */
   servers?: ServerDirectory;
+  /** Clave AES-256 del vault de cuentas de Operativa; sin ella, esas rutas responden 503. */
+  vaultKey?: Buffer;
 }
 
-export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStream, ai, servers: givenServers }: AppOptions) {
+export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStream, ai, servers: givenServers, vaultKey }: AppOptions) {
   const app = Fastify({
     logger: loggerOptions({ level: logLevel, stream: logStream }),
     // La API solo escucha en 127.0.0.1 detrás de nginx: se confía únicamente en ese salto, así
@@ -109,6 +112,7 @@ export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStrea
   await registerDashboardRoutes(app, { store, deps });
   await registerIntegrationRoutes(app, { store, engine, deps });
   await registerAiRoutes(app, { store, ai: aiDeveloper, secureCookies: auth.secureCookies });
+  await registerOpsRoutes(app, { store, vaultKey });
 
   app.addHook("onClose", async () => {
     if (previewSweep) clearInterval(previewSweep);

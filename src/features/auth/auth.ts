@@ -3,7 +3,10 @@ import { ApiError, apiFetch } from "@/lib/api-client";
 
 // La sesión vive en una cookie HttpOnly emitida por el backend; las contraseñas solo existen en
 // el servidor.
-export type UserRole = "boss" | "lead" | "developer";
+export type UserRole = "boss" | "commercial" | "finance" | "lead" | "developer";
+
+/** Roles que no pertenecen a un equipo. */
+export const TEAMLESS_ROLES: readonly UserRole[] = ["boss", "commercial", "finance"];
 
 export interface SessionUser {
   id: string;
@@ -17,6 +20,8 @@ export interface SessionUser {
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   boss: "CEO/CCO",
+  commercial: "Comercial",
+  finance: "Financiera",
   lead: "Team leader",
   developer: "Developer",
 };

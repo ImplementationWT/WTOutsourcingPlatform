@@ -1,9 +1,12 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
+import Home from "@/app/Home";
 import AppLayout from "@/components/layout/AppLayout";
 import UsersPage from "@/features/admin/UsersPage";
 import LoginPage from "@/features/auth/LoginPage";
 import RequireAuth from "@/features/auth/RequireAuth";
 import DashboardPage from "@/features/dashboard/DashboardPage";
+import OpsProjectDetailPage from "@/features/ops/OpsProjectDetailPage";
+import OpsProjectsPage from "@/features/ops/OpsProjectsPage";
 import NewProjectPage from "@/features/projects/NewProjectPage";
 import ProjectDetailPage from "@/features/projects/ProjectDetailPage";
 import ProjectsPage from "@/features/projects/ProjectsPage";
@@ -15,13 +18,15 @@ export const router = createBrowserRouter([
   {
     element: <RequireAuth />,
     children: [
-      { path: "/", element: <Navigate to="/dashboard" replace /> },
+      { path: "/", element: <Home /> },
       // AI Developer: consola a pantalla completa (sin la barra lateral del panel).
       // Se carga al abrirla: el markdown del chat no pesa en el resto del panel.
       { path: "/projects/:slug/ai", lazy: async () => ({ Component: (await import("@/features/ai/AiDeveloperPage")).default }) },
       {
         element: <AppLayout />,
         children: [
+          { path: "/operativa", element: <OpsProjectsPage /> },
+          { path: "/operativa/:id", element: <OpsProjectDetailPage /> },
           { path: "/dashboard", element: <DashboardPage /> },
           { path: "/projects", element: <ProjectsPage /> },
           { path: "/projects/new", element: <NewProjectPage /> },
@@ -35,5 +40,5 @@ export const router = createBrowserRouter([
       },
     ],
   },
-  { path: "*", element: <Navigate to="/dashboard" replace /> },
+  { path: "*", element: <Home /> },
 ]);

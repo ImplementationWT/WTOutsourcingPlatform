@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ROLE_LABELS, useSession, type UserRole } from "@/features/auth/auth";
+import { ROLE_LABELS, TEAMLESS_ROLES, useSession, type UserRole } from "@/features/auth/auth";
 import { cn } from "@/lib/utils";
 import {
   ADMIN_TEAMS_KEY,
@@ -24,7 +24,7 @@ import {
 } from "./api";
 import { selectClass } from "./TeamAssignCard";
 
-const ROLES: UserRole[] = ["developer", "lead", "boss"];
+const ROLES: UserRole[] = ["developer", "lead", "commercial", "finance", "boss"];
 
 /** Contraseña temporal: se muestra una sola vez para entregarla en persona. */
 function TemporaryPassword({ username, password, onClose }: { username: string; password: string; onClose: () => void }) {
@@ -143,7 +143,7 @@ function NewUserForm({ teams, onCreated }: { teams: AdminTeam[]; onCreated: (use
   const [teamId, setTeamId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const needsTeam = role !== "boss";
+  const needsTeam = !TEAMLESS_ROLES.includes(role);
   const valid = /^[a-z0-9][a-z0-9._-]{1,38}[a-z0-9]$/.test(username) && name.trim().length >= 2 && (!needsTeam || teamId);
 
   async function submit(e: React.FormEvent) {
@@ -194,7 +194,7 @@ function NewUserForm({ teams, onCreated }: { teams: AdminTeam[]; onCreated: (use
         ) : (
           <div className="space-y-1.5">
             <p className="text-sm font-medium">2. Equipo</p>
-            <p className="flex h-8 items-center text-sm text-muted-foreground">Sin equipo: ve y opera todos.</p>
+            <p className="flex h-8 items-center text-sm text-muted-foreground">{role === "boss" ? "Sin equipo: ve y opera todos." : "Sin equipo: trabaja en su área."}</p>
           </div>
         )}
         <div className="space-y-1.5">
@@ -264,7 +264,7 @@ function UserRow({ user, teams, self, onPassword }: { user: AdminUser; teams: Ad
           onChange={(e) => {
             const role = e.target.value as UserRole;
             // Pasar a lead/developer exige equipo: se mantiene el actual o el primero.
-            const teamId = role === "boss" ? null : (user.teamId ?? teams[0]?.id ?? null);
+            const teamId = TEAMLESS_ROLES.includes(role) ? null : (user.teamId ?? teams[0]?.id ?? null);
             void run("role", () => updateUser(user.id, { role, teamId }));
           }}
         >
@@ -278,10 +278,10 @@ function UserRow({ user, teams, self, onPassword }: { user: AdminUser; teams: Ad
           aria-label={`Equipo de ${user.username}`}
           className={selectClass}
           value={user.teamId ?? ""}
-          disabled={busy !== null || user.role === "boss"}
+          disabled={busy !== null || TEAMLESS_ROLES.includes(user.role)}
           onChange={(e) => void run("team", () => updateUser(user.id, { teamId: e.target.value || null }))}
         >
-          {user.role === "boss" && <option value="">Sin equipo</option>}
+          {TEAMLESS_ROLES.includes(user.role) && <option value="">Sin equipo</option>}
           {teams.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}

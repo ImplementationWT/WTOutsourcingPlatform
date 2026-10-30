@@ -222,8 +222,14 @@ export interface AuditDoc {
 
 // ---- usuarios y equipos ------------------------------------------------------
 
-/** boss (jefe): solo lectura de todo. lead (team leader) y developer: operan los proyectos de su equipo. */
-export type UserRole = "boss" | "lead" | "developer";
+/**
+ * boss (CEO/CCO): ve y opera todo. lead (team leader) y developer: operan los proyectos de su equipo.
+ * commercial (Marketing): área Comercial. finance: área Financiera. Estos dos últimos no tienen equipo.
+ */
+export type UserRole = "boss" | "commercial" | "finance" | "lead" | "developer";
+
+/** Roles que no pertenecen a un equipo. */
+export const TEAMLESS_ROLES: readonly UserRole[] = ["boss", "commercial", "finance"];
 
 export interface UserDoc {
   _id: string; // uuid

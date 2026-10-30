@@ -25,6 +25,7 @@ const aesKey = () => randomBytes(32).toString("base64");
 process.env.INITIAL_PASSWORD_KEY_PATH = generated("initial-password.key", aesKey);
 process.env.INTEGRATION_ENCRYPTION_KEY_SECRET_REF = generated("integration.key", aesKey);
 process.env.SERVER_KEYS_ENCRYPTION_KEY_SECRET_REF = generated("server-keys.key", aesKey);
+process.env.ACCOUNT_VAULT_KEY_PATH = generated("account-vault.key", aesKey);
 if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32 || process.env.SESSION_SECRET.startsWith("CAMBIAR")) {
   process.env.SESSION_SECRET = readFileSync(generated("session.secret", () => randomBytes(32).toString("hex")), "utf8").trim();
 }

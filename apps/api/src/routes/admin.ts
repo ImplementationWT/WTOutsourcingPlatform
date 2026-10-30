@@ -4,7 +4,7 @@ import { requireAuth, requireBoss } from "../auth/session.js";
 import { UserDirectory, UserDirectoryError } from "../auth/users.js";
 import { slugSchema } from "../domain/naming.js";
 
-const roleSchema = z.enum(["boss", "lead", "developer"]);
+const roleSchema = z.enum(["boss", "commercial", "finance", "lead", "developer"]);
 const idParams = z.object({ id: z.string().uuid() });
 const usernameSchema = z
   .string()

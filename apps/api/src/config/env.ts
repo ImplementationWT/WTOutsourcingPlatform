@@ -89,6 +89,8 @@ export const envSchema = z.object({
   // Ruta al archivo con la clave (32 bytes en base64) que cifra la contraseña hasta su revelación única.
   // Obligatoria con INITIAL_ADMIN_MODE=random. Genérala con: openssl rand -base64 32 > initial-password.key
   INITIAL_PASSWORD_KEY_PATH: optional(z.string().min(1)),
+  /** Clave AES-256 (32 bytes en base64) del vault de cuentas de Operativa. */
+  ACCOUNT_VAULT_KEY_PATH: optional(z.string().min(1)),
 
   // Sesión del panel
   PANEL_ADMIN_USERNAME: z.string().min(3),
@@ -167,6 +169,11 @@ function readAesKey(path: string | undefined, variable: string) {
 /** Clave AES-256 para la revelación única de la contraseña inicial. */
 export function loadInitialPasswordKey(env: Env) {
   return readAesKey(env.INITIAL_PASSWORD_KEY_PATH, "INITIAL_PASSWORD_KEY_PATH");
+}
+
+/** Clave AES-256 del vault de cuentas por proyecto (Operativa). */
+export function loadAccountVaultKey(env: Env) {
+  return readAesKey(env.ACCOUNT_VAULT_KEY_PATH, "ACCOUNT_VAULT_KEY_PATH");
 }
 
 /** Clave AES-256 de las credenciales de integraciones en tránsito. */

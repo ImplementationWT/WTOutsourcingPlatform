@@ -70,7 +70,8 @@ const env = {
   GITHUB_PRIVATE_KEY_PATH: pemPath,
   INITIAL_PASSWORD_KEY_PATH: generated("initial-password.key", aesKey),
   INTEGRATION_ENCRYPTION_KEY_SECRET_REF: generated("integration.key", aesKey),
-  SERVER_KEYS_ENCRYPTION_KEY_SECRET_REF: generated("server-keys.key", aesKey)
+  SERVER_KEYS_ENCRYPTION_KEY_SECRET_REF: generated("server-keys.key", aesKey),
+  ACCOUNT_VAULT_KEY_PATH: generated("account-vault.key", aesKey)
 };
 const secret = value("SESSION_SECRET");
 if (!usable(secret) || secret.length < 32) env.SESSION_SECRET = readFileSync(generated("session.secret", () => randomBytes(32).toString("hex")), "utf8").trim();

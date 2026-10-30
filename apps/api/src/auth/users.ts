@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { MongoServerError } from "mongodb";
 import type { AdminStore } from "../store/admin-store.js";
-import type { TeamDoc, UserDoc, UserRole } from "../store/models.js";
+import { TEAMLESS_ROLES, type TeamDoc, type UserDoc, type UserRole } from "../store/models.js";
 import { hashPassword, verifyPassword } from "./password.js";
 
 export const MIN_PASSWORD_LENGTH = 10;
@@ -168,7 +168,7 @@ export class UserDirectory {
   }
 
   private async requireTeam(teamId: string | null | undefined, role: UserRole) {
-    if (role === "boss") return null;
+    if (TEAMLESS_ROLES.includes(role)) return null;
     if (!teamId) throw new UserDirectoryError(400, "Los team leaders y developers necesitan un equipo.");
     if (!(await this.store.teams.findOne({ _id: teamId }))) throw new UserDirectoryError(400, "El equipo no existe.");
     return teamId;
