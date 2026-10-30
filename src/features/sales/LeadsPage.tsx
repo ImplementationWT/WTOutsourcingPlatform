@@ -122,11 +122,11 @@ export default function LeadsPage() {
   const toggleStatus = (status: LeadStatus) => setFilters((f) => ({ ...f, status: f.status === status ? undefined : status }));
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Comercial</h1>
-          <p className="text-sm text-muted-foreground">Leads de todos los sources: contacto, demo, propuesta y conversión en cliente.</p>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Leads y propuestas</h1>
+          <p className="mt-1 text-sm text-muted-foreground sm:text-base">Leads de todos los sources: contacto, demo, propuesta y conversión en cliente.</p>
         </div>
         {!creating && (
           <Button onClick={() => setCreating(true)}>
@@ -164,7 +164,7 @@ export default function LeadsPage() {
           setFilters((f) => ({ ...f, q: search.trim() || undefined }));
         }}
       >
-        <Input aria-label="Buscar leads" className="max-w-xs" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por empresa, contacto o correo" />
+        <Input aria-label="Buscar leads" className="w-full sm:max-w-xs" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por empresa, contacto o correo" />
         <select aria-label="Filtrar por source" className={selectClass} value={filters.sourceId ?? ""} onChange={(e) => setFilters((f) => ({ ...f, sourceId: e.target.value || undefined }))}>
           <option value="">Todos los sources</option>
           {sources.map((s) => (
@@ -199,7 +199,7 @@ export default function LeadsPage() {
             <li key={lead.id}>
               <Link
                 to={`/comercial/leads/${lead.id}`}
-                className="grid items-center gap-3 rounded-xl border border-foreground/10 bg-foreground/[0.02] p-4 transition-colors hover:bg-foreground/[0.05] md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
+                className="grid items-center gap-3 rounded-xl border border-foreground/10 bg-foreground/[0.02] p-4 transition-colors hover:bg-foreground/[0.05] md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_10rem]"
               >
                 <div className="min-w-0">
                   <p className="truncate font-medium">{lead.title}</p>

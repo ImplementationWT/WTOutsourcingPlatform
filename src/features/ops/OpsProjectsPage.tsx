@@ -186,11 +186,11 @@ export default function OpsProjectsPage() {
   const set = <K extends keyof ProjectFilters>(key: K, value: string) => setFilters((f) => ({ ...f, [key]: value || undefined }));
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Operativa</h1>
-          <p className="text-sm text-muted-foreground">Proyectos de los clientes: etapa, salud, deals y tareas.</p>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Proyectos del cliente</h1>
+          <p className="mt-1 text-sm text-muted-foreground sm:text-base">Proyectos de los clientes: etapa, salud, deals y tareas.</p>
         </div>
         {canCreate && !creating && (
           <Button onClick={() => setCreating(true)}>

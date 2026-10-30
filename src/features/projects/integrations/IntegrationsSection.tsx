@@ -19,7 +19,7 @@ export function Switch({ checked, onChange, label, disabled }: { checked: boolea
       onClick={() => onChange(!checked)}
       className={cn(
         "flex h-6 w-11 shrink-0 items-center rounded-full border border-foreground/15 p-0.5 transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-50",
-        checked ? "bg-violet-500/80" : "bg-foreground/10",
+        checked ? "bg-brand-500/80" : "bg-foreground/10",
       )}
     >
       <span className={cn("size-4.5 rounded-full bg-background shadow transition-transform", checked && "translate-x-5")} />

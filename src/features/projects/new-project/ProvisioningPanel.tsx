@@ -59,7 +59,7 @@ export default function ProvisioningPanel({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             {(!job || job.status === "running" || job.status === "queued") && (
-              <Loader2 className="size-4 animate-spin text-violet-300" />
+              <Loader2 className="size-4 animate-spin text-brand-300" />
             )}
             {headline}
           </CardTitle>

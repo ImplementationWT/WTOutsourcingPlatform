@@ -14,7 +14,7 @@ export default function Stepper({ steps, current }: { steps: string[]; current: 
                 aria-current={active ? "step" : undefined}
                 className={cn(
                   "flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition-colors",
-                  active && "border-violet-400/60 bg-violet-500/20 text-violet-100",
+                  active && "border-brand-400/60 bg-brand-500/20 text-brand-100",
                   done && "border-emerald-400/40 bg-emerald-400/10 text-emerald-300",
                   !active && !done && "border-foreground/15 bg-foreground/5 text-muted-foreground",
                 )}

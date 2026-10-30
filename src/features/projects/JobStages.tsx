@@ -6,7 +6,7 @@ import { formatDuration, type Job, type JobStage, type SubStep } from "./provisi
 function SubStepIcon({ status }: { status: SubStep["status"] }) {
   switch (status) {
     case "running":
-      return <Loader2 className="size-3.5 animate-spin text-violet-300" aria-label="En curso" />;
+      return <Loader2 className="size-3.5 animate-spin text-brand-300" aria-label="En curso" />;
     case "done":
       return <Check className="size-3.5 text-emerald-400" aria-label="Hecho" />;
     case "skipped":
@@ -73,7 +73,7 @@ function SubSteps({ stage }: { stage: JobStage }) {
 function StageIcon({ status }: { status: JobStage["status"] }) {
   switch (status) {
     case "running":
-      return <Loader2 className="size-5 animate-spin text-violet-300" aria-label="En curso" />;
+      return <Loader2 className="size-5 animate-spin text-brand-300" aria-label="En curso" />;
     case "succeeded":
       return <CheckCircle2 className="size-5 text-emerald-400" aria-label="Completada" />;
     case "failed":
@@ -101,7 +101,7 @@ export default function JobStages({ job }: { job: Job }) {
         <div
           className={cn(
             "h-full rounded-full transition-[width] duration-500",
-            job.status === "failed" ? "bg-red-400/70" : job.status === "succeeded" ? "bg-emerald-400" : "bg-violet-400",
+            job.status === "failed" ? "bg-red-400/70" : job.status === "succeeded" ? "bg-emerald-400" : "bg-brand-400",
           )}
           style={{ width: `${Math.max(progress, job.status === "running" ? 4 : 0)}%` }}
         />

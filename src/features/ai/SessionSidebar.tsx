@@ -3,19 +3,20 @@ import { Loader2, MessageSquare, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { AiSession } from "@/types/ai";
+import { LOCALE } from "@/lib/format";
 
 const STATUS: Record<AiSession["status"], { label: string; dot: string }> = {
   active: { label: "En curso", dot: "bg-emerald-400" },
-  merged: { label: "Publicada", dot: "bg-violet-400" },
+  merged: { label: "Publicada", dot: "bg-brand-400" },
   closed: { label: "Cerrada", dot: "bg-foreground/30" },
 };
 
 function when(iso: string) {
   const date = new Date(iso);
   const days = Math.floor((Date.now() - date.getTime()) / 86_400_000);
-  if (days < 1) return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  if (days < 7) return date.toLocaleDateString([], { weekday: "short" });
-  return date.toLocaleDateString([], { day: "2-digit", month: "short" });
+  if (days < 1) return date.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" });
+  if (days < 7) return date.toLocaleDateString(LOCALE, { weekday: "short" });
+  return date.toLocaleDateString(LOCALE, { day: "2-digit", month: "short" });
 }
 
 /** Conversaciones del proyecto, como la lista de chats de Claude. */
@@ -85,7 +86,7 @@ export default function SessionSidebar({
       <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3" aria-label="Conversaciones">
         {creating && (
           <div className="flex items-center gap-2 rounded-lg bg-foreground/[0.07] px-3 py-2 text-sm">
-            <MessageSquare className="size-4 shrink-0 text-violet-300" />
+            <MessageSquare className="size-4 shrink-0 text-brand-300" />
             <span className="truncate">Nueva conversación</span>
           </div>
         )}

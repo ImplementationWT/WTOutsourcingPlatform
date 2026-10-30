@@ -25,7 +25,7 @@ export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
 export const LEAD_STATUS_TONE: Record<LeadStatus, string> = {
   new: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
   contacted: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300",
-  demo: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
+  demo: "bg-purple-500/15 text-purple-700 dark:text-purple-300",
   proposal_sent: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   won: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
   lost: "bg-foreground/10 text-muted-foreground",

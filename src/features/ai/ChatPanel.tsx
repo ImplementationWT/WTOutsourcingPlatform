@@ -61,7 +61,7 @@ function Steps({ calls, live }: { calls: ToolCall[]; live: boolean }) {
         aria-expanded={open}
         className="flex max-w-full items-center gap-2 rounded-full border border-foreground/10 bg-foreground/[0.03] px-3 py-1 text-xs text-muted-foreground hover:bg-foreground/[0.06]"
       >
-        {running ? <Loader2 className="size-3.5 shrink-0 animate-spin text-violet-300" /> : <Wrench className="size-3.5 shrink-0" />}
+        {running ? <Loader2 className="size-3.5 shrink-0 animate-spin text-brand-300" /> : <Wrench className="size-3.5 shrink-0" />}
         <span className="shrink-0">
           {running ? "Trabajando" : "Trabajó"} en {calls.length} paso{calls.length === 1 ? "" : "s"}
           {failed > 0 && <span className="text-red-400"> · {failed} con error</span>}
@@ -223,7 +223,7 @@ export default function ChatPanel({
 
           {STATE_LABEL[state] && active && (
             <div className="ml-10 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              {running && <Loader2 className="size-4 animate-spin text-violet-300" />}
+              {running && <Loader2 className="size-4 animate-spin text-brand-300" />}
               {STATE_LABEL[state]}
               {state === "budget" && (
                 <Button size="xs" variant="outline" onClick={() => act(onRaiseBudget)} disabled={busy}>

@@ -59,7 +59,7 @@ export default function PublishPanel({ session, agentBusy }: { session: AiSessio
 
       <ol className="space-y-4">
         <li className="flex gap-3">
-          <GitPullRequest className="mt-0.5 size-4 shrink-0 text-violet-300" />
+          <GitPullRequest className="mt-0.5 size-4 shrink-0 text-brand-300" />
           <div className="min-w-0 flex-1 space-y-2">
             <p className="font-medium">1. Pull Request</p>
             {pr ? (
@@ -80,7 +80,7 @@ export default function PublishPanel({ session, agentBusy }: { session: AiSessio
         </li>
 
         <li className="flex gap-3">
-          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-violet-300" />
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-brand-300" />
           <div className="min-w-0 flex-1 space-y-2">
             <p className="font-medium">2. Validaciones (lint, tests, build)</p>
             {!pr ? (
@@ -116,7 +116,7 @@ export default function PublishPanel({ session, agentBusy }: { session: AiSessio
         </li>
 
         <li className="flex gap-3">
-          <Rocket className="mt-0.5 size-4 shrink-0 text-violet-300" />
+          <Rocket className="mt-0.5 size-4 shrink-0 text-brand-300" />
           <div className="min-w-0 flex-1 space-y-2">
             <p className="font-medium">3. Aprobar y desplegar</p>
             {session.status === "merged" || result ? (

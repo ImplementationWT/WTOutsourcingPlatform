@@ -49,7 +49,7 @@ export default function Composer({
     <div
       {...attachments.dropZone}
       className={cn(
-        "rounded-2xl border border-foreground/15 bg-background/70 shadow-lg shadow-black/5 backdrop-blur transition-colors focus-within:border-violet-400/50 dark:bg-foreground/[0.04]",
+        "rounded-2xl border border-foreground/15 bg-background/70 shadow-lg shadow-black/5 backdrop-blur transition-colors focus-within:border-brand-400/50 dark:bg-foreground/[0.04]",
         disabled && "opacity-60",
       )}
     >

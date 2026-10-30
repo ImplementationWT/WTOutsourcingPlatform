@@ -62,7 +62,7 @@ export default function WillDooCard({ client }: { client: ClientDetail["client"]
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Bot className="size-4 text-violet-300" />
+          <Bot className="size-4 text-brand-300" />
           Will Doo
         </CardTitle>
         <CardDescription>
@@ -85,7 +85,7 @@ export default function WillDooCard({ client }: { client: ClientDetail["client"]
                 onClick={() => setSelected(option.mode)}
                 className={cn(
                   "rounded-lg border p-3 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-                  selected === option.mode ? "border-violet-400/60 bg-violet-500/10" : "border-foreground/10 hover:border-foreground/25",
+                  selected === option.mode ? "border-brand-400/60 bg-brand-500/10" : "border-foreground/10 hover:border-foreground/25",
                 )}
               >
                 <span className="flex items-center justify-between gap-2 font-medium">

@@ -9,9 +9,10 @@ import type { ClientDetail } from "@/types/project";
 import { redeployClient } from "./api";
 import { Code } from "./new-project/parts";
 import { useCanOperate } from "@/features/auth/auth";
+import { formatShortDateTime } from "@/lib/format";
 
 const dateTime = (iso: string) =>
-  new Date(iso).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  formatShortDateTime(iso);
 
 function Row({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
   return (
@@ -54,7 +55,7 @@ export default function DeploymentCard({ client }: { client: ClientDetail["clien
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Rocket className="size-4 text-violet-300" />
+          <Rocket className="size-4 text-brand-300" />
           Despliegue
         </CardTitle>
         <CardDescription>

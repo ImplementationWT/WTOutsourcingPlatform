@@ -36,7 +36,7 @@ export default function UserMenu() {
         <span className="flex size-8 items-center justify-center rounded-full border border-foreground/15 bg-foreground/10 text-xs font-semibold">
           {username.slice(0, 2).toUpperCase()}
         </span>
-        <span className="text-sm font-medium">{username}</span>
+        <span className="hidden max-w-40 truncate text-sm font-medium sm:inline">{username}</span>
         <ChevronDown className="size-4 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="w-52">
@@ -68,7 +68,7 @@ export default function UserMenu() {
             aria-hidden
             className={cn(
               "ml-auto flex h-5 w-9 items-center rounded-full border border-foreground/15 p-0.5 transition-colors",
-              dark ? "bg-violet-500/70" : "bg-foreground/10",
+              dark ? "bg-brand-500/70" : "bg-foreground/10",
             )}
           >
             <span className={cn("size-3.5 rounded-full bg-background shadow transition-transform", dark && "translate-x-4")} />

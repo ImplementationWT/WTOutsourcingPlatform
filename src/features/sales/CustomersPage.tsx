@@ -10,10 +10,10 @@ import { useCustomers } from "./api";
 export default function CustomersPage() {
   const { data: customers, isLoading, error } = useCustomers();
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Clientes</h1>
-        <p className="text-sm text-muted-foreground">Leads convertidos y el estado de sus proyectos.</p>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Clientes</h1>
+        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Leads convertidos y el estado de sus proyectos.</p>
       </div>
       <ErrorLine error={error ? (error instanceof Error ? error.message : "No se pudieron cargar los clientes.") : null} />
       {isLoading ? (

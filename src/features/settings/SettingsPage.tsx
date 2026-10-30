@@ -11,8 +11,8 @@ export default function SettingsPage() {
   return (
     <section className="space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Configuración</h1>
-        <p className="mt-2 text-muted-foreground">Tu cuenta en la plataforma.</p>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Configuración</h1>
+        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Tu cuenta en la plataforma.</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

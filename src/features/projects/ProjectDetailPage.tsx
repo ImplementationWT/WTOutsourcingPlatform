@@ -100,8 +100,8 @@ export default function ProjectDetailPage() {
         <>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight">{data.client.name}</h1>
-              <p className="mt-2 text-muted-foreground">{data.client.description}</p>
+              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{data.client.name}</h1>
+              <p className="mt-1 text-sm text-muted-foreground sm:text-base">{data.client.description}</p>
               <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground">
                 <Users className="size-4" />
                 {data.client.team ? data.client.team.name : "Sin equipo (solo lo ven los CEO/CCO)"}

@@ -78,7 +78,7 @@ function TeamsCard({ teams, users }: { teams: AdminTeam[]; users: AdminUser[] })
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Users className="size-4 text-violet-300" />
+          <Users className="size-4 text-brand-300" />
           Equipos
         </CardTitle>
         <CardDescription>Cada proyecto pertenece a un equipo. El líder debe ser un team leader de ese equipo.</CardDescription>
@@ -239,14 +239,15 @@ function UserRow({ user, teams, self, onPassword }: { user: AdminUser; teams: Ad
 
   return (
     <li className={cn("space-y-1 px-3 py-3 text-sm", !user.active && "opacity-60")}>
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-40 flex-1">
+      {/* En pantallas grandes, columnas fijas: rol, equipo y acciones quedan alineados entre filas. */}
+      <div className="flex flex-wrap items-center gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_11rem_9.5rem_9.5rem_12.5rem_7rem]">
+        <div className="min-w-40 flex-1 lg:min-w-0">
           <p className="font-medium">
             {user.name} {self && <span className="text-xs font-normal text-muted-foreground">(tú)</span>}
           </p>
           <p className="font-mono text-xs text-muted-foreground">{user.username}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
           {!user.active && <Badge variant="outline">Desactivado</Badge>}
           {user.locked && (
             <Badge variant="outline">
@@ -258,7 +259,7 @@ function UserRow({ user, teams, self, onPassword }: { user: AdminUser; teams: Ad
         </div>
         <select
           aria-label={`Rol de ${user.username}`}
-          className={selectClass}
+          className={cn(selectClass, "lg:w-full")}
           value={user.role}
           disabled={busy !== null || self}
           onChange={(e) => {
@@ -276,7 +277,7 @@ function UserRow({ user, teams, self, onPassword }: { user: AdminUser; teams: Ad
         </select>
         <select
           aria-label={`Equipo de ${user.username}`}
-          className={selectClass}
+          className={cn(selectClass, "lg:w-full")}
           value={user.teamId ?? ""}
           disabled={busy !== null || TEAMLESS_ROLES.includes(user.role)}
           onChange={(e) => void run("team", () => updateUser(user.id, { teamId: e.target.value || null }))}
@@ -291,14 +292,17 @@ function UserRow({ user, teams, self, onPassword }: { user: AdminUser; teams: Ad
         <Button
           size="xs"
           variant="outline"
+          className="lg:justify-self-start"
           disabled={busy !== null}
           onClick={() => run("reset", async () => onPassword(user.username, (await resetPassword(user.id)).temporaryPassword))}
         >
           {busy === "reset" ? <Loader2 className="animate-spin" /> : <KeyRound />}
           Restablecer contraseña
         </Button>
-        {!self && (
-          <Button size="xs" variant="ghost" disabled={busy !== null} onClick={() => run("active", () => updateUser(user.id, { active: !user.active }))}>
+        {self ? (
+          <span aria-hidden className="hidden lg:block" />
+        ) : (
+          <Button size="xs" variant="ghost" className="lg:justify-self-start" disabled={busy !== null} onClick={() => run("active", () => updateUser(user.id, { active: !user.active }))}>
             {busy === "active" ? <Loader2 className="animate-spin" /> : <Power />}
             {user.active ? "Desactivar" : "Activar"}
           </Button>
@@ -324,8 +328,8 @@ export default function UsersPage() {
   return (
     <section className="space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Usuarios y equipos</h1>
-        <p className="mt-2 text-muted-foreground">Cuentas individuales, roles y equipos. Cada persona entra con su usuario y contraseña.</p>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Usuarios y equipos</h1>
+        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Cuentas individuales, roles y equipos. Cada persona entra con su usuario y contraseña.</p>
       </div>
 
       {users.isLoading || teams.isLoading ? (

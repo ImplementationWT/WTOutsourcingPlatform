@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api-client";
+import { formatDateTime } from "@/lib/format";
 
 // Reuniones y novedades: mismas rutas bajo un proyecto (/api/ops/projects/:id) o un lead
 // (/api/sales/leads/:id). `base` es esa ruta.
@@ -52,4 +53,5 @@ export const createMeeting = (base: string, input: { title: string; heldAt: stri
 export const processMeeting = (base: string, meetingId: string) => apiFetch<{ meeting: Meeting }>(`${base}/meetings/${meetingId}/process`, send("POST"));
 export const createUpdate = (base: string, body: string) => apiFetch<{ update: ActivityUpdate }>(`${base}/updates`, send("POST", { body }));
 
-export const dateText = (iso: string) => new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
+/** Fecha y hora con el formato único del panel. */
+export const dateText = (iso: string) => formatDateTime(iso);

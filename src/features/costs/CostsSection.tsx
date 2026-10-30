@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { type CostBucket, type CostRange, type CostSummary, formatUsd, monthLabel, useCostSessions, useCostSummary } from "./api";
+import { formatDate } from "@/lib/format";
 
 const STATUS_LABELS = { active: "En curso", merged: "Publicada", closed: "Cerrada" } as const;
 
@@ -96,7 +97,7 @@ function MonthlyChart({ months }: { months: CostSummary["byMonth"] }) {
             {months.map((m) => (
               <li key={m.month} className="flex h-full min-w-14 flex-1 flex-col items-center justify-end gap-1.5">
                 <span className="text-xs tabular-nums">{formatUsd(m.costCents)}</span>
-                <div className="w-full max-w-12 rounded-t-md bg-violet-400/80" style={{ height: `${Math.max(2, (m.costCents / max) * 100)}%` }} />
+                <div className="w-full max-w-12 rounded-t-md bg-brand-400/80" style={{ height: `${Math.max(2, (m.costCents / max) * 100)}%` }} />
                 <span className="text-xs text-muted-foreground">{monthLabel(m.month)}</span>
               </li>
             ))}
@@ -134,7 +135,7 @@ function SessionsTable({ range }: { range: CostRange }) {
             <tbody className="divide-y divide-foreground/10">
               {sessions.data.map((s) => (
                 <tr key={s.id} className={cn(s.deleted && "text-muted-foreground")}>
-                  <td className="py-2 pr-3 whitespace-nowrap">{new Date(s.createdAt).toLocaleDateString()}</td>
+                  <td className="py-2 pr-3 whitespace-nowrap">{formatDate(s.createdAt)}</td>
                   <td className="py-2 pr-3">{s.project}</td>
                   <td className="max-w-72 truncate py-2 pr-3" title={s.title}>
                     {s.title}
@@ -229,7 +230,7 @@ export default function CostsSection() {
                 <Card key={team.teamId ?? "none"} className="h-full">
                   <CardHeader>
                     <CardDescription className="flex items-center gap-2">
-                      <Wallet className="size-4 text-violet-300" />
+                      <Wallet className="size-4 text-brand-300" />
                       {team.name}
                     </CardDescription>
                     <CardTitle className="text-2xl font-semibold tabular-nums">{formatUsd(team.costCents)}</CardTitle>
@@ -251,7 +252,7 @@ export default function CostsSection() {
               <BarChart
                 title={data.scope === "boss" ? "Proyectos más caros" : "Proyectos del equipo"}
                 rows={data.byProject.slice(0, 10)}
-                barClass="bg-violet-400/80"
+                barClass="bg-brand-400/80"
                 label={(row) => (
                   <>
                     <Link to={`/projects/${row.clientId}`} className="underline-offset-4 hover:underline">

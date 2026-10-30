@@ -91,10 +91,10 @@ export default function NewProjectPage() {
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          Proyectos
+          Apps y repositorios
         </Link>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight">Nuevo proyecto</h1>
-        <p className="mt-2 text-muted-foreground">
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">Nueva app</h1>
+        <p className="mt-1 text-sm text-muted-foreground sm:text-base">
           Define el proyecto y la plataforma creará su repositorio y lo conectará a su base de datos.
         </p>
       </div>

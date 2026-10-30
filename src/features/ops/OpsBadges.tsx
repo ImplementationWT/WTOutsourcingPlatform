@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { HEALTH_LABELS, HEALTH_TONE, PRIORITY_LABELS, PRIORITY_TONE, STAGE_LABELS, STAGES, type Health, type Priority, type Stage } from "./api";
 
-const pill = "inline-flex h-5 items-center rounded-full px-2 text-xs font-medium whitespace-nowrap";
+const pill = "inline-flex h-5 w-fit items-center rounded-full px-2 text-xs font-medium whitespace-nowrap";
 
 export function HealthBadge({ value }: { value: Health }) {
   return <span className={cn(pill, HEALTH_TONE[value])}>{HEALTH_LABELS[value]}</span>;
@@ -28,23 +28,38 @@ export function SentimentBar({ value }: { value: number }) {
   );
 }
 
-/** Recorrido por las etapas del proyecto; la actual resaltada y las anteriores marcadas. */
-export function StageTrack({ stage }: { stage: Stage }) {
+/**
+ * Recorrido por las etapas; la actual resaltada y las anteriores marcadas. Con `onChange` cada
+ * etapa es un botón (CEO/CCO y Team Leader); sin él, solo se muestra.
+ */
+export function StageTrack({ stage, onChange, disabled }: { stage: Stage; onChange?: (stage: Stage) => void; disabled?: boolean }) {
   const current = STAGES.indexOf(stage);
   return (
     <ol className="flex flex-wrap gap-1.5" aria-label="Etapas del proyecto">
-      {STAGES.map((s, i) => (
-        <li
-          key={s}
-          aria-current={i === current ? "step" : undefined}
-          className={cn(
-            "rounded-md border px-2 py-1 text-xs",
-            i === current ? "border-primary bg-primary/10 font-medium text-foreground" : i < current ? "border-foreground/10 text-muted-foreground" : "border-dashed border-foreground/15 text-muted-foreground/70",
-          )}
-        >
-          {STAGE_LABELS[s]}
-        </li>
-      ))}
+      {STAGES.map((s, i) => {
+        const tone =
+          i === current
+            ? "border-primary bg-primary/10 font-medium text-foreground"
+            : i < current
+              ? "border-foreground/15 text-muted-foreground"
+              : "border-dashed border-foreground/15 text-muted-foreground/80";
+        return (
+          <li key={s} aria-current={i === current ? "step" : undefined}>
+            {onChange ? (
+              <button
+                type="button"
+                disabled={disabled || i === current}
+                onClick={() => onChange(s)}
+                className={cn("rounded-md border px-2.5 py-1 text-xs transition-colors enabled:hover:border-primary/60 enabled:hover:text-foreground disabled:cursor-default", tone)}
+              >
+                {STAGE_LABELS[s]}
+              </button>
+            ) : (
+              <span className={cn("block rounded-md border px-2.5 py-1 text-xs", tone)}>{STAGE_LABELS[s]}</span>
+            )}
+          </li>
+        );
+      })}
     </ol>
   );
 }

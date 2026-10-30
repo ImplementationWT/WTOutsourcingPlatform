@@ -38,7 +38,7 @@ export default function TeamAssignCard({ slug, teamId }: { slug: string; teamId:
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Users className="size-4 text-violet-300" />
+          <Users className="size-4 text-brand-300" />
           Equipo
         </CardTitle>
         <CardDescription>Solo los miembros del equipo ven y operan el proyecto. Sin equipo, solo lo ven los CEO/CCO.</CardDescription>

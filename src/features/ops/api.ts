@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
 import { useSession } from "@/features/auth/auth";
+import { formatMoney } from "@/lib/format";
 
 // ---- catálogos (los mismos valores que valida la API) ---------------------------------
 
@@ -272,8 +273,7 @@ export const updateProposal = (id: string, proposalId: string, patch: Partial<{ 
 
 // ---- formato ---------------------------------------------------------------------
 
-export function money(cents: number, currency = "USD") {
-  return new Intl.NumberFormat("es-PE", { style: "currency", currency }).format(cents / 100);
-}
+/** Monto en centavos con el formato único del panel. */
+export const money = (cents: number, currency = "USD") => formatMoney(cents, currency);
 
 export const hoursText = (hours: number) => `${Number.isInteger(hours) ? hours : hours.toFixed(1)} h`;

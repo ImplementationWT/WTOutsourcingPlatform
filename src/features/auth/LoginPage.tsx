@@ -4,7 +4,8 @@ import { useForm } from "react-hook-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Layers3, Lock, LogIn, User } from "lucide-react";
+import { Lock, LogIn, User } from "lucide-react";
+import { BrandMark } from "@/components/brand/Brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,20 +56,18 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-svh items-center justify-center overflow-hidden bg-[radial-gradient(ellipse_at_top,#1e1b4b_0%,#0b0a1f_55%,#020617_100%)] px-4">
+    <div className="relative flex min-h-svh items-center justify-center overflow-hidden bg-[#0d0d12] px-4">
       <NeuralBackground />
 
       {/* Halos de color detrás del vidrio para que el blur tenga algo que difuminar */}
-      <div className="pointer-events-none absolute top-1/2 left-1/2 size-[28rem] -translate-x-[60%] -translate-y-[60%] rounded-full bg-violet-600/30 blur-3xl" />
-      <div className="pointer-events-none absolute top-1/2 left-1/2 size-80 -translate-x-[10%] -translate-y-[10%] rounded-full bg-sky-500/20 blur-3xl" />
+      <div className="pointer-events-none absolute top-1/2 left-1/2 size-[28rem] -translate-x-[60%] -translate-y-[60%] rounded-full bg-brand-500/20 blur-3xl" />
+      <div className="pointer-events-none absolute top-1/2 left-1/2 size-80 -translate-x-[10%] -translate-y-[10%] rounded-full bg-[#4f75ff]/15 blur-3xl" />
 
-      <div className="relative w-full max-w-sm rounded-2xl border border-foreground/15 bg-foreground/10 p-8 text-white shadow-[0_8px_32px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+      <div className="relative w-full max-w-sm rounded-2xl border border-foreground/15 bg-[#141418]/80 p-8 text-white shadow-[0_8px_32px_rgba(0,0,0,0.45)] backdrop-blur-xl">
         <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-4 flex size-12 items-center justify-center rounded-xl border border-foreground/20 bg-foreground/10">
-            <Layers3 className="size-6" />
-          </div>
-          <h1 className="text-2xl font-semibold tracking-tight">Forge</h1>
-          <p className="mt-1 text-sm text-foreground/60">by Whatever Tech</p>
+          <BrandMark className="mb-4 size-12" />
+          <h1 className="text-2xl font-semibold tracking-tight">Whatever Tech</h1>
+          <p className="mt-1 text-sm text-foreground/60">Plataforma de la empresa</p>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
@@ -114,7 +113,7 @@ export default function LoginPage() {
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="h-11 w-full bg-white text-slate-900 hover:bg-foreground/90"
+            className="h-11 w-full rounded-full font-semibold"
           >
             <LogIn />
             Ingresar

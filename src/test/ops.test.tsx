@@ -133,7 +133,7 @@ describe("detalle del proyecto", () => {
 
   it("Team Leader: puede editar etapa, health, prioridad y sentimiento, y ve las cuentas", async () => {
     renderAt(`/operativa/${project.id}`, LEAD, route({ manage: true, work: true }));
-    expect(await screen.findByLabelText("Etapa")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Maintenance" })).toBeTruthy();
     expect(screen.getByLabelText("Health")).toBeTruthy();
     expect(screen.getByLabelText("Sentiment score")).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Cuentas" })).toBeTruthy();
@@ -142,7 +142,7 @@ describe("detalle del proyecto", () => {
   it("Comercial: solo lectura, sin controles ni pestaña de cuentas", async () => {
     renderAt(`/operativa/${project.id}`, COMMERCIAL, route({ manage: false, work: false }));
     expect(await screen.findByRole("heading", { name: "Automatización Manpersa" })).toBeTruthy();
-    expect(screen.queryByLabelText("Etapa")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Maintenance" })).toBeNull();
     expect(screen.queryByRole("tab", { name: "Cuentas" })).toBeNull();
     expect(screen.getByRole("tab", { name: "Deals" })).toBeTruthy();
     expect(screen.queryByLabelText("Deal")).toBeNull();
@@ -156,7 +156,7 @@ describe("detalle del proyecto", () => {
       if (init?.method === "PATCH") return json({ project: { ...project, stage: "maintenance" } });
       return base(input, init);
     }) as typeof fetch);
-    fireEvent.change(await screen.findByLabelText("Etapa"), { target: { value: "maintenance" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Maintenance" }));
     await waitFor(() => expect(calls.some((c) => c.init?.method === "PATCH")).toBe(true));
     const patch = calls.find((c) => c.init?.method === "PATCH")!;
     expect(patch.url).toBe(`/api/ops/projects/${project.id}`);

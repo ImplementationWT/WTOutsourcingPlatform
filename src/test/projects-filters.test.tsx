@@ -126,7 +126,7 @@ describe("página de Proyectos", () => {
       BOSS,
     );
     await screen.findByText("4 de 4 proyectos");
-    expect(screen.getByText(/Nuevo proyecto/)).toBeTruthy();
+    expect(screen.getByText(/Nueva app/)).toBeTruthy();
     // Solo los repos de proyectos de la plataforma (con clientId) tienen etiquetas editables.
     expect(screen.getAllByRole("button", { name: /Editar/ })).toHaveLength(2);
   });

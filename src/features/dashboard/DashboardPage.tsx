@@ -43,7 +43,31 @@ const ACTIONS: Record<string, string> = {
   "mongodb.database.created": "inicializó la base",
   "github.environment.created": "creó el entorno production",
   "github.environment_secrets.written": "escribió secrets",
+  "client.team_changed": "cambió de equipo",
+  "client.willdoo_mode_changed": "cambió Will Doo en",
+  "project.topics_updated": "editó las etiquetas de",
+  integration_credential_stored: "guardó una credencial en",
+  integration_validated: "validó una integración en",
+  "ai.branch_archived": "archivó una rama de",
+  "server.created": "dio de alta el servidor",
+  "server.deleted": "dio de baja el servidor",
+  "server.verified": "verificó el servidor",
+  "server.key_rotated": "rotó la clave del servidor",
+  "server.host_key_pinned": "fijó la huella del servidor",
+  "user.created": "creó la cuenta de",
+  "user.updated": "actualizó la cuenta de",
+  "user.activated": "activó la cuenta de",
+  "user.deactivated": "desactivó la cuenta de",
+  "user.locked": "bloqueó por intentos fallidos a",
+  "user.password_reset": "restableció la contraseña de",
+  "user.password_changed": "cambió su contraseña",
+  "user.migrated_from_config": "migró la cuenta inicial",
+  "team.created": "creó el equipo",
+  "team.updated": "actualizó el equipo",
 };
+
+/** Las acciones de la plataforma (usuarios, equipos, servidores) muestran a quién afectan, no "platform". */
+const subjectOf = (entry: { clientId: string; target?: string | null }) => (entry.clientId === "platform" ? (entry.target ?? "") : entry.clientId);
 
 /** Estado mostrado: la salud en vivo si está desplegado; si no, el del aprovisionamiento. */
 function displayStatus(p: DashboardProject) {
@@ -59,8 +83,8 @@ export default function DashboardPage() {
     <section className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="mt-2 text-muted-foreground">
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Dashboard</h1>
+          <p className="mt-1 text-sm text-muted-foreground sm:text-base">
             Estado real de los proyectos (aprovisionamiento, salud de cada app y actividad reciente) y costos del AI Developer.
           </p>
         </div>
@@ -86,8 +110,8 @@ export default function DashboardPage() {
       ) : (
         <>
           <StatTiles data={data} />
-          {/* Cuadrícula: la columna derecha ocupa el mismo alto que la tabla, sin huecos. */}
-          <div className="grid items-stretch gap-4 xl:grid-cols-3">
+          {/* Cada tarjeta mide lo que su contenido: con pocos proyectos la tabla no queda estirada y vacía. */}
+          <div className="grid items-start gap-4 xl:grid-cols-3">
             <ProjectsTable data={data} />
             <div className="flex flex-col gap-4">
               <Attention data={data} />
@@ -143,7 +167,7 @@ function StatTiles({ data }: { data: DashboardData }) {
 function ProjectsTable({ data }: { data: DashboardData }) {
   const canOperate = useCanOperate();
   return (
-    <Card className="h-full xl:col-span-2">
+    <Card className="xl:col-span-2">
       <CardHeader>
         <CardTitle>Proyectos</CardTitle>
         <CardDescription>Salud en vivo, versión del template, HTTPS y último despliegue.</CardDescription>
@@ -244,7 +268,7 @@ function Activity({ data }: { data: DashboardData }) {
                 <span className="min-w-0">
                   <span className="font-medium">{entry.actorName ?? entry.actor}</span>{" "}
                   <span className="text-muted-foreground">{ACTIONS[entry.action] ?? entry.action}</span>{" "}
-                  <span className="font-medium">{entry.clientId}</span>
+                  <span className="font-medium whitespace-nowrap">{subjectOf(entry)}</span>
                 </span>
                 <span className="shrink-0 text-xs text-muted-foreground">{ago(entry.at)}</span>
               </li>

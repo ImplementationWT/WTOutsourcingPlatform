@@ -3,11 +3,11 @@ import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const pillTones = {
-  violet: "border-violet-400/25 bg-violet-400/10 text-violet-200",
+  brand: "border-brand-400/25 bg-brand-400/10 text-brand-200",
   emerald: "border-emerald-400/25 bg-emerald-400/10 text-emerald-300",
 };
 
-export function Pill({ tone = "violet", children }: { tone?: keyof typeof pillTones; children: ReactNode }) {
+export function Pill({ tone = "brand", children }: { tone?: keyof typeof pillTones; children: ReactNode }) {
   return (
     <span className={cn("shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium", pillTones[tone])}>
       {children}
@@ -53,4 +53,4 @@ export function InfoRow({
 }
 
 export const fieldClass =
-  "h-10 bg-foreground/[0.03] dark:bg-foreground/[0.03] border-foreground/15 focus-visible:border-violet-400/60 focus-visible:ring-violet-400/20";
+  "h-10 bg-foreground/[0.03] dark:bg-foreground/[0.03] border-foreground/15 focus-visible:border-brand-400/60 focus-visible:ring-brand-400/20";

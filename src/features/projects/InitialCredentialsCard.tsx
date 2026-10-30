@@ -7,6 +7,7 @@ import type { RevealedCredentials } from "@/types/project";
 import { revealInitialPassword, useClient } from "./api";
 import { Code } from "./new-project/parts";
 import { useCanOperate } from "@/features/auth/auth";
+import { formatTime } from "@/lib/format";
 
 function CopyButton({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
@@ -41,7 +42,7 @@ function Row({ icon: Icon, label, children }: { icon: typeof User; label: string
   );
 }
 
-const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const time = (iso: string) => formatTime(iso);
 
 /**
  * Credenciales de primer ingreso a la app del cliente. La contraseña generada
@@ -113,7 +114,7 @@ export default function InitialCredentialsCard({ slug }: { slug: string }) {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <KeyRound className="size-4 text-violet-300" />
+          <KeyRound className="size-4 text-brand-300" />
           Credenciales de primer ingreso
         </CardTitle>
         <CardDescription>

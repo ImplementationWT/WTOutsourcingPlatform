@@ -7,8 +7,9 @@ import type { ClientDetail, IntegrationProvider } from "@/types/project";
 import { removeIntegration, saveIntegration, useIntegrationCatalog } from "./api";
 import IntegrationFields from "./integrations/IntegrationFields";
 import { useCanOperate } from "@/features/auth/auth";
+import { formatShortDateTime } from "@/lib/format";
 
-const dateTime = (iso: string) => new Date(iso).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+const dateTime = (iso: string) => formatShortDateTime(iso);
 
 /** Una fila por proveedor: estado, actualizar la credencial o desactivar. */
 function ProviderRow({ client, provider }: { client: ClientDetail["client"]; provider: IntegrationProvider }) {
@@ -148,7 +149,7 @@ export default function IntegrationsCard({ client }: { client: ClientDetail["cli
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Plug className="size-4 text-violet-300" />
+          <Plug className="size-4 text-brand-300" />
           Integraciones
         </CardTitle>
         <CardDescription>Las credenciales se guardan solo como secrets cifrados del repositorio del cliente.</CardDescription>

@@ -12,7 +12,7 @@ import { Code } from "./new-project/parts";
 function StepIcon({ status }: { status: Deletion["steps"][number]["status"] }) {
   switch (status) {
     case "running":
-      return <Loader2 className="size-4 animate-spin text-violet-300" aria-label="En curso" />;
+      return <Loader2 className="size-4 animate-spin text-brand-300" aria-label="En curso" />;
     case "done":
       return <Check className="size-4 text-emerald-400" aria-label="Hecho" />;
     case "skipped":

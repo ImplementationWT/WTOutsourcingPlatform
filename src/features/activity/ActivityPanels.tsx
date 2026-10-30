@@ -175,6 +175,7 @@ export function MeetingsPanel({
   const [heldAt, setHeldAt] = useState("");
   const [transcript, setTranscript] = useState("");
   const [summary, setSummary] = useState("");
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const processingAvailable = data?.processingAvailable ?? false;
@@ -195,6 +196,7 @@ export function MeetingsPanel({
       setHeldAt("");
       setTranscript("");
       setSummary("");
+      setOpen(false);
       await queryClient.invalidateQueries({ queryKey: activityKeys.meetings(base) });
     } catch (err) {
       setFormError(message(err, "No se pudo registrar la reunión."));
@@ -210,7 +212,13 @@ export function MeetingsPanel({
           ? "Pega la transcripción y se procesa sola: resumen, feedback del cliente, action items y un sentimiento sugerido."
           : "Log de reuniones. El procesamiento automático no está activado en el servidor (falta la clave de Anthropic): las transcripciones quedan pendientes."}
       </p>
-      {canWork && (
+      {canWork && !open && (
+        <Button variant="outline" onClick={() => setOpen(true)}>
+          <Plus />
+          Registrar reunión
+        </Button>
+      )}
+      {canWork && open && (
         <form onSubmit={add} className="grid gap-3 rounded-lg border border-foreground/10 p-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="meet-title">Reunión</Label>
@@ -228,10 +236,13 @@ export function MeetingsPanel({
             <Label htmlFor="meet-summary">Resumen escrito a mano (opcional; si lo escribes, no se procesa)</Label>
             <textarea id="meet-summary" rows={2} className={textareaClass} value={summary} onChange={(e) => setSummary(e.target.value)} />
           </div>
-          <div>
+          <div className="flex gap-2 sm:col-span-2">
             <Button type="submit" disabled={title.trim().length < 3 || !heldAt || busy}>
               {busy ? <Loader2 className="animate-spin" /> : <Plus />}
-              Registrar reunión
+              Guardar reunión
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+              Cancelar
             </Button>
           </div>
         </form>

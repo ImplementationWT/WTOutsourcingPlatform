@@ -111,9 +111,9 @@ export default function ChangePasswordPage({ forced = false }: { forced?: boolea
   }
 
   return (
-    <div className="relative flex min-h-svh items-center justify-center overflow-hidden bg-[radial-gradient(ellipse_at_top,#1e1b4b_0%,#0b0a1f_55%,#020617_100%)] px-4">
+    <div className="relative flex min-h-svh items-center justify-center overflow-hidden bg-[#0d0d12] px-4">
       <NeuralBackground />
-      <div className="relative w-full max-w-sm rounded-2xl border border-foreground/15 bg-foreground/10 p-8 text-white shadow-[0_8px_32px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+      <div className="relative w-full max-w-sm rounded-2xl border border-foreground/15 bg-[#141418]/80 p-8 text-white shadow-[0_8px_32px_rgba(0,0,0,0.45)] backdrop-blur-xl">
         <div className="mb-6 text-center">
           <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-xl border border-foreground/20 bg-foreground/10">
             <KeyRound className="size-6" />

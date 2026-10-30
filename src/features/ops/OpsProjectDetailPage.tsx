@@ -14,15 +14,12 @@ import {
   opsKeys,
   PRIORITIES,
   PRIORITY_LABELS,
-  STAGE_LABELS,
-  STAGES,
   updateProject,
   useOpsProject,
   useTeamMembers,
   type Health,
   type OpsProject,
   type Priority,
-  type Stage,
 } from "./api";
 import { HealthBadge, PriorityBadge, SentimentBar, StageTrack } from "./OpsBadges";
 import { AccountsTab, DealsTab, MeetingsTab, ProposalsTab, TasksTab, UpdatesTab } from "./OpsTabs";
@@ -72,16 +69,8 @@ function ProjectControls({ project }: { project: OpsProject }) {
 
   return (
     <div className="space-y-3">
+      <StageTrack stage={project.stage} onChange={(stage) => void save({ stage })} />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <Field label="Etapa">
-          <select aria-label="Etapa" className={cn(selectClass, "w-full")} value={project.stage} onChange={(e) => void save({ stage: e.target.value as Stage })}>
-            {STAGES.map((s) => (
-              <option key={s} value={s}>
-                {STAGE_LABELS[s]}
-              </option>
-            ))}
-          </select>
-        </Field>
         <Field label="Health">
           <select aria-label="Health" className={cn(selectClass, "w-full")} value={project.health} onChange={(e) => void save({ health: e.target.value as Health })}>
             {HEALTH.map((h) => (
@@ -110,7 +99,6 @@ function ProjectControls({ project }: { project: OpsProject }) {
             ))}
           </select>
         </Field>
-        <div className="hidden lg:block" />
         <Field label="Team Leader">
           <select aria-label="Team Leader" className={cn(selectClass, "w-full")} value={project.lead?.id ?? ""} onChange={(e) => void save({ leadUserId: e.target.value || null })}>
             <option value="">Sin asignar</option>
@@ -153,7 +141,7 @@ export default function OpsProjectDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-6xl space-y-4">
+      <div className="space-y-4">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-40 w-full" />
       </div>
@@ -161,9 +149,9 @@ export default function OpsProjectDetailPage() {
   }
   if (error || !data) {
     return (
-      <div className="mx-auto max-w-6xl space-y-4">
+      <div className="space-y-4">
         <Link to="/operativa" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-4" /> Proyectos
+          <ArrowLeft className="size-4" /> Proyectos del cliente
         </Link>
         <p role="alert" className="text-sm text-destructive">
           {error instanceof Error ? error.message : "Proyecto no encontrado."}
@@ -184,13 +172,13 @@ export default function OpsProjectDetailPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="space-y-6">
       <div>
         <Link to="/operativa" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-4" /> Proyectos
+          <ArrowLeft className="size-4" /> Proyectos del cliente
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{project.name}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{project.name}</h1>
           <HealthBadge value={project.health} />
           <PriorityBadge value={project.priority} />
         </div>
@@ -201,10 +189,11 @@ export default function OpsProjectDetailPage() {
 
       <Card>
         <CardContent className="space-y-4 pt-4">
-          <StageTrack stage={project.stage} />
           {permissions.manage ? (
             <ProjectControls project={project} />
           ) : (
+            <>
+            <StageTrack stage={project.stage} />
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Field label="Sentiment">
                 <SentimentBar value={project.sentimentScore} />
@@ -212,8 +201,9 @@ export default function OpsProjectDetailPage() {
               <Field label="Team Leader">{project.lead?.name ?? "Sin asignar"}</Field>
               <Field label="Developer">{project.developer?.name ?? "Sin asignar"}</Field>
             </div>
+            </>
           )}
-          <div className="flex flex-wrap gap-4 text-sm">
+          {(project.proposalUrl || project.clientSlug || project.leadId) && <div className="flex flex-wrap gap-4 border-t border-border pt-3 text-sm">
             {project.proposalUrl && (
               <a className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline" href={project.proposalUrl} target="_blank" rel="noreferrer">
                 Propuesta <ExternalLink className="size-3.5" />
@@ -229,11 +219,11 @@ export default function OpsProjectDetailPage() {
                 App en Infraestructura
               </Link>
             )}
-          </div>
+          </div>}
         </CardContent>
       </Card>
 
-      <div role="tablist" aria-label="Secciones del proyecto" className="flex flex-wrap gap-1 border-b border-foreground/10">
+      <div role="tablist" aria-label="Secciones del proyecto" className="-mx-4 flex gap-1 overflow-x-auto border-b border-foreground/10 px-4 sm:mx-0 sm:px-0">
         {tabs
           .filter((t) => t.visible)
           .map((t) => (
@@ -244,7 +234,7 @@ export default function OpsProjectDetailPage() {
               aria-selected={tab === t.id}
               onClick={() => setTab(t.id)}
               className={cn(
-                "-mb-px border-b-2 px-3 py-2 text-sm transition-colors",
+                "-mb-px shrink-0 border-b-2 px-3 py-2 text-sm whitespace-nowrap transition-colors",
                 tab === t.id ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >

@@ -20,10 +20,10 @@ export default function IntegrationsPage() {
   const { data, isLoading, error } = useServers();
 
   return (
-    <section className="mx-auto max-w-4xl space-y-6">
+    <section className="max-w-4xl space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Integraciones</h1>
-        <p className="mt-2 text-muted-foreground">Conexiones de la plataforma que luego se eligen en cada proyecto.</p>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Integraciones</h1>
+        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Conexiones de la plataforma que luego se eligen en cada proyecto.</p>
       </div>
 
       <div className="flex items-center gap-1 border-b border-foreground/10" role="tablist">
@@ -36,7 +36,7 @@ export default function IntegrationsPage() {
             onClick={() => setTab(id)}
             className={cn(
               "-mb-px flex items-center gap-2 border-b-2 px-3 py-2 text-sm transition-colors",
-              tab === id ? "border-violet-400 font-medium" : "border-transparent text-muted-foreground hover:text-foreground",
+              tab === id ? "border-brand-400 font-medium" : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             <Icon className="size-4" />

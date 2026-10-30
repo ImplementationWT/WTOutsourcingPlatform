@@ -82,7 +82,7 @@ export default function TopicsEditor({
               className={cn(
                 "rounded-full border px-2 py-0.5 text-xs transition-colors",
                 active
-                  ? "border-violet-400/60 bg-violet-500/20 text-violet-200"
+                  ? "border-brand-400/60 bg-brand-500/20 text-brand-200"
                   : "border-foreground/15 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
               )}
             >

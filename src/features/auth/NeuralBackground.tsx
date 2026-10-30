@@ -54,7 +54,7 @@ export default function NeuralBackground() {
           const b = nodes[j];
           const dist = Math.hypot(a.x - b.x, a.y - b.y);
           if (dist < LINK_DISTANCE) {
-            ctx!.strokeStyle = `rgba(129, 140, 248, ${(1 - dist / LINK_DISTANCE) * 0.45})`;
+            ctx!.strokeStyle = `rgba(237, 241, 255, ${(1 - dist / LINK_DISTANCE) * 0.18})`;
             ctx!.lineWidth = 1;
             ctx!.beginPath();
             ctx!.moveTo(a.x, a.y);
@@ -65,7 +65,7 @@ export default function NeuralBackground() {
 
         const mouseDist = Math.hypot(a.x - mouse.x, a.y - mouse.y);
         if (mouseDist < MOUSE_DISTANCE) {
-          ctx!.strokeStyle = `rgba(56, 189, 248, ${(1 - mouseDist / MOUSE_DISTANCE) * 0.7})`;
+          ctx!.strokeStyle = `rgba(255, 48, 84, ${(1 - mouseDist / MOUSE_DISTANCE) * 0.7})`;
           ctx!.beginPath();
           ctx!.moveTo(a.x, a.y);
           ctx!.lineTo(mouse.x, mouse.y);
@@ -74,8 +74,8 @@ export default function NeuralBackground() {
       }
 
       for (const node of nodes) {
-        ctx!.fillStyle = "rgba(196, 181, 253, 0.9)";
-        ctx!.shadowColor = "rgba(139, 92, 246, 0.9)";
+        ctx!.fillStyle = "rgba(255, 92, 120, 0.9)";
+        ctx!.shadowColor = "rgba(255, 48, 84, 0.9)";
         ctx!.shadowBlur = 8;
         ctx!.beginPath();
         ctx!.arc(node.x, node.y, node.r, 0, Math.PI * 2);

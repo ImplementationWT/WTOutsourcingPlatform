@@ -58,8 +58,8 @@ describe("menú", () => {
 
 describe("Costos", () => {
   it("USD con 2 decimales", () => {
-    expect(formatUsd(123456)).toMatch(/1.?234,56/);
-    expect(formatUsd(5)).toMatch(/0,05/);
+    expect(formatUsd(123456)).toMatch(/^USD\s1,234\.56$/);
+    expect(formatUsd(5)).toMatch(/^USD\s0\.05$/);
     expect(formatUsd(null)).toBe("—");
   });
 

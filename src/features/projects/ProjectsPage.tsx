@@ -77,8 +77,8 @@ export default function ProjectsPage() {
     <section className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Proyectos</h1>
-          <p className="mt-2 text-muted-foreground">
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Apps y repositorios</h1>
+          <p className="mt-1 text-sm text-muted-foreground sm:text-base">
             Repositorios de GitHub de la organización y sus cuentas ligadas.
           </p>
         </div>
@@ -90,7 +90,7 @@ export default function ProjectsPage() {
           {canOperate && (
             <Button render={<Link to="/projects/new" />} nativeButton={false}>
               <Plus />
-              Nuevo proyecto
+              Nueva app
             </Button>
           )}
         </div>
@@ -159,7 +159,7 @@ export default function ProjectsPage() {
             {canOperate && (
               <Button className="mt-6" render={<Link to="/projects/new" />} nativeButton={false}>
                 <Plus />
-                Nuevo proyecto
+                Nueva app
               </Button>
             )}
           </CardContent>

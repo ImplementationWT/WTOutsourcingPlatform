@@ -87,7 +87,7 @@ export async function registerDashboardRoutes(app: FastifyInstance, { store, dep
 
     const allActivity = user.role === "boss" && !teamFilter;
     const activity = await store.auditLog
-      .find(allActivity ? { clientId: { $not: /^(ops|sales):/ } } : { clientId: { $in: clients.map((c) => c._id) } }, { projection: { _id: 0, at: 1, actor: 1, actorName: 1, action: 1, clientId: 1 } })
+      .find(allActivity ? { clientId: { $not: /^(ops|sales):/ } } : { clientId: { $in: clients.map((c) => c._id) } }, { projection: { _id: 0, at: 1, actor: 1, actorName: 1, action: 1, clientId: 1, target: 1 } })
       .sort({ at: -1 })
       .limit(ACTIVITY_LIMIT)
       .toArray();

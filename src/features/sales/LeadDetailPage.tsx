@@ -106,8 +106,24 @@ function LeadControls({ lead }: { lead: LeadDetail }) {
             ))}
           </select>
         </Field>
-        <Field label="Correo">{lead.email ?? "—"}</Field>
-        <Field label="Teléfono">{lead.phone ?? "—"}</Field>
+        <Field label="Correo">
+          {lead.email ? (
+            <a className="break-all text-primary underline-offset-4 hover:underline" href={`mailto:${lead.email}`}>
+              {lead.email}
+            </a>
+          ) : (
+            "—"
+          )}
+        </Field>
+        <Field label="Teléfono">
+          {lead.phone ? (
+            <a className="text-primary underline-offset-4 hover:underline" href={`tel:${lead.phone.replace(/[^\d+]/g, "")}`}>
+              {lead.phone}
+            </a>
+          ) : (
+            "—"
+          )}
+        </Field>
       </div>
       {lead.status === "lost" && (
         <form
@@ -312,7 +328,7 @@ function DemosTab({ leadId, demos }: { leadId: string; demos: Demo[] }) {
       ) : (
         <ul className="space-y-2">
           {demos.map((d) => (
-            <li key={d.id} className="grid items-center gap-3 rounded-lg border border-foreground/10 p-3 sm:grid-cols-[2fr_1fr_auto]">
+            <li key={d.id} className="grid items-center gap-3 rounded-lg border border-foreground/10 p-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_10rem]">
               <div className="min-w-0">
                 <p className="truncate font-medium">{d.title}</p>
                 {d.url && (
@@ -322,7 +338,7 @@ function DemosTab({ leadId, demos }: { leadId: string; demos: Demo[] }) {
                 )}
               </div>
               <p className="text-sm text-muted-foreground">{dateText(d.scheduledAt)}</p>
-              <select aria-label={`Estado de ${d.title}`} className={selectClass} value={d.status} onChange={(e) => void setStatus(d, e.target.value as DemoStatus)}>
+              <select aria-label={`Estado de ${d.title}`} className={cn(selectClass, "w-full")} value={d.status} onChange={(e) => void setStatus(d, e.target.value as DemoStatus)}>
                 {DEMO_STATUSES.map((s) => (
                   <option key={s} value={s}>
                     {DEMO_STATUS_LABELS[s]}
@@ -401,13 +417,13 @@ function ProposalsTab({ leadId, proposals }: { leadId: string; proposals: Propos
       ) : (
         <ul className="space-y-2">
           {proposals.map((p) => (
-            <li key={p.id} className="grid items-center gap-3 rounded-lg border border-foreground/10 p-3 sm:grid-cols-[2fr_1fr_1fr_auto]">
+            <li key={p.id} className="grid items-center gap-3 rounded-lg border border-foreground/10 p-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_10rem]">
               <a className="inline-flex min-w-0 items-center gap-1 truncate font-medium text-primary underline-offset-4 hover:underline" href={p.url} target="_blank" rel="noreferrer">
                 {p.title} <ExternalLink className="size-3.5 shrink-0" />
               </a>
               <p className="text-sm tabular-nums">{p.amountCents !== null ? money(p.amountCents, p.currency) : "—"}</p>
               <p className="text-xs text-muted-foreground">{p.area === "operations" ? "Desde Operativa" : p.sentAt ? `Enviada ${dateText(p.sentAt)}` : ""}</p>
-              <select aria-label={`Estado de ${p.title}`} className={selectClass} value={p.status} onChange={(e) => void setStatus(p, e.target.value as ProposalStatus)}>
+              <select aria-label={`Estado de ${p.title}`} className={cn(selectClass, "w-full")} value={p.status} onChange={(e) => void setStatus(p, e.target.value as ProposalStatus)}>
                 {PROPOSAL_STATUSES.map((s) => (
                   <option key={s} value={s}>
                     {PROPOSAL_STATUS_LABELS[s]}
@@ -466,7 +482,7 @@ export default function LeadDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-6xl space-y-4">
+      <div className="space-y-4">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-40 w-full" />
       </div>
@@ -474,7 +490,7 @@ export default function LeadDetailPage() {
   }
   if (error || !data) {
     return (
-      <div className="mx-auto max-w-6xl space-y-4">
+      <div className="space-y-4">
         <Link to="/comercial" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-4" /> Leads
         </Link>
@@ -495,13 +511,13 @@ export default function LeadDetailPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="space-y-6">
       <div>
         <Link to="/comercial" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-4" /> Leads
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{lead.title}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{lead.title}</h1>
           <LeadStatusBadge value={lead.status} />
           <Badge variant="outline">{lead.source.name}</Badge>
         </div>
@@ -527,7 +543,7 @@ export default function LeadDetailPage() {
 
       {lead.status !== "won" && <ConvertCard key={proposals.map((p) => p.id + p.status).join()} lead={lead} proposals={proposals} />}
 
-      <div role="tablist" aria-label="Secciones del lead" className="flex flex-wrap gap-1 border-b border-foreground/10">
+      <div role="tablist" aria-label="Secciones del lead" className="-mx-4 flex gap-1 overflow-x-auto border-b border-foreground/10 px-4 sm:mx-0 sm:px-0">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -536,7 +552,7 @@ export default function LeadDetailPage() {
             aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
             className={cn(
-              "-mb-px border-b-2 px-3 py-2 text-sm transition-colors",
+              "-mb-px shrink-0 border-b-2 px-3 py-2 text-sm whitespace-nowrap transition-colors",
               tab === t.id ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >

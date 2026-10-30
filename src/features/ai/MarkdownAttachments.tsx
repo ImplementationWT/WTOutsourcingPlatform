@@ -45,7 +45,7 @@ export function AttachmentList({ state }: { state: MarkdownAttachmentsState }) {
         <ul className="flex flex-wrap gap-1.5" aria-label="Archivos adjuntos">
           {state.files.map((file) => (
             <li key={file.name} className="flex items-center gap-1.5 rounded-md border border-foreground/10 bg-foreground/5 py-0.5 pr-1 pl-2 text-xs">
-              <FileText className="size-3.5 text-violet-300" />
+              <FileText className="size-3.5 text-brand-300" />
               <span className="max-w-48 truncate">{file.name}</span>
               <span className="text-muted-foreground">{kb(bytes(file.content))}</span>
               <button

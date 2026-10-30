@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
+import { formatMoney } from "@/lib/format";
 
 export interface CostBucket {
   costCents: number;
@@ -64,10 +65,8 @@ export function useCostSessions(range: CostRange, enabled = true) {
   });
 }
 
-const usd = new Intl.NumberFormat("es", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-/** Centavos de USD → "US$ 12,34" (siempre 2 decimales). */
-export const formatUsd = (cents: number | null | undefined) => (cents === null || cents === undefined ? "—" : usd.format(cents / 100));
+/** Centavos de USD → "USD 12.34", el mismo formato que el resto del panel. */
+export const formatUsd = (cents: number | null | undefined) => formatMoney(cents, "USD");
 
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 /** "2026-09" → "sep 2026". */

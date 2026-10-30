@@ -111,7 +111,7 @@ export default function ConfigurationStep({ slug }: { slug: string }) {
                     className={cn(
                       "flex w-full items-center gap-4 rounded-xl border p-4 text-left transition-colors",
                       selected?.id === server.id
-                        ? "border-violet-400/60 bg-violet-500/10"
+                        ? "border-brand-400/60 bg-brand-500/10"
                         : "border-foreground/10 bg-foreground/[0.03] hover:border-foreground/25",
                     )}
                   >

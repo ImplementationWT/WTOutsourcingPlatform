@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 // Sin rehype-raw: el HTML que venga en el texto se muestra como texto, nunca se ejecuta.
 const components: Components = {
   a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noreferrer noopener" className="text-violet-300 underline underline-offset-4 hover:text-violet-200">
+    <a href={href} target="_blank" rel="noreferrer noopener" className="text-brand-300 underline underline-offset-4 hover:text-brand-200">
       {children}
     </a>
   ),

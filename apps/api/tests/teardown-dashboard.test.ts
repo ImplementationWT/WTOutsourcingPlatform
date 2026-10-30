@@ -211,7 +211,9 @@ describe("dashboard con datos reales", () => {
       expect.arrayContaining([expect.objectContaining({ clientId: "beta-shop", kind: "job_failed" })])
     );
     expect(data.activity.length).toBeGreaterThan(0);
-    expect(Object.keys(data.activity[0]).sort()).toEqual(["action", "actor", "actorName", "at", "clientId"]);
+    // Solo campos de presentación: nunca `details` ni otros datos de la auditoría.
+    const allowed = ["action", "actor", "actorName", "at", "clientId", "target"];
+    for (const entry of data.activity) expect(Object.keys(entry).every((key) => allowed.includes(key))).toBe(true);
     expect(data.lastDeployAt).not.toBeNull();
   });
 

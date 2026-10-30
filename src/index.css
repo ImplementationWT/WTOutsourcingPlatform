@@ -1,48 +1,62 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
+@import "@fontsource-variable/work-sans";
+@import "@fontsource-variable/jetbrains-mono";
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  /* Marca Whatever Tech (whatever.tech): rojo #ff3054 sobre negro #0d0d12, Work Sans. */
+  --background: #f7f7fa;
+  --foreground: #0d0d12;
+  --card: #ffffff;
+  --card-foreground: #0d0d12;
+  --popover: #ffffff;
+  --popover-foreground: #0d0d12;
+  --primary: #d81f43;
+  --primary-foreground: #ffffff;
+  --secondary: #eeeef3;
+  --secondary-foreground: #0d0d12;
+  --muted: #eeeef3;
+  --muted-foreground: #5b5d68;
+  --accent: #eeeef3;
+  --accent-foreground: #0d0d12;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --border: #e3e3ea;
+  --input: #d9d9e2;
+  --ring: #ff3054;
+  --chart-1: #ff3054;
+  --chart-2: #4f75ff;
+  --chart-3: #ffc549;
+  --chart-4: #87c45c;
+  --chart-5: #3fc8d8;
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0)
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0d0d12;
+  --sidebar-primary: #d81f43;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f1f5;
+  --sidebar-accent-foreground: #0d0d12;
+  --sidebar-border: #e3e3ea;
+  --sidebar-ring: #ff3054;
 }
 
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', sans-serif;
+  --font-sans: 'Work Sans Variable', -apple-system, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+  /* Rojo de la marca como escala (acentos, estados activos, foco). */
+  --color-brand-50: #fff1f3;
+  --color-brand-100: #ffe0e5;
+  --color-brand-200: #ffc2cc;
+  --color-brand-300: #ff8fa2;
+  --color-brand-400: #ff5c78;
+  --color-brand-500: #ff3054;
+  --color-brand-600: #d81f43;
+  --color-brand-700: #b5173a;
+  --color-brand-800: #8f1533;
+  --color-brand-900: #6d1229;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -84,38 +98,38 @@
 }
 
 .dark {
-  /* Paleta alineada con el login: índigo profundo + acentos violeta */
-  --background: oklch(0.155 0.035 282);
-  --foreground: oklch(0.97 0.005 285);
-  --card: oklch(1 0 0 / 4%);
-  --card-foreground: oklch(0.97 0.005 285);
-  --popover: oklch(0.205 0.04 282);
-  --popover-foreground: oklch(0.97 0.005 285);
-  --primary: oklch(0.97 0.005 285);
-  --primary-foreground: oklch(0.21 0.03 265);
-  --secondary: oklch(1 0 0 / 8%);
-  --secondary-foreground: oklch(0.97 0.005 285);
-  --muted: oklch(1 0 0 / 7%);
-  --muted-foreground: oklch(0.72 0.03 285);
-  --accent: oklch(1 0 0 / 8%);
-  --accent-foreground: oklch(0.97 0.005 285);
+  /* La misma paleta que whatever.tech: negro, superficies grafito y rojo de acento. */
+  --background: #0d0d12;
+  --foreground: #edf1ff;
+  --card: #141418;
+  --card-foreground: #edf1ff;
+  --popover: #1b1b21;
+  --popover-foreground: #edf1ff;
+  --primary: #ff3054;
+  --primary-foreground: #ffffff;
+  --secondary: #1b1b21;
+  --secondary-foreground: #edf1ff;
+  --muted: #1b1b21;
+  --muted-foreground: #9a9caa;
+  --accent: #23232b;
+  --accent-foreground: #edf1ff;
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.7 0.16 290);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(1 0 0 / 3%);
-  --sidebar-foreground: oklch(0.97 0.005 285);
-  --sidebar-primary: oklch(0.7 0.16 290);
-  --sidebar-primary-foreground: oklch(0.97 0.005 285);
-  --sidebar-accent: oklch(1 0 0 / 8%);
-  --sidebar-accent-foreground: oklch(0.97 0.005 285);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.7 0.16 290);
+  --border: rgb(237 241 255 / 9%);
+  --input: rgb(237 241 255 / 14%);
+  --ring: #ff3054;
+  --chart-1: #ff3054;
+  --chart-2: #4f75ff;
+  --chart-3: #ffc549;
+  --chart-4: #87c45c;
+  --chart-5: #3fc8d8;
+  --sidebar: #101015;
+  --sidebar-foreground: #edf1ff;
+  --sidebar-primary: #ff3054;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1b1b21;
+  --sidebar-accent-foreground: #edf1ff;
+  --sidebar-border: rgb(237 241 255 / 8%);
+  --sidebar-ring: #ff3054;
 }
 
 /*
@@ -143,15 +157,10 @@ html:not(.dark) {
   --color-sky-200: oklch(44.3% 0.11 240.79);
   --color-sky-300: oklch(50% 0.134 242.749);
   --color-sky-400: oklch(58.8% 0.158 241.966);
-  --color-violet-100: oklch(38% 0.189 293.745);
-  --color-violet-200: oklch(43.2% 0.232 292.759);
-  --color-violet-300: oklch(49.1% 0.27 292.581);
-  --color-violet-400: oklch(54.1% 0.281 293.009);
-  /* Fondo con un leve tinte violeta, como la identidad del modo oscuro. */
-  --background: oklch(0.985 0.004 285);
-  --sidebar: oklch(0.97 0.008 285);
-  --sidebar-primary: oklch(0.541 0.281 293.009);
-  --ring: oklch(0.541 0.281 293.009);
+  --color-brand-100: #6d1229;
+  --color-brand-200: #8f1533;
+  --color-brand-300: #b5173a;
+  --color-brand-400: #d81f43;
 }
 
 @layer base {
@@ -160,4 +169,10 @@ html:not(.dark) {
   body {
     @apply bg-background text-foreground;}
   html {
-    @apply font-sans;}}
+    @apply font-sans;}
+  h1, h2, h3 {
+    @apply tracking-tight;}
+  code, kbd, pre, samp {
+    @apply font-mono;}
+  input::placeholder, textarea::placeholder {
+    @apply text-muted-foreground/70;}}

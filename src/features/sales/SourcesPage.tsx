@@ -285,10 +285,10 @@ function NewSourceForm() {
 export default function SourcesPage() {
   const { data: sources, isLoading, error } = useSources();
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="max-w-4xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Sources de leads</h1>
-        <p className="text-sm text-muted-foreground">De dónde llegan los leads y cómo se leen sus datos.</p>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Sources de leads</h1>
+        <p className="mt-1 text-sm text-muted-foreground sm:text-base">De dónde llegan los leads y cómo se leen sus datos.</p>
       </div>
       <NewSourceForm />
       <ErrorLine error={error ? message(error, "No se pudieron cargar los sources.") : null} />

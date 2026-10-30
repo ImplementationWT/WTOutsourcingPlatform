@@ -94,7 +94,7 @@ export default function ServerCard({ server, ghcrOrg }: { server: DeployServer; 
     <Card>
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
-          <Server className="size-4 text-violet-300" />
+          <Server className="size-4 text-brand-300" />
           {server.name}
           <Badge variant="outline" className={status.className}>
             {status.label}

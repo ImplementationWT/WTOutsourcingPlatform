@@ -124,7 +124,7 @@ export interface DashboardData {
   lastDeployAt: string | null;
   projects: DashboardProject[];
   attention: { clientId: string; name: string; kind: "job_failed" | "offline" | "password_pending"; message: string }[];
-  activity: { at: string; actor: string; actorName?: string | null; action: string; clientId: string }[];
+  activity: { at: string; actor: string; actorName?: string | null; action: string; clientId: string; target?: string | null }[];
 }
 
 /** Borrado de un proyecto (POST /delete y GET /deletion). */

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { selectClass } from "@/features/admin/TeamAssignCard";
 import { ApiError } from "@/lib/api-client";
+import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Empty, ErrorLine, Loading, MeetingsPanel, UpdatesPanel } from "@/features/activity/ActivityPanels";
 import { activityKeys, dateText } from "@/features/activity/api";
@@ -140,7 +141,7 @@ export function DealsTab({ projectId, canManage }: { projectId: string; canManag
         <>
           <ul className="space-y-2">
             {deals.map((deal) => (
-              <li key={deal.id} className="grid items-center gap-3 rounded-lg border border-foreground/10 p-3 sm:grid-cols-[2fr_1fr_1fr_auto]">
+              <li key={deal.id} className="grid items-center gap-3 rounded-lg border border-foreground/10 p-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_10rem]">
                 <div className="min-w-0">
                   <p className="truncate font-medium">{deal.title}</p>
                   {deal.proposalUrl && (
@@ -154,7 +155,7 @@ export function DealsTab({ projectId, canManage }: { projectId: string; canManag
                 </p>
                 <p className="text-sm font-medium tabular-nums">{money(deal.amountCents, deal.currency)}</p>
                 {canManage ? (
-                  <select aria-label={`Estado de ${deal.title}`} className={selectClass} value={deal.status} onChange={(e) => void setStatus(deal, e.target.value as DealStatus)}>
+                  <select aria-label={`Estado de ${deal.title}`} className={cn(selectClass, "w-full")} value={deal.status} onChange={(e) => void setStatus(deal, e.target.value as DealStatus)}>
                     {DEAL_STATUSES.map((s) => (
                       <option key={s} value={s}>
                         {DEAL_STATUS_LABELS[s]}
@@ -277,18 +278,18 @@ export function TasksTab({ projectId, teamId, canWork, canManage, currentUserId 
             // Un developer solo mueve el estado de sus propias tareas (la API lo exige también).
             const editable = canWork && (canManage || task.assigneeUserId === currentUserId);
             return (
-              <li key={task.id} className="grid items-center gap-3 rounded-lg border border-foreground/10 p-3 sm:grid-cols-[2fr_1.2fr_1fr_auto]">
+              <li key={task.id} className="grid items-center gap-3 rounded-lg border border-foreground/10 p-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1fr)_10rem]">
                 <div className="min-w-0">
                   <p className={cn("truncate font-medium", task.status === "done" && "text-muted-foreground line-through")}>{task.title}</p>
                   <p className="truncate text-xs text-muted-foreground">
                     {task.dealId ? (dealName.get(task.dealId) ?? "Deal") : "Sin deal"}
-                    {task.dueDate ? ` · vence ${task.dueDate}` : ""}
+                    {task.dueDate ? ` · vence ${formatDate(task.dueDate)}` : ""}
                   </p>
                 </div>
                 <p className="truncate text-sm">{task.assigneeName ?? "Sin asignar"}</p>
                 <p className="text-sm tabular-nums text-muted-foreground">{hoursText(task.estimatedHours)}</p>
                 {editable ? (
-                  <select aria-label={`Estado de ${task.title}`} className={selectClass} value={task.status} onChange={(e) => void setStatus(task, e.target.value as TaskStatus)}>
+                  <select aria-label={`Estado de ${task.title}`} className={cn(selectClass, "w-full")} value={task.status} onChange={(e) => void setStatus(task, e.target.value as TaskStatus)}>
                     {TASK_STATUSES.map((s) => (
                       <option key={s} value={s}>
                         {TASK_STATUS_LABELS[s]}
@@ -625,7 +626,7 @@ export function ProposalsTab({ projectId, canManage }: { projectId: string; canM
       ) : (
         <ul className="space-y-2">
           {proposals.map((p) => (
-            <li key={p.id} className="grid items-center gap-3 rounded-lg border border-foreground/10 p-3 sm:grid-cols-[2fr_1fr_1fr_auto]">
+            <li key={p.id} className="grid items-center gap-3 rounded-lg border border-foreground/10 p-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_10rem]">
               <div className="min-w-0">
                 <a className="truncate font-medium text-primary underline-offset-4 hover:underline" href={p.url} target="_blank" rel="noreferrer">
                   {p.title}
@@ -638,7 +639,7 @@ export function ProposalsTab({ projectId, canManage }: { projectId: string; canM
               <p className="text-sm tabular-nums">{p.amountCents !== null ? money(p.amountCents, p.currency) : "—"}</p>
               <p className="text-xs text-muted-foreground">{p.sentAt ? `Enviada ${dateText(p.sentAt)}` : ""}</p>
               {canManage ? (
-                <select aria-label={`Estado de ${p.title}`} className={selectClass} value={p.status} onChange={(e) => void setStatus(p, e.target.value as ProposalStatus)}>
+                <select aria-label={`Estado de ${p.title}`} className={cn(selectClass, "w-full")} value={p.status} onChange={(e) => void setStatus(p, e.target.value as ProposalStatus)}>
                   {PROPOSAL_STATUSES.map((s) => (
                     <option key={s} value={s}>
                       {PROPOSAL_STATUS_LABELS[s]}

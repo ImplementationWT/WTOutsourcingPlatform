@@ -123,7 +123,7 @@ export default function PreviewPanel({ session, agentBusy }: { session: AiSessio
   if (working) {
     return (
       <div className="flex flex-col items-center gap-3 p-10 text-center text-sm">
-        <Loader2 className="size-6 animate-spin text-violet-300" />
+        <Loader2 className="size-6 animate-spin text-brand-300" />
         <p>{STEPS[preview.status]}</p>
         <p className="text-xs text-muted-foreground">La primera vez tarda 1–2 minutos (instala dependencias). Después, cada cambio se ve en segundos.</p>
       </div>
@@ -174,7 +174,7 @@ export default function PreviewPanel({ session, agentBusy }: { session: AiSessio
         </Button>
       </div>
       {(preview.updating || preview.outdated) && (
-        <div className="flex items-center gap-2 border-b border-violet-400/20 bg-violet-500/10 px-3 py-1.5 text-xs text-violet-200">
+        <div className="flex items-center gap-2 border-b border-brand-400/20 bg-brand-500/10 px-3 py-1.5 text-xs text-brand-200">
           <Loader2 className="size-3.5 animate-spin" />
           Aplicando los últimos cambios de Will Doo…
         </div>
