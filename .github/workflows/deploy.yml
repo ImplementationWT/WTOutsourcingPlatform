@@ -94,6 +94,7 @@ jobs:
           INITIAL_PASSWORD_KEY_PATH=/run/secrets/initial-password.key
           INTEGRATION_ENCRYPTION_KEY_SECRET_REF=/run/secrets/integration.key
           SERVER_KEYS_ENCRYPTION_KEY_SECRET_REF=/run/secrets/server-keys.key
+          ACCOUNT_VAULT_KEY_PATH=/run/secrets/account-vault.key
           INTEGRATION_SECRET_TTL_HOURS=${{ vars.INTEGRATION_SECRET_TTL_HOURS }}
           PANEL_ADMIN_USERNAME=${{ vars.PANEL_ADMIN_USERNAME }}
           PANEL_ADMIN_PASSWORD_HASH=$PANEL_ADMIN_PASSWORD_HASH

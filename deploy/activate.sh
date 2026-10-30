@@ -30,6 +30,7 @@ start() {
     -v "$APP_DIR/provisioner_ed25519:/run/secrets/provisioner_ed25519:ro" \
     -v "$APP_DIR/integration.key:/run/secrets/integration.key:ro" \
     -v "$APP_DIR/server-keys.key:/run/secrets/server-keys.key:ro" \
+    -v "$APP_DIR/account-vault.key:/run/secrets/account-vault.key:ro" \
     -v "$APP_DIR/anthropic.key:/run/secrets/anthropic.key:ro" \
     --log-opt max-size=10m --log-opt max-file=5 \
     "$IMAGE:$1" >/dev/null
@@ -55,13 +56,16 @@ if [ -f "$INCOMING/anthropic.key" ]; then mv "$INCOMING/anthropic.key" "$APP_DIR
 # Clave que cifra las claves SSH del provisioner de los servidores dados de alta desde el panel.
 # Si se pierde, esas claves no se pueden descifrar: hay que rotarlas desde Integraciones.
 [ -s "$APP_DIR/server-keys.key" ] || openssl rand -base64 32 > "$APP_DIR/server-keys.key"
+# Clave del vault de cuentas por proyecto (Operativa). Si se pierde, las cuentas guardadas no se
+# pueden descifrar: hay que volver a cargar sus valores.
+[ -s "$APP_DIR/account-vault.key" ] || openssl rand -base64 32 > "$APP_DIR/account-vault.key"
 # Clave SSH del orquestador (usuario provisioner del VPS): también se genera aquí una vez. Su
 # parte pública se instala con: bootstrap-vps.sh --provisioner-pubkey $APP_DIR/provisioner_ed25519.pub
 [ -s "$APP_DIR/provisioner_ed25519" ] ||
   ssh-keygen -q -t ed25519 -N "" -C "launchpad-provisioner" -f "$APP_DIR/provisioner_ed25519"
 # El contenedor corre como el usuario "node" (uid 1000) de la imagen, no como root.
-chown 1000:1000 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key" "$APP_DIR/provisioner_ed25519" "$APP_DIR/integration.key" "$APP_DIR/server-keys.key" "$APP_DIR/anthropic.key"
-chmod 400 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key" "$APP_DIR/provisioner_ed25519" "$APP_DIR/integration.key" "$APP_DIR/server-keys.key" "$APP_DIR/anthropic.key"
+chown 1000:1000 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key" "$APP_DIR/provisioner_ed25519" "$APP_DIR/integration.key" "$APP_DIR/server-keys.key" "$APP_DIR/account-vault.key" "$APP_DIR/anthropic.key"
+chmod 400 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key" "$APP_DIR/provisioner_ed25519" "$APP_DIR/integration.key" "$APP_DIR/server-keys.key" "$APP_DIR/account-vault.key" "$APP_DIR/anthropic.key"
 
 echo "Cargando imagen $IMAGE:$RELEASE…"
 gunzip -c "$INCOMING/api-image.tar.gz" | docker load

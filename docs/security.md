@@ -131,6 +131,17 @@ Cifra la clave privada del provisioner de cada servidor dado de alta desde el pa
 Launchpad; nunca se muestran ni se registran). Detalles, huella fijada y rotación en
 [servers.md](servers.md).
 
+## Vault de cuentas e ingesta de leads
+
+`ACCOUNT_VAULT_KEY_PATH` apunta a `/opt/wt-launchpad/account-vault.key`, que genera
+`deploy/activate.sh` una vez y se monta en `/run/secrets/account-vault.key`. Cifra las cuentas de
+cada proyecto de Operativa (AES-256-GCM, contexto `vault:<proyecto>:<cuenta>`). Cada vista queda
+en la auditoría, nunca el valor. Si la clave se pierde, hay que volver a cargar las cuentas.
+
+Las claves de ingesta de leads (`/api/ingest/leads/:sourceId`) se guardan solo como SHA-256 y se
+muestran una vez al crearlas o rotarlas. Van en una cabecera, nunca en la URL, porque la URL se
+registra en los logs. Ver [rework-plataforma.md](rework-plataforma.md).
+
 ## Rotación
 
 - **Clave de cifrado:** solo afecta a credenciales en tránsito (minutos). En el VPS:
