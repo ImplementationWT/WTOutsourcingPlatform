@@ -91,6 +91,8 @@ export const envSchema = z.object({
   INITIAL_PASSWORD_KEY_PATH: optional(z.string().min(1)),
   /** Clave AES-256 (32 bytes en base64) del vault de cuentas de Operativa. */
   ACCOUNT_VAULT_KEY_PATH: optional(z.string().min(1)),
+  /** Archivo con la signing key (base64) del webhook de Read.ai; sin ella el webhook responde 503. */
+  READ_AI_SIGNING_KEY_PATH: optional(z.string().min(1)),
 
   // Sesión del panel
   PANEL_ADMIN_USERNAME: z.string().min(3),
@@ -184,6 +186,21 @@ export function loadIntegrationKey(env: Env) {
 /** Clave AES-256 de las claves privadas de los servidores dados de alta desde el panel. */
 export function loadServerKeysKey(env: Env) {
   return readAesKey(env.SERVER_KEYS_ENCRYPTION_KEY_SECRET_REF, "SERVER_KEYS_ENCRYPTION_KEY_SECRET_REF");
+}
+
+/**
+ * Signing key del webhook de Read.ai (la que muestra Read.ai al crear el webhook, en base64), o
+ * undefined si no está configurada (archivo ausente o vacío).
+ */
+export function loadReadAiSigningKey(env: Env) {
+  if (!env.READ_AI_SIGNING_KEY_PATH) return undefined;
+  const text = readFileSync(env.READ_AI_SIGNING_KEY_PATH, "utf8").trim();
+  if (!text) return undefined;
+  const key = Buffer.from(text, "base64");
+  if (!/^[A-Za-z0-9+/=_-]+$/.test(text) || key.length < 16) {
+    throw new Error("Configuración inválida:\n  - READ_AI_SIGNING_KEY_PATH: el archivo debe contener la signing key del webhook de Read.ai (base64)");
+  }
+  return key;
 }
 
 /** Clave de la API de Anthropic (archivo), o undefined si el AI Developer no está configurado. */

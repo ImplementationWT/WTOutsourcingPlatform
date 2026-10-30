@@ -58,11 +58,15 @@ jobs:
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
           # AI Developer (opcional): clave de la API de la cuenta de Anthropic de la empresa.
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Reuniones (opcional): signing key del webhook de Read.ai (la muestra Read.ai al crearlo).
+          READ_AI_SIGNING_KEY: ${{ secrets.READ_AI_SIGNING_KEY }}
         run: |
           umask 077
           printf '%s\n' "$GH_APP_PRIVATE_KEY" > github-app.pem
           # Vacío si no hay clave: la API arranca con el AI Developer desactivado.
           printf '%s' "$ANTHROPIC_API_KEY" > anthropic.key
+          # Vacío si no hay signing key: el webhook de Read.ai responde 503 y el resto sigue igual.
+          printf '%s' "$READ_AI_SIGNING_KEY" > read-ai.key
           # Formato --env-file de Docker: KEY=valor literal, sin comillas.
           cat > api.env <<EOF
           NODE_ENV=production
@@ -95,6 +99,7 @@ jobs:
           INTEGRATION_ENCRYPTION_KEY_SECRET_REF=/run/secrets/integration.key
           SERVER_KEYS_ENCRYPTION_KEY_SECRET_REF=/run/secrets/server-keys.key
           ACCOUNT_VAULT_KEY_PATH=/run/secrets/account-vault.key
+          READ_AI_SIGNING_KEY_PATH=/run/secrets/read-ai.key
           INTEGRATION_SECRET_TTL_HOURS=${{ vars.INTEGRATION_SECRET_TTL_HOURS }}
           PANEL_ADMIN_USERNAME=${{ vars.PANEL_ADMIN_USERNAME }}
           PANEL_ADMIN_PASSWORD_HASH=$PANEL_ADMIN_PASSWORD_HASH
@@ -121,7 +126,7 @@ jobs:
           SSH="ssh -p $SSH_PORT -o BatchMode=yes"
           rsync -az --delete --chmod=D755,F644 --chown=root:root -e "$SSH" dist/ "$SSH_TARGET:/var/www/launchpad/releases/$RELEASE/"
           rsync -az --chmod=F600 --chown=root:root -e "$SSH" \
-            api-image.tar.gz api.env github-app.pem anthropic.key deploy/activate.sh \
+            api-image.tar.gz api.env github-app.pem anthropic.key read-ai.key deploy/activate.sh \
             "$SSH_TARGET:/opt/wt-launchpad/incoming/"
 
       - name: Activar release
@@ -132,4 +137,4 @@ jobs:
 
       - name: Limpiar credenciales del runner
         if: always()
-        run: rm -f github-app.pem anthropic.key api.env ~/.ssh/id_ed25519
+        run: rm -f github-app.pem anthropic.key read-ai.key api.env ~/.ssh/id_ed25519

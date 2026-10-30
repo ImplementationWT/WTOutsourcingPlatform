@@ -10,7 +10,10 @@ import { canManageProject, canWorkOnProject, forbidden, projectScope, readablePr
 import { runTableQuery, tableQuerySchema } from "../lib/table-query.js";
 import {
   ACCOUNT_KINDS,
+  type ActionItemDoc,
   HEALTH_SCORES,
+  type MeetingCore,
+  newChangeOrder,
   NEXT_ACTIONS,
   type OpsProjectDoc,
   type OpsTaskDoc,
@@ -23,7 +26,8 @@ import {
   type VaultAccountDoc
 } from "../ops/models.js";
 import type { MeetingProcessing } from "../meetings/processing.js";
-import { registerMeetingRoutes } from "../meetings/routes.js";
+import { type ConvertInput, registerMeetingRoutes } from "../meetings/routes.js";
+import { canEditDeal } from "../core/access.js";
 import type { ProposalDoc } from "../sales/models.js";
 import { createProposalSchema, PROPOSAL_LABELS, proposalView, statusDates, updateProposalSchema } from "../sales/proposals.js";
 import type { AdminStore } from "../store/admin-store.js";
@@ -118,6 +122,13 @@ const listQuery = tableQuerySchema.extend({
   teamId: z.string().uuid().optional(),
   companyId: z.string().uuid().optional()
 });
+
+/** Responde el error y devuelve null (conversiones que no se pueden hacer). */
+const refuse = (_sent: unknown) => null;
+
+/** Contexto de una reunión de proyecto para el modelo. */
+export const meetingContext = (project: Pick<OpsProjectDoc, "name" | "customerName" | "stage">) =>
+  `Proyecto: ${project.name}. Cliente: ${project.customerName}. Etapa actual: ${LABELS.stage[project.stage]}.`;
 
 const LABELS = {
   stage: { kickoff: "Kick Off", structure: "Estructura", automation_layer: "Automation Layer", stabilization: "Estabilización", maintenance: "Maintenance", no_pending_items: "No Pending Items", completed: "Completed" },
@@ -744,8 +755,48 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
 
   // ---- reuniones ---------------------------------------------------------------
 
+  /**
+   * Action item → Task (Team Leader del proyecto) o → Change Order del deal (quien puede editar el
+   * deal). Las horas propuestas pasan como estimadas; la persona puede corregirlas antes.
+   */
+  async function convertActionItem(project: OpsProjectDoc, user: SessionUser, meeting: MeetingCore, item: ActionItemDoc, input: ConvertInput, reply: FastifyReply) {
+    const at = new Date();
+    if (input.to === "task") {
+      if (!canManageProject(user, project)) return refuse(forbidden(reply));
+      const assigneeUserId = input.assigneeUserId !== undefined ? input.assigneeUserId : item.ownerUserId;
+      const dealId = meeting.dealId ?? null;
+      if (!(await checkTaskLinks(project, dealId, assigneeUserId, reply))) return null;
+      const task: OpsTaskDoc = {
+        _id: randomUUID(),
+        projectId: project._id,
+        dealId,
+        title: (input.title ?? item.text).slice(0, 160),
+        assigneeUserId: assigneeUserId ?? null,
+        estimatedHours: input.hours ?? item.projectedHours ?? 0,
+        status: "todo",
+        dueDate: input.dueDate ?? null,
+        createdBy: user.username,
+        createdAt: at,
+        updatedAt: at
+      };
+      await store.opsTasks.insertOne(task);
+      await auditOps(user, project, "ops.task_created", { task: task.title, fromMeeting: true });
+      return { id: task._id, label: "tarea" };
+    }
+    const dealId = input.dealId ?? meeting.dealId;
+    if (!dealId) return refuse(reply.code(400).send({ error: "Elige el deal del change order." }));
+    const deal = await store.deals.findOne({ _id: dealId, projectId: project._id });
+    if (!deal) return refuse(reply.code(400).send({ error: "El deal no es de este proyecto." }));
+    if (!canEditDeal(user, deal)) return refuse(forbidden(reply));
+    const co = newChangeOrder({ description: (input.title ?? item.text).slice(0, 1000), hours: input.hours ?? item.projectedHours ?? 0, rateCents: deal.rateCents }, user.username, at);
+    await store.deals.updateOne({ _id: deal._id }, { $push: { changeOrders: co }, $set: { updatedAt: at } });
+    await store.audit({ actor: user.username, action: "core.deal_change_order_created", clientId: `core:${deal._id}`, target: `${deal.dealCode} ${deal.title}`, details: { hours: co.hours, fromMeeting: true } });
+    return { id: co._id, label: `change order de ${deal.dealCode}` };
+  }
+
   registerMeetingRoutes(app, {
     base: "/api/ops/projects/:id",
+    store,
     collection: store.meetings,
     ownerKey: "projectId",
     processing: meetings,
@@ -755,7 +806,10 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
       return {
         id: project._id,
         canWork: canWorkOnProject(request.user!, project),
-        context: `Proyecto: ${project.name}. Cliente: ${project.customerName}. Etapa actual: ${LABELS.stage[project.stage]}.`,
+        context: meetingContext(project),
+        conversions: ["task", "change_order"],
+        validDeal: async (dealId) => Boolean(await store.deals.findOne({ _id: dealId, projectId: project._id }, { projection: { _id: 1 } })),
+        convert: (user, meeting, item, input, reply) => convertActionItem(project, user, meeting, item, input, reply),
         note: (user, body) => note(user, project._id, body),
         audit: (user, action, details) => auditOps(user, project, `ops.${action}`, details)
       };

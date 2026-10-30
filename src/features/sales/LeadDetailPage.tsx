@@ -14,14 +14,21 @@ import { Empty, ErrorLine, MeetingsPanel, UpdatesPanel } from "@/features/activi
 import { activityKeys, dateText } from "@/features/activity/api";
 import { money, opsKeys, PROPOSAL_STATUS_LABELS, PROPOSAL_STATUSES, STAGE_LABELS, useTeamMembers, type Proposal, type ProposalStatus } from "@/features/ops/api";
 import { cn } from "@/lib/utils";
+import { ActivitiesTable } from "@/features/commercial/ActivitiesTable";
+import { useCompanyOptions, useContactOptions } from "@/features/core/api";
 import {
+  addDemoLearning,
   convertLead,
   createDemo,
   createLeadProposal,
   DEMO_STATUS_LABELS,
   DEMO_STATUSES,
+  LEAD_FUNNEL_LABELS,
+  LEAD_FUNNELS,
   LEAD_STATUS_LABELS,
   LEAD_STATUSES,
+  LEAD_TEMPERATURE_LABELS,
+  LEAD_TEMPERATURES,
   leadBase,
   salesKeys,
   updateDemo,
@@ -32,11 +39,13 @@ import {
   type Demo,
   type DemoStatus,
   type LeadDetail,
+  type LeadFunnel,
   type LeadStatus,
+  type LeadTemperature,
 } from "./api";
 import { LeadStatusBadge } from "./SalesBadges";
 
-type TabId = "demos" | "proposals" | "meetings" | "updates" | "data";
+type TabId = "demos" | "proposals" | "activities" | "meetings" | "updates" | "data";
 
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
@@ -60,13 +69,20 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-/** Estado, responsable y datos de contacto. "Ganado" no se elige: se llega al convertir. */
-function LeadControls({ lead }: { lead: LeadDetail }) {
+/**
+ * Estado, temperatura, funnel, Setter y Closer, fechas y enlaces del lead (§4.1). "Ganado" no se
+ * elige: se llega al convertir. Financiera ve todo en lectura.
+ */
+function LeadControls({ lead, canWrite }: { lead: LeadDetail; canWrite: boolean }) {
   const refresh = useRefresh(lead.id);
-  const owners = useOwners().data ?? [];
+  const owners = useOwners(canWrite).data ?? [];
+  const companies = useCompanyOptions(canWrite).data ?? [];
+  const contacts = useContactOptions(lead.companyRef?.id ?? null, canWrite).data ?? [];
   const [error, setError] = useState<string | null>(null);
   const [lostReason, setLostReason] = useState(lead.lostReason ?? "");
+  const [proposalUrl, setProposalUrl] = useState(lead.proposalUrl ?? "");
   const won = lead.status === "won";
+  const disabled = !canWrite;
 
   async function save(patch: Parameters<typeof updateLead>[1]) {
     setError(null);
@@ -78,6 +94,23 @@ function LeadControls({ lead }: { lead: LeadDetail }) {
     }
   }
 
+  const people = (label: string, value: { id: string; name: string | null } | null, key: "setterUserId" | "closerUserId") => (
+    <Field label={label}>
+      {canWrite ? (
+        <select aria-label={label} className={cn(selectClass, "w-full")} value={value?.id ?? ""} onChange={(e) => void save({ [key]: e.target.value || null })}>
+          <option value="">Sin asignar</option>
+          {owners.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+      ) : (
+        (value?.name ?? "Sin asignar")
+      )}
+    </Field>
+  );
+
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -86,7 +119,7 @@ function LeadControls({ lead }: { lead: LeadDetail }) {
             aria-label="Estado del lead"
             className={cn(selectClass, "w-full")}
             value={lead.status}
-            disabled={won}
+            disabled={won || disabled}
             onChange={(e) => void save({ status: e.target.value as LeadStatus, ...(e.target.value === "lost" && lostReason.trim() ? { lostReason: lostReason.trim() } : {}) })}
           >
             {LEAD_STATUSES.filter((s) => s !== "won" || won).map((s) => (
@@ -96,15 +129,72 @@ function LeadControls({ lead }: { lead: LeadDetail }) {
             ))}
           </select>
         </Field>
-        <Field label="Responsable">
-          <select aria-label="Responsable" className={cn(selectClass, "w-full")} value={lead.owner?.id ?? ""} onChange={(e) => void save({ ownerUserId: e.target.value || null })}>
-            <option value="">Sin responsable</option>
-            {owners.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
+        <Field label="Temperatura">
+          <select aria-label="Temperatura" className={cn(selectClass, "w-full")} value={lead.temperature ?? ""} disabled={disabled} onChange={(e) => void save({ temperature: (e.target.value || null) as LeadTemperature | null })}>
+            <option value="">Sin definir</option>
+            {LEAD_TEMPERATURES.map((t) => (
+              <option key={t} value={t}>
+                {LEAD_TEMPERATURE_LABELS[t]}
               </option>
             ))}
           </select>
+        </Field>
+        <Field label="Funnel">
+          <select aria-label="Funnel" className={cn(selectClass, "w-full")} value={lead.funnel ?? ""} disabled={disabled} onChange={(e) => void save({ funnel: (e.target.value || null) as LeadFunnel | null })}>
+            <option value="">Sin definir</option>
+            {LEAD_FUNNELS.map((f) => (
+              <option key={f} value={f}>
+                {LEAD_FUNNEL_LABELS[f]}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Respuesta">
+          {lead.responseDays === null ? <span className="text-muted-foreground">Falta la fecha de submission o de reunión</span> : `${lead.responseDays} días`}
+        </Field>
+        {people("Setter", lead.setter, "setterUserId")}
+        {people("Closer", lead.closer, "closerUserId")}
+        <Field label="Submission">
+          <Input aria-label="Fecha de submission" type="date" disabled={disabled} value={lead.submittedAt ?? ""} onChange={(e) => void save({ submittedAt: e.target.value || null })} />
+        </Field>
+        <Field label="Reunión">
+          <Input aria-label="Fecha de reunión" type="date" disabled={disabled} value={lead.meetingAt ?? ""} onChange={(e) => void save({ meetingAt: e.target.value || null })} />
+        </Field>
+        <Field label="Empresa">
+          {canWrite ? (
+            <select aria-label="Empresa" className={cn(selectClass, "w-full")} value={lead.companyRef?.id ?? ""} onChange={(e) => void save({ companyId: e.target.value || null })}>
+              <option value="">{lead.company ? `${lead.company} (sin enlazar)` : "Sin empresa"}</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          ) : lead.companyRef ? (
+            <Link className="text-primary underline-offset-4 hover:underline" to={`/comercial/empresas/${lead.companyRef.id}`}>
+              {lead.companyRef.name}
+            </Link>
+          ) : (
+            lead.company || "—"
+          )}
+        </Field>
+        <Field label="Contacto">
+          {canWrite ? (
+            <select aria-label="Contacto" className={cn(selectClass, "w-full")} value={lead.contactRef?.id ?? ""} onChange={(e) => void save({ contactId: e.target.value || null })}>
+              <option value="">{lead.contactName ? `${lead.contactName} (sin enlazar)` : "Sin contacto"}</option>
+              {contacts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          ) : lead.contactRef ? (
+            <Link className="text-primary underline-offset-4 hover:underline" to={`/comercial/contactos/${lead.contactRef.id}`}>
+              {lead.contactRef.name}
+            </Link>
+          ) : (
+            lead.contactName || "—"
+          )}
         </Field>
         <Field label="Correo">
           {lead.email ? (
@@ -125,7 +215,30 @@ function LeadControls({ lead }: { lead: LeadDetail }) {
           )}
         </Field>
       </div>
-      {lead.status === "lost" && (
+      {canWrite ? (
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save({ proposalUrl: proposalUrl.trim() || null });
+          }}
+        >
+          <div className="min-w-64 flex-1 space-y-1.5">
+            <Label htmlFor="lead-proposal-url">Propuesta (enlace)</Label>
+            <Input id="lead-proposal-url" value={proposalUrl} onChange={(e) => setProposalUrl(e.target.value)} placeholder="https://…" />
+          </div>
+          <Button type="submit" size="sm" variant="outline" disabled={(proposalUrl.trim() || null) === lead.proposalUrl}>
+            Guardar enlace
+          </Button>
+        </form>
+      ) : (
+        lead.proposalUrl && (
+          <a className="inline-flex items-center gap-1 text-sm text-primary underline-offset-4 hover:underline" href={lead.proposalUrl} target="_blank" rel="noreferrer">
+            Propuesta <ExternalLink className="size-3.5" />
+          </a>
+        )
+      )}
+      {lead.status === "lost" && canWrite && (
         <form
           className="flex flex-wrap items-end gap-2"
           onSubmit={(e) => {
@@ -142,6 +255,7 @@ function LeadControls({ lead }: { lead: LeadDetail }) {
           </Button>
         </form>
       )}
+      {lead.status === "lost" && !canWrite && lead.lostReason && <p className="text-sm">Motivo de la pérdida: {lead.lostReason}</p>}
       {lead.notes && <p className="text-sm whitespace-pre-wrap text-muted-foreground">{lead.notes}</p>}
       <ErrorLine error={error} />
     </div>
@@ -282,7 +396,55 @@ function ConvertCard({ lead, proposals }: { lead: LeadDetail; proposals: Proposa
   );
 }
 
-function DemosTab({ leadId, demos }: { leadId: string; demos: Demo[] }) {
+/** Aprendizajes de una demo (§4.1): lo que se aprendió, ligado a la demo. */
+function DemoLearnings({ leadId, demo, canWrite }: { leadId: string; demo: Demo; canWrite: boolean }) {
+  const refresh = useRefresh(leadId);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="space-y-1.5 border-t border-foreground/10 pt-2 sm:col-span-3">
+      {demo.learnings.length > 0 && (
+        <ul className="space-y-1 text-sm">
+          {demo.learnings.map((l) => (
+            <li key={l.id}>
+              <span className="text-muted-foreground">{l.authorName}:</span> {l.text}
+            </li>
+          ))}
+        </ul>
+      )}
+      {canWrite && (
+        <form
+          className="flex gap-2"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (text.trim().length < 3) return;
+            setBusy(true);
+            setError(null);
+            try {
+              await addDemoLearning(leadId, demo.id, text.trim());
+              setText("");
+              await refresh();
+            } catch (err) {
+              setError(message(err, "No se pudo guardar el aprendizaje."));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <Input aria-label={`Aprendizaje de ${demo.title}`} className="h-7 text-xs" value={text} onChange={(e) => setText(e.target.value)} placeholder="Aprendizaje: objeciones, qué gustó, qué faltó…" />
+          <Button size="xs" variant="outline" type="submit" disabled={text.trim().length < 3 || busy}>
+            {busy ? <Loader2 className="animate-spin" /> : <Plus />}
+            Guardar
+          </Button>
+        </form>
+      )}
+      <ErrorLine error={error} />
+    </div>
+  );
+}
+
+function DemosTab({ leadId, demos, canWrite }: { leadId: string; demos: Demo[]; canWrite: boolean }) {
   const refresh = useRefresh(leadId);
   const [title, setTitle] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
@@ -321,7 +483,7 @@ function DemosTab({ leadId, demos }: { leadId: string; demos: Demo[] }) {
 
   return (
     <div className="space-y-4">
-      <form onSubmit={add} className="grid items-end gap-3 rounded-lg border border-foreground/10 p-4 sm:grid-cols-2 lg:grid-cols-[2fr_1.3fr_2fr_auto]">
+      {canWrite && <form onSubmit={add} className="grid items-end gap-3 rounded-lg border border-foreground/10 p-4 sm:grid-cols-2 lg:grid-cols-[2fr_1.3fr_2fr_auto]">
         <div className="space-y-1.5">
           <Label htmlFor="demo-title">Demo</Label>
           <Input id="demo-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Demo del portal de pedidos" />
@@ -338,7 +500,7 @@ function DemosTab({ leadId, demos }: { leadId: string; demos: Demo[] }) {
           {busy ? <Loader2 className="animate-spin" /> : <Plus />}
           Agendar
         </Button>
-      </form>
+      </form>}
       <ErrorLine error={error} />
       {!demos.length ? (
         <Empty>Aún no hay demos.</Empty>
@@ -355,13 +517,18 @@ function DemosTab({ leadId, demos }: { leadId: string; demos: Demo[] }) {
                 )}
               </div>
               <p className="text-sm text-muted-foreground">{dateText(d.scheduledAt)}</p>
-              <select aria-label={`Estado de ${d.title}`} className={cn(selectClass, "w-full")} value={d.status} onChange={(e) => void setStatus(d, e.target.value as DemoStatus)}>
-                {DEMO_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {DEMO_STATUS_LABELS[s]}
-                  </option>
-                ))}
-              </select>
+              {canWrite ? (
+                <select aria-label={`Estado de ${d.title}`} className={cn(selectClass, "w-full")} value={d.status} onChange={(e) => void setStatus(d, e.target.value as DemoStatus)}>
+                  {DEMO_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {DEMO_STATUS_LABELS[s]}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <Badge variant="outline">{DEMO_STATUS_LABELS[d.status]}</Badge>
+              )}
+              <DemoLearnings leadId={leadId} demo={d} canWrite={canWrite} />
             </li>
           ))}
         </ul>
@@ -370,7 +537,7 @@ function DemosTab({ leadId, demos }: { leadId: string; demos: Demo[] }) {
   );
 }
 
-function ProposalsTab({ leadId, proposals }: { leadId: string; proposals: Proposal[] }) {
+function ProposalsTab({ leadId, proposals, canWrite }: { leadId: string; proposals: Proposal[]; canWrite: boolean }) {
   const refresh = useRefresh(leadId);
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
@@ -409,8 +576,10 @@ function ProposalsTab({ leadId, proposals }: { leadId: string; proposals: Propos
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">La web de la propuesta que se le envía al prospecto. Al marcarla como enviada, el lead pasa a «Propuesta enviada».</p>
-      <form onSubmit={add} className="grid items-end gap-3 rounded-lg border border-foreground/10 p-4 sm:grid-cols-2 lg:grid-cols-[1.5fr_2fr_0.8fr_auto]">
+      <p className="text-sm text-muted-foreground">
+        La web de la propuesta que se le envía al prospecto. Al marcarla como enviada, el lead pasa a «Propuesta enviada». En su detalle se cargan las líneas (producto, horas y tarifa).
+      </p>
+      {canWrite && <form onSubmit={add} className="grid items-end gap-3 rounded-lg border border-foreground/10 p-4 sm:grid-cols-2 lg:grid-cols-[1.5fr_2fr_0.8fr_auto]">
         <div className="space-y-1.5">
           <Label htmlFor="lp-title">Propuesta</Label>
           <Input id="lp-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Propuesta Manpersa" />
@@ -427,7 +596,7 @@ function ProposalsTab({ leadId, proposals }: { leadId: string; proposals: Propos
           {busy ? <Loader2 className="animate-spin" /> : <Plus />}
           Agregar
         </Button>
-      </form>
+      </form>}
       <ErrorLine error={error} />
       {!proposals.length ? (
         <Empty>Aún no hay propuestas.</Empty>
@@ -435,18 +604,27 @@ function ProposalsTab({ leadId, proposals }: { leadId: string; proposals: Propos
         <ul className="space-y-2">
           {proposals.map((p) => (
             <li key={p.id} className="grid items-center gap-3 rounded-lg border border-foreground/10 p-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_10rem]">
-              <a className="inline-flex min-w-0 items-center gap-1 truncate font-medium text-primary underline-offset-4 hover:underline" href={p.url} target="_blank" rel="noreferrer">
-                {p.title} <ExternalLink className="size-3.5 shrink-0" />
-              </a>
+              <span className="flex min-w-0 flex-col">
+                <Link className="truncate font-medium text-primary underline-offset-4 hover:underline" to={`/comercial/propuestas/${p.id}`}>
+                  {p.title}
+                </Link>
+                <a className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-4 hover:underline" href={p.url} target="_blank" rel="noreferrer">
+                  Abrir la web <ExternalLink className="size-3 shrink-0" />
+                </a>
+              </span>
               <p className="text-sm tabular-nums">{p.amountCents !== null ? money(p.amountCents, p.currency) : "—"}</p>
               <p className="text-xs text-muted-foreground">{p.area === "operations" ? "Desde Operativa" : p.sentAt ? `Enviada ${dateText(p.sentAt)}` : ""}</p>
-              <select aria-label={`Estado de ${p.title}`} className={cn(selectClass, "w-full")} value={p.status} onChange={(e) => void setStatus(p, e.target.value as ProposalStatus)}>
-                {PROPOSAL_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {PROPOSAL_STATUS_LABELS[s]}
-                  </option>
-                ))}
-              </select>
+              {canWrite ? (
+                <select aria-label={`Estado de ${p.title}`} className={cn(selectClass, "w-full")} value={p.status} onChange={(e) => void setStatus(p, e.target.value as ProposalStatus)}>
+                  {PROPOSAL_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {PROPOSAL_STATUS_LABELS[s]}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <Badge variant="outline">{PROPOSAL_STATUS_LABELS[p.status]}</Badge>
+              )}
             </li>
           ))}
         </ul>
@@ -518,10 +696,11 @@ export default function LeadDetailPage() {
     );
   }
 
-  const { lead, demos, proposals, project, company, deal } = data;
+  const { lead, demos, proposals, project, company, deal, canWrite } = data;
   const tabs: { id: TabId; label: string }[] = [
     { id: "demos", label: `Demos (${demos.length})` },
     { id: "proposals", label: `Propuestas (${proposals.length})` },
+    { id: "activities", label: "Actividades" },
     { id: "meetings", label: "Reuniones" },
     { id: "updates", label: "Updates" },
     { id: "data", label: "Datos del source" },
@@ -545,7 +724,7 @@ export default function LeadDetailPage() {
 
       <Card>
         <CardContent className="space-y-4 pt-4">
-          <LeadControls key={lead.updatedAt} lead={lead} />
+          <LeadControls key={lead.updatedAt} lead={lead} canWrite={canWrite} />
           {project && (
             <p className="text-sm">
               Cliente{" "}
@@ -575,7 +754,7 @@ export default function LeadDetailPage() {
         </CardContent>
       </Card>
 
-      {lead.status !== "won" && <ConvertCard key={proposals.map((p) => p.id + p.status).join()} lead={lead} proposals={proposals} />}
+      {lead.status !== "won" && canWrite && <ConvertCard key={proposals.map((p) => p.id + p.status).join()} lead={lead} proposals={proposals} />}
 
       <div role="tablist" aria-label="Secciones del lead" className="-mx-4 flex gap-1 overflow-x-auto border-b border-foreground/10 px-4 sm:mx-0 sm:px-0">
         {tabs.map((t) => (
@@ -596,10 +775,11 @@ export default function LeadDetailPage() {
       </div>
 
       <div role="tabpanel">
-        {tab === "demos" && <DemosTab leadId={lead.id} demos={demos} />}
-        {tab === "proposals" && <ProposalsTab leadId={lead.id} proposals={proposals} />}
-        {tab === "meetings" && <MeetingsPanel base={leadBase(lead.id)} canWork />}
-        {tab === "updates" && <UpdatesPanel base={leadBase(lead.id)} canWork onPosted={refresh} />}
+        {tab === "demos" && <DemosTab leadId={lead.id} demos={demos} canWrite={canWrite} />}
+        {tab === "proposals" && <ProposalsTab leadId={lead.id} proposals={proposals} canWrite={canWrite} />}
+        {tab === "activities" && <ActivitiesTable leadId={lead.id} prefix="a." />}
+        {tab === "meetings" && <MeetingsPanel base={leadBase(lead.id)} canWork={canWrite} deals={deal ? [deal] : []} />}
+        {tab === "updates" && <UpdatesPanel base={leadBase(lead.id)} canWork={canWrite} onPosted={refresh} />}
         {tab === "data" && <SourceDataTab lead={lead} />}
       </div>
     </div>

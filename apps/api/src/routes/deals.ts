@@ -12,6 +12,7 @@ import {
   type DealDoc,
   dealAmountCents,
   dealCodeOf,
+  newChangeOrder,
   projectedCents,
   SALE_TYPES,
   SALES_STAGES
@@ -36,6 +37,7 @@ const dealFields = {
   description: text(4000),
   projectId: uuidOrNull,
   leadId: uuidOrNull,
+  partnerId: uuidOrNull,
   contactIds: z.array(z.string().uuid()).max(50),
   ownerUserId: uuidOrNull,
   salesStage: z.enum(SALES_STAGES),
@@ -92,6 +94,8 @@ const listQuery = tableQuerySchema.extend({
   ownerUserId: z.string().uuid().optional()
 });
 
+const updateNoteSchema = z.object({ body: text(4000).min(1) }).strict();
+
 const STATUS_LABELS: Record<DealDoc["status"], string> = {
   draft: "Borrador",
   proposed: "Propuesto",
@@ -124,11 +128,12 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
   const audit = (user: SessionUser, deal: Pick<DealDoc, "_id" | "dealCode" | "title">, action: string, details?: Record<string, string | number | boolean>) =>
     store.audit({ actor: user.username, action: `core.deal_${action}`, clientId: `core:${deal._id}`, target: `${deal.dealCode} ${deal.title}`, ...(details ? { details } : {}) });
 
-  /** Novedad automática en el proyecto del deal (si tiene). */
-  const note = (user: SessionUser, projectId: string | null, body: string) =>
-    projectId
-      ? store.projectUpdates.insertOne({ _id: randomUUID(), projectId, kind: "system", body, authorUsername: user.username, authorName: user.name, createdAt: new Date() })
-      : null;
+  /** Novedad automática en la bitácora del deal y en su proyecto (si tiene). */
+  const note = async (user: SessionUser, deal: Pick<DealDoc, "_id" | "projectId">, body: string) => {
+    const at = new Date();
+    await store.dealUpdates.insertOne({ _id: randomUUID(), dealId: deal._id, kind: "system", body, authorUsername: user.username, authorName: user.name, createdAt: at });
+    if (deal.projectId) await store.projectUpdates.insertOne({ _id: randomUUID(), projectId: deal.projectId, kind: "system", body, authorUsername: user.username, authorName: user.name, createdAt: at });
+  };
 
   /** Nombres de proyectos, leads, contactos y responsables de un grupo de deals. */
   async function relations(deals: DealDoc[]) {
@@ -137,12 +142,15 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
     const leadIds = ids((d) => [d.leadId]);
     const contactIds = ids((d) => d.contactIds ?? []);
     const userIds = ids((d) => [d.ownerUserId]);
-    const [projects, leads, contacts, users] = await Promise.all([
+    const partnerIds = ids((d) => [d.partnerId]);
+    const [projects, leads, contacts, users, partners] = await Promise.all([
       projectIds.length ? store.opsProjects.find({ _id: { $in: projectIds } }, { projection: { name: 1, customerName: 1 } }).toArray() : [],
       leadIds.length ? store.leads.find({ _id: { $in: leadIds } }, { projection: { company: 1, contactName: 1, email: 1 } }).toArray() : [],
       contactIds.length ? store.contacts.find({ _id: { $in: contactIds } }, { projection: { name: 1 } }).toArray() : [],
-      userIds.length ? store.users.find({ _id: { $in: userIds } }, { projection: { name: 1 } }).toArray() : []
+      userIds.length ? store.users.find({ _id: { $in: userIds } }, { projection: { name: 1 } }).toArray() : [],
+      partnerIds.length ? store.partners.find({ _id: { $in: partnerIds } }, { projection: { name: 1 } }).toArray() : []
     ]);
+    const partner = new Map(partners.map((p) => [p._id, { id: p._id, name: p.name }]));
     const project = new Map(projects.map((p) => [p._id, { id: p._id, name: p.name, customerName: p.customerName }]));
     const lead = new Map(leads.map((l) => [l._id, { id: l._id, title: l.company || l.contactName || l.email || "Lead" }]));
     const contact = new Map(contacts.map((c) => [c._id, { id: c._id, name: c.name }]));
@@ -156,6 +164,7 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
       lead: deal.leadId ? (lead.get(deal.leadId) ?? null) : null,
       contacts: (deal.contactIds ?? []).map((id) => contact.get(id)).filter(Boolean),
       owner: deal.ownerUserId ? (user.get(deal.ownerUserId) ?? null) : null,
+      partner: deal.partnerId ? (partner.get(deal.partnerId) ?? null) : null,
       salesStage: deal.salesStage,
       status: deal.status,
       hours: deal.hours,
@@ -171,6 +180,8 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
       channel: deal.channel,
       lostReason: deal.lostReason,
       partnerCommissionPct: deal.partnerCommissionPct,
+      /** (calc) comisión del partner = comisión % × valor del deal (§5.2). */
+      partnerCommissionCents: deal.partnerId ? Math.round((deal.amountCents * (deal.partnerCommissionPct ?? 0)) / 100) : 0,
       proposalUrl: deal.proposalUrl,
       sowUrl: deal.sowUrl,
       paidAt: deal.paidAt ?? null,
@@ -184,7 +195,7 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
    * Valida las relaciones de un alta o cambio y devuelve el equipo del proyecto (o null). Responde
    * 400/403 y devuelve undefined si algo no cuadra.
    */
-  async function checkLinks(user: SessionUser, input: Partial<Pick<DealDoc, "projectId" | "leadId" | "contactIds" | "ownerUserId">>, reply: FastifyReply) {
+  async function checkLinks(user: SessionUser, input: Partial<Pick<DealDoc, "projectId" | "leadId" | "contactIds" | "ownerUserId" | "partnerId">>, reply: FastifyReply) {
     let teamId: string | null | undefined;
     if (input.projectId !== undefined) {
       if (input.projectId) {
@@ -198,13 +209,19 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
       }
     }
     if (input.leadId && !(await store.leads.findOne({ _id: input.leadId }, { projection: { _id: 1 } }))) return void reply.code(400).send({ error: "El lead no existe." });
+    let partnerPct: number | undefined;
+    if (input.partnerId) {
+      const partner = await store.partners.findOne({ _id: input.partnerId }, { projection: { commissionPct: 1 } });
+      if (!partner) return void reply.code(400).send({ error: "El partner no existe." });
+      partnerPct = partner.commissionPct;
+    }
     if (input.contactIds?.length && (await store.contacts.countDocuments({ _id: { $in: input.contactIds } })) !== new Set(input.contactIds).size) {
       return void reply.code(400).send({ error: "Algún contacto no existe." });
     }
     if (input.ownerUserId && !(await store.users.findOne({ _id: input.ownerUserId, active: true }, { projection: { _id: 1 } }))) {
       return void reply.code(400).send({ error: "El responsable debe ser un usuario activo." });
     }
-    return { teamId };
+    return { teamId, partnerPct };
   }
 
   app.get("/api/deals", { preHandler: requireAuth }, async (request, reply) => {
@@ -254,7 +271,7 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
     const status = input.status ?? "draft";
     if (user.role === "commercial" && !COMMERCIAL_DEAL_STATUSES.includes(status)) return reply.code(403).send({ error: "Comercial crea deals hasta «Propuesto»." });
     if (user.role === "lead" && !input.projectId) return reply.code(400).send({ error: "Un deal de tu equipo necesita un proyecto." });
-    const links = await checkLinks(user, { projectId: input.projectId ?? null, leadId: input.leadId, contactIds: input.contactIds, ownerUserId: input.ownerUserId }, reply);
+    const links = await checkLinks(user, { projectId: input.projectId ?? null, leadId: input.leadId, contactIds: input.contactIds, ownerUserId: input.ownerUserId, partnerId: input.partnerId }, reply);
     if (!links) return reply;
     const at = new Date();
     const hours = input.hours ?? 0;
@@ -267,7 +284,7 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
       projectId: input.projectId ?? null,
       teamId: links.teamId ?? null,
       leadId: input.leadId ?? null,
-      partnerId: null,
+      partnerId: input.partnerId ?? null,
       contactIds: [...new Set(input.contactIds ?? [])],
       ownerUserId: input.ownerUserId ?? null,
       title: input.title,
@@ -286,7 +303,8 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
       product: input.product ?? null,
       channel: input.channel ?? null,
       lostReason: input.lostReason ?? null,
-      partnerCommissionPct: input.partnerCommissionPct ?? null,
+      // Sin porcentaje propio, el deal toma la comisión por defecto del partner.
+      partnerCommissionPct: input.partnerCommissionPct ?? links.partnerPct ?? null,
       proposalUrl: input.proposalUrl ?? null,
       sowUrl: input.sowUrl ?? null,
       changeOrders: [],
@@ -297,7 +315,7 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
     };
     await store.deals.insertOne(deal);
     await audit(user, deal, "created", { hours: deal.hours });
-    await note(user, deal.projectId, `Nuevo deal ${deal.dealCode}: «${deal.title}».`);
+    await note(user, deal, `Nuevo deal ${deal.dealCode}: «${deal.title}».`);
     const view = await relations([deal]);
     return reply.code(201).send({ deal: view(deal, user, true) });
   });
@@ -340,7 +358,7 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
     if (locked && (patch.hours !== undefined || patch.rateCents !== undefined || patch.currency !== undefined)) {
       return reply.code(409).send({ error: "El deal ya está facturado o cobrado: las horas y la tarifa no cambian. Registra un change order." });
     }
-    const links = await checkLinks(user, { projectId: patch.projectId, leadId: patch.leadId, contactIds: patch.contactIds, ownerUserId: patch.ownerUserId }, reply);
+    const links = await checkLinks(user, { projectId: patch.projectId, leadId: patch.leadId, contactIds: patch.contactIds, ownerUserId: patch.ownerUserId, partnerId: patch.partnerId }, reply);
     if (!links) return reply;
     const at = new Date();
     const hours = patch.hours ?? deal.hours;
@@ -351,6 +369,7 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
       ...patch,
       ...(patch.contactIds ? { contactIds: [...new Set(patch.contactIds)] } : {}),
       ...(links.teamId !== undefined ? { teamId: links.teamId } : {}),
+      ...(patch.partnerId && patch.partnerCommissionPct === undefined && deal.partnerCommissionPct == null ? { partnerCommissionPct: links.partnerPct ?? null } : {}),
       amountCents,
       projectedCents: projectedCents(amountCents, probability),
       updatedAt: at
@@ -361,13 +380,57 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
     await store.deals.updateOne({ _id: deal._id }, { $set: set, ...(Object.keys(unset).length ? { $unset: unset } : {}) });
     const fresh = (await store.deals.findOne({ _id: deal._id }))!;
     if (patch.status && patch.status !== deal.status) {
-      await note(user, fresh.projectId, `Deal ${deal.dealCode} «${deal.title}»: ${STATUS_LABELS[deal.status]} → ${STATUS_LABELS[patch.status]}`);
+      await note(user, fresh, `Deal ${deal.dealCode} «${deal.title}»: ${STATUS_LABELS[deal.status]} → ${STATUS_LABELS[patch.status]}`);
       await audit(user, deal, "status_changed", { from: deal.status, to: patch.status });
     } else {
       await audit(user, deal, "updated");
     }
     const view = await relations([fresh]);
     return { deal: view(fresh, user, true) };
+  });
+
+  // ---- bitácora y reuniones del deal ---------------------------------------------
+
+  app.get("/api/deals/:id/updates", { preHandler: requireAuth }, async (request, reply) => {
+    const params = idParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "Id inválido." });
+    const deal = await readable(request.user!, params.data.id, reply);
+    if (!deal) return reply;
+    const updates = await store.dealUpdates.find({ dealId: deal._id }).sort({ createdAt: -1 }).limit(200).toArray();
+    return { updates: updates.map((u) => ({ id: u._id, kind: u.kind, body: u.body, authorName: u.authorName, createdAt: u.createdAt })) };
+  });
+
+  app.post("/api/deals/:id/updates", { preHandler: requireAuth }, async (request, reply) => {
+    const params = idParams.safeParse(request.params);
+    const body = updateNoteSchema.safeParse(request.body);
+    if (!params.success) return reply.code(400).send({ error: "Id inválido." });
+    if (!body.success) return invalid(reply, body.error);
+    const user = request.user!;
+    const deal = await readable(user, params.data.id, reply);
+    if (!deal) return reply;
+    if (!canEditDeal(user, deal) && !(user.role === "boss" || user.role === "commercial")) return forbidden(reply);
+    const doc = { _id: randomUUID(), dealId: deal._id, kind: "manual" as const, body: body.data.body, authorUsername: user.username, authorName: user.name, createdAt: new Date() };
+    await store.dealUpdates.insertOne(doc);
+    return reply.code(201).send({ update: { id: doc._id, kind: doc.kind, body: doc.body, authorName: doc.authorName, createdAt: doc.createdAt } });
+  });
+
+  /** Reuniones que hablaron de este deal (del proyecto o del lead), solo lectura. */
+  app.get("/api/deals/:id/meetings", { preHandler: requireAuth }, async (request, reply) => {
+    const params = idParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "Id inválido." });
+    const user = request.user!;
+    const deal = await readable(user, params.data.id, reply);
+    if (!deal) return reply;
+    const salesSide = user.role === "boss" || user.role === "commercial" || user.role === "finance";
+    const [project, lead] = await Promise.all([
+      store.meetings.find({ dealId: deal._id }, { projection: { transcript: 0 } }).sort({ heldAt: -1 }).limit(100).toArray(),
+      salesSide ? store.leadMeetings.find({ dealId: deal._id }, { projection: { transcript: 0 } }).sort({ heldAt: -1 }).limit(100).toArray() : []
+    ]);
+    const meetings = [
+      ...project.map((m) => ({ id: m._id, title: m.title, heldAt: m.heldAt, kind: m.kind ?? null, reviewStatus: m.reviewStatus ?? "new", owner: { kind: "project" as const, id: m.projectId } })),
+      ...lead.map((m) => ({ id: m._id, title: m.title, heldAt: m.heldAt, kind: m.kind ?? null, reviewStatus: m.reviewStatus ?? "new", owner: { kind: "lead" as const, id: m.leadId } }))
+    ].sort((a, b) => b.heldAt.getTime() - a.heldAt.getTime());
+    return { meetings };
   });
 
   // ---- change orders -----------------------------------------------------------
@@ -382,23 +445,10 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
     if (!deal) return reply;
     if (!canEditDeal(user, deal)) return forbidden(reply);
     const at = new Date();
-    const status = body.data.status ?? "draft";
-    const co: ChangeOrderDoc = {
-      _id: randomUUID(),
-      description: body.data.description,
-      hours: body.data.hours,
-      rateCents: body.data.rateCents,
-      amountCents: dealAmountCents(body.data.hours, body.data.rateCents),
-      status,
-      approvedAt: status === "approved" ? at : null,
-      signedBy: body.data.signedBy ?? null,
-      createdBy: user.username,
-      createdAt: at,
-      updatedAt: at
-    };
+    const co = newChangeOrder(body.data, user.username, at);
     await store.deals.updateOne({ _id: deal._id }, { $push: { changeOrders: co }, $set: { updatedAt: at } });
     await audit(user, deal, "change_order_created", { hours: co.hours });
-    await note(user, deal.projectId, `Change order en ${deal.dealCode}: «${co.description}» (${co.hours} h).`);
+    await note(user, deal, `Change order en ${deal.dealCode}: «${co.description}» (${co.hours} h).`);
     return reply.code(201).send({ changeOrder: changeOrderView(co) });
   });
 

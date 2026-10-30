@@ -88,10 +88,12 @@ describe("menú por áreas", () => {
     expect(sections()).toEqual(["Comercial", "Operativa"]);
   });
 
-  it("Financiera: Comercial (Contactos, Empresas y Deals, en lectura), Operativa y Financiera", () => {
+  it("Financiera: Comercial (en lectura), Operativa y Financiera", () => {
     renderAt("/operativa", FINANCE, (async () => json(page([]))) as typeof fetch);
     expect(sections()).toEqual(["Comercial", "Operativa", "Financiera"]);
-    expect(screen.queryByRole("link", { name: /Leads y propuestas/ })).toBeNull();
+    expect(screen.getByRole("link", { name: /^Leads$/ })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Sources de leads/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Reuniones por asignar/ })).toBeNull();
     expect(screen.getByRole("link", { name: /Empresas/ })).toBeTruthy();
   });
 
@@ -102,7 +104,7 @@ describe("menú por áreas", () => {
 
   it("Comercial ya es un enlace; Financiera, que aún no existe, no", () => {
     renderAt("/operativa", BOSS, (async () => json(page([]))) as typeof fetch);
-    expect(screen.getByRole("link", { name: /Leads y propuestas/ })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /^Leads$/ })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /Cobros y comisiones/ })).toBeNull();
     expect(screen.getByRole("link", { name: /Proyectos del cliente/ })).toBeTruthy();
   });

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Sealed } from "../lib/server-cipher.js";
 
 // ---- catálogos -----------------------------------------------------------------
@@ -10,7 +11,18 @@ export const DEAL_STATUSES = ["draft", "proposed", "approved", "in_progress", "d
 export const TASK_STATUSES = ["todo", "in_progress", "review", "done"] as const;
 export const ACCOUNT_KINDS = ["web", "email", "api", "database", "server", "social", "other"] as const;
 export const MEETING_SOURCES = ["read_ai", "manual"] as const;
+/** Estado técnico del procesamiento con Claude. */
 export const MEETING_STATUSES = ["pending", "processing", "processed", "failed"] as const;
+/** Tipo de reunión (§4.2). */
+export const MEETING_KINDS = ["discovery", "kickoff", "sprint_review", "alignment", "issue_resolution", "change_discussion", "ad_hoc", "training"] as const;
+/** Estado de proceso que lleva una persona: Nueva sin procesar → Revisada → Accionada → No necesaria. */
+export const MEETING_REVIEW_STATUSES = ["new", "reviewed", "actioned", "not_needed"] as const;
+/** Sentimiento del cliente que propone el procesamiento: Excelente / Bien / Neutral / Fricción. */
+export const CLIENT_SENTIMENTS = ["excellent", "good", "neutral", "friction"] as const;
+/** Tipo de action item: admin rápido, trabajo interno, dependencia del cliente, candidato a construir, riesgo de alcance. */
+export const ACTION_ITEM_KINDS = ["quick_admin", "internal_work", "client_dependency", "build_candidate", "scope_risk"] as const;
+/** Claude propone; una persona lo acepta o descarta, o lo convierte en Task, Change Order o actividad. */
+export const ACTION_ITEM_STATUSES = ["proposed", "accepted", "discarded", "task", "change_order", "activity"] as const;
 /** Etapa comercial del deal (estadoVenta), aparte del estado operativo. */
 export const SALES_STAGES = ["new", "discovery", "demo", "proposal", "negotiation", "confirmed", "won", "lost", "ghosted", "on_hold"] as const;
 export const SALE_TYPES = ["new_project", "upsell", "change_order"] as const;
@@ -28,6 +40,11 @@ export type SalesStage = (typeof SALES_STAGES)[number];
 export type SaleType = (typeof SALE_TYPES)[number];
 export type ChangeOrderStatus = (typeof CHANGE_ORDER_STATUSES)[number];
 export type PaymentType = (typeof PAYMENT_TYPES)[number];
+export type MeetingKind = (typeof MEETING_KINDS)[number];
+export type MeetingReviewStatus = (typeof MEETING_REVIEW_STATUSES)[number];
+export type ClientSentiment = (typeof CLIENT_SENTIMENTS)[number];
+export type ActionItemKind = (typeof ACTION_ITEM_KINDS)[number];
+export type ActionItemStatus = (typeof ACTION_ITEM_STATUSES)[number];
 export type NextAction = (typeof NEXT_ACTIONS)[number];
 
 /** Sentiment derivado del Health (sección 3 del documento): no se escribe a mano. */
@@ -195,19 +212,57 @@ export interface ProjectUpdateDoc {
 }
 
 /** Reunión de un proyecto (Operativa) o de un lead (Comercial): mismo formato y procesamiento. */
+/** Action item de una reunión: subregistro con su tipo, responsable, horas y lo que se hizo con él. */
+export interface ActionItemDoc {
+  _id: string;
+  text: string;
+  kind: ActionItemKind | null;
+  /** Responsable que mencionó la reunión (texto) y, si se asigna, el usuario. */
+  ownerName: string | null;
+  ownerUserId: string | null;
+  projectedHours: number | null;
+  phase: string | null;
+  status: ActionItemStatus;
+  /** Lo que se creó a partir de él (tarea, change order o actividad). */
+  taskId?: string | null;
+  changeOrderId?: string | null;
+  activityId?: string | null;
+}
+
+export interface MeetingParticipant {
+  name: string;
+  email: string | null;
+}
+
 export interface MeetingCore {
   _id: string;
   title: string;
   heldAt: Date;
   source: (typeof MEETING_SOURCES)[number];
-  /** Id de la reunión en el origen (Read.ai); evita duplicados al reenviar el webhook. */
+  /** Id de la reunión en el origen (session_id de Read.ai); evita duplicados al reenviar el webhook. */
   externalId: string | null;
+  kind?: MeetingKind | null;
+  durationMinutes?: number | null;
+  /** Enlace al reporte (Read.ai) o a la grabación. */
+  url?: string | null;
+  /** Deal del que se habló (del mismo proyecto o lead). */
+  dealId?: string | null;
+  /** Asistentes que son Contactos, y todos los participantes tal como llegaron. */
+  attendeeContactIds?: string[];
+  participants?: MeetingParticipant[];
   transcript: string;
   summary: string;
   feedback: string[];
-  actionItems: string[];
+  actionItems: ActionItemDoc[];
   status: (typeof MEETING_STATUSES)[number];
-  /** Sentimiento del cliente (0–100) que propone el procesamiento; no cambia el proyecto solo. */
+  reviewStatus?: MeetingReviewStatus;
+  reviewedBy?: string | null;
+  reviewedAt?: Date | null;
+  /** Sentimiento del cliente que propone el procesamiento; no cambia el Health solo. */
+  clientSentiment?: ClientSentiment | null;
+  /** Lo que mandó Read.ai (resumen y action items propios), como referencia. */
+  readAi?: { summary: string; actionItems: string[]; topics: string[]; keyQuestions: string[] } | null;
+  /** Sentimiento numérico de la v1; la migración lo pasa a `clientSentiment`. */
   sentimentSignal?: number | null;
   /** Motivo del último fallo de procesamiento, sin detalles internos. */
   processingError?: string | null;
@@ -222,6 +277,12 @@ export interface MeetingDoc extends MeetingCore {
   projectId: string;
 }
 
+/** Reunión de Read.ai sin proyecto ni lead: espera que alguien la asigne. */
+export interface InboxMeetingDoc extends MeetingCore {
+  /** Proyectos y leads candidatos (por los correos de los participantes). */
+  candidates: { kind: "project" | "lead"; id: string; name: string }[];
+}
+
 // ---- reglas de negocio ---------------------------------------------------------
 
 /** Monto de un deal: horas × tarifa en centavos, redondeado. Nunca lo envía el navegador. */
@@ -229,6 +290,24 @@ export const dealAmountCents = (hours: number, rateCents: number) => Math.round(
 
 /** Valor proyectado: valor × probabilidad. */
 export const projectedCents = (amountCents: number, probability: number) => Math.round((amountCents * probability) / 100);
+
+/** Change order nuevo (subregistro del deal); el monto lo calcula el servidor. */
+export function newChangeOrder(input: { description: string; hours: number; rateCents: number; status?: ChangeOrderStatus; signedBy?: string | null }, createdBy: string, at = new Date()): ChangeOrderDoc {
+  const status = input.status ?? "draft";
+  return {
+    _id: randomUUID(),
+    description: input.description,
+    hours: input.hours,
+    rateCents: input.rateCents,
+    amountCents: dealAmountCents(input.hours, input.rateCents),
+    status,
+    approvedAt: status === "approved" ? at : null,
+    signedBy: input.signedBy ?? null,
+    createdBy,
+    createdAt: at,
+    updatedAt: at
+  };
+}
 
 /** "DL-0001" a partir del número de la secuencia. */
 export const dealCodeOf = (n: number) => `DL-${String(n).padStart(4, "0")}`;

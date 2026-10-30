@@ -16,12 +16,14 @@ import { MeetingProcessing } from "./meetings/processing.js";
 import { registerAiRoutes } from "./routes/ai.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { registerClientRoutes } from "./routes/clients.js";
+import { registerCommercialRoutes } from "./routes/commercial.js";
 import { registerCoreRoutes } from "./routes/core.js";
 import { registerCostRoutes } from "./routes/costs.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerDealRoutes } from "./routes/deals.js";
 import { registerIngestRoutes } from "./routes/ingest.js";
 import { registerIntegrationRoutes } from "./routes/integrations.js";
+import { registerMeetingInboxRoutes } from "./routes/meetings.js";
 import { registerOpsRoutes } from "./routes/ops.js";
 import { registerSalesRoutes } from "./routes/sales.js";
 import { registerServerRoutes } from "./routes/servers.js";
@@ -43,9 +45,11 @@ export interface AppOptions {
   vaultKey?: Buffer;
   /** Procesa las reuniones con Claude; sin él quedan pendientes y el reproceso responde 503. */
   meetingAnalyzer?: MeetingAnalyzer;
+  /** Signing key del webhook de Read.ai; sin ella el webhook responde 503. */
+  readAiSigningKey?: Buffer;
 }
 
-export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStream, ai, servers: givenServers, vaultKey, meetingAnalyzer }: AppOptions) {
+export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStream, ai, servers: givenServers, vaultKey, meetingAnalyzer, readAiSigningKey }: AppOptions) {
   const app = Fastify({
     logger: loggerOptions({ level: logLevel, stream: logStream }),
     // La API solo escucha en 127.0.0.1 detrás de nginx: se confía únicamente en ese salto, así
@@ -126,6 +130,8 @@ export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStrea
   await registerCoreRoutes(app, { store });
   await registerDealRoutes(app, { store });
   await registerIngestRoutes(app, { store });
+  await registerCommercialRoutes(app, { store });
+  await registerMeetingInboxRoutes(app, { store, processing: meetings, signingKey: readAiSigningKey });
 
   app.addHook("onClose", async () => {
     if (previewSweep) clearInterval(previewSweep);

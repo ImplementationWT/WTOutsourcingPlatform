@@ -142,6 +142,26 @@ Las claves de ingesta de leads (`/api/ingest/leads/:sourceId`) se guardan solo c
 muestran una vez al crearlas o rotarlas. Van en una cabecera, nunca en la URL, porque la URL se
 registra en los logs. Ver [rework-plataforma.md](rework-plataforma.md).
 
+## Webhook de Read.ai (reuniones)
+
+Read.ai envía el reporte de cada reunión a `POST /api/webhooks/read-ai` cuando el reporte está
+listo (`meeting_end`). La API verifica la cabecera `X-Read-Signature`: HMAC-SHA256 (hex) del cuerpo
+crudo con la *signing key* del webhook decodificada de base64. Sin firma válida responde 401 y no
+guarda nada. Los envíos repetidos se descartan por `request_id` (se guardan 14 días) y por
+`session_id`.
+
+La signing key es el secreto de GitHub `READ_AI_SIGNING_KEY`. El despliegue la escribe en
+`/opt/wt-launchpad/read-ai.key` y la monta en `/run/secrets/read-ai.key`
+(`READ_AI_SIGNING_KEY_PATH`). Sin ella, el webhook responde 503. Read.ai detiene el webhook tras
+25 fallos seguidos, así que la clave debe estar configurada antes de activarlo.
+
+Para rotarla: se borra y se vuelve a crear el webhook en Read.ai, se actualiza el secreto en
+GitHub y se redespliega. Los webhooks creados antes del 17 de marzo de 2026 no firman sus envíos
+y hay que recrearlos.
+
+El cuerpo trae la transcripción completa: nginx acepta hasta 6 MB solo en esa ruta. Nada del
+payload se registra en los logs.
+
 ## Rotación
 
 - **Clave de cifrado:** solo afecta a credenciales en tránsito (minutos). En el VPS:

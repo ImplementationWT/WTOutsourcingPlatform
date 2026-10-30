@@ -35,7 +35,15 @@ function fakeAnalyzer({ fail = false } = {}) {
     async analyze(input) {
       calls.push(input);
       if (fail) throw new Error("upstream sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWX down");
-      return { summary: "Se revisó el avance.", feedback: ["Quieren reportes semanales."], actionItems: ["Enviar el plan del proyecto"], sentiment: 72, inputTokens: 1200, outputTokens: 200 };
+      return {
+        summary: "Se revisó el avance.",
+        feedback: ["Quieren reportes semanales."],
+        actionItems: [{ text: "Enviar el plan del proyecto", kind: "internal_work", owner: "Ana", projectedHours: 3, phase: null }],
+        clientSentiment: "good",
+        kind: "sprint_review",
+        inputTokens: 1200,
+        outputTokens: 200
+      };
     }
   };
   return { analyzer, calls };
@@ -159,11 +167,17 @@ describe("ingesta de leads", () => {
 });
 
 describe("acceso a Comercial", () => {
-  it("solo el CEO/CCO y Comercial: team leaders, developers y Financiera reciben 403", async () => {
+  it("CEO/CCO y Comercial trabajan; Financiera solo lee (§6); team leaders y developers reciben 403", async () => {
     const { as } = await world();
-    expect((await (await as("marta"))("GET", "/api/sales/leads")).status).toBe(200);
+    expect((await (await as("marta"))("GET", "/api/sales/leads")).body.canWrite).toBe(true);
     expect((await (await as("jefe"))("GET", "/api/sales/leads")).status).toBe(200);
-    for (const username of ["ana", "dev", "fede"]) {
+    const fede = await as("fede");
+    const read = await fede("GET", "/api/sales/leads");
+    expect(read.status).toBe(200);
+    expect(read.body.canWrite).toBe(false);
+    expect((await fede("POST", "/api/sales/leads", { company: "Acme" })).status).toBe(403);
+    expect((await fede("GET", "/api/sales/sources")).status).toBe(403);
+    for (const username of ["ana", "dev"]) {
       const api = await as(username);
       expect((await api("GET", "/api/sales/leads")).status).toBe(403);
       expect((await api("GET", "/api/sales/sources")).status).toBe(403);
@@ -188,7 +202,7 @@ describe("embudo comercial", () => {
     const created = await marta("POST", "/api/sales/leads", { company: "Manpersa", contactName: "Francisco Wong", email: "francisco@manpersa.pe" });
     expect(created.status).toBe(201);
     const id = created.body.lead.id;
-    expect(created.body.lead).toMatchObject({ status: "new", owner: { id: martaUser._id }, source: { name: "Manual" } });
+    expect(created.body.lead).toMatchObject({ status: "new", setter: { id: martaUser._id }, closer: null, source: { name: "Manual" } });
 
     await marta("POST", `/api/sales/leads/${id}/updates`, { body: "Primera llamada: interesado." });
     expect((await marta("GET", `/api/sales/leads/${id}`)).body.lead.status).toBe("contacted");
@@ -215,9 +229,12 @@ describe("embudo comercial", () => {
     await marta("PATCH", `/api/sales/leads/${lost.id}`, { status: "lost", lostReason: "Sin presupuesto" });
     const all = (await marta("GET", "/api/sales/leads")).body;
     expect(all.counts).toMatchObject({ new: 1, lost: 1 });
-    expect((await marta("GET", "/api/sales/leads?status=lost")).body.leads.map((l: { title: string }) => l.title)).toEqual(["Otra SAC"]);
-    expect((await marta("GET", "/api/sales/leads?q=manp")).body.leads).toHaveLength(1);
-    expect((await marta("GET", "/api/sales/leads?q=.*")).body.leads).toHaveLength(0);
+    expect((await marta("GET", "/api/sales/leads?status=lost")).body.rows.map((l: { title: string }) => l.title)).toEqual(["Otra SAC"]);
+    expect((await marta("GET", "/api/sales/leads?q=manp")).body.rows).toHaveLength(1);
+    expect((await marta("GET", "/api/sales/leads?q=.*")).body.rows).toHaveLength(0);
+    // Vistas: activos y fríos (Cold Leads) en la misma tabla.
+    expect((await marta("GET", "/api/sales/leads?view=active")).body.rows.map((l: { title: string }) => l.title)).toEqual(["Manpersa"]);
+    expect((await marta("GET", "/api/sales/leads?view=cold")).body.rows.map((l: { title: string }) => l.title)).toEqual(["Otra SAC"]);
   });
 
   it("convertir crea el cliente y el proyecto en Kick Off con la propuesta, y no se repite", async () => {
@@ -269,7 +286,7 @@ describe("propuestas desde Operativa", () => {
 });
 
 describe("procesamiento de reuniones", () => {
-  it("una reunión con transcripción se procesa sola: resumen, feedback, action items y sentimiento sugerido", async () => {
+  it("una reunión con transcripción se procesa sola: resumen, feedback, action items tipados, sentimiento y tipo", async () => {
     const { analyzer, calls } = fakeAnalyzer();
     const { app, as } = await world({ analyzer });
     const ana = await as("ana");
@@ -278,11 +295,21 @@ describe("procesamiento de reuniones", () => {
     expect(created.body.meeting.status).toBe("pending");
     await app.meetings.idle();
     const [meeting] = (await ana("GET", `/api/ops/projects/${project.id}/meetings`)).body.meetings;
-    expect(meeting).toMatchObject({ status: "processed", summary: "Se revisó el avance.", feedback: ["Quieren reportes semanales."], actionItems: ["Enviar el plan del proyecto"], sentimentSignal: 72 });
+    expect(meeting).toMatchObject({
+      status: "processed",
+      reviewStatus: "new",
+      summary: "Se revisó el avance.",
+      feedback: ["Quieren reportes semanales."],
+      clientSentiment: "good",
+      kind: "sprint_review",
+      actionItems: [{ text: "Enviar el plan del proyecto", kind: "internal_work", ownerName: "Ana", projectedHours: 3, status: "proposed", taskId: null }]
+    });
     expect(calls[0].context).toContain("Proyecto Acme");
-    // El sentimiento del proyecto no cambia solo: queda como sugerencia y como novedad.
-    expect((await ana("GET", `/api/ops/projects/${project.id}`)).body.project.sentimentScore).toBe(55);
-    expect((await ana("GET", `/api/ops/projects/${project.id}/updates`)).body.updates.some((u: { body: string }) => u.body.includes("Sentimiento sugerido: 72/100"))).toBe(true);
+    // Claude propone: el Health del proyecto no cambia y no se crean tareas solas.
+    const after = (await ana("GET", `/api/ops/projects/${project.id}`)).body.project;
+    expect(after).toMatchObject({ health: "neutral", sentimentScore: 55 });
+    expect((await ana("GET", `/api/ops/projects/${project.id}/tasks`)).body.tasks).toHaveLength(0);
+    expect((await ana("GET", `/api/ops/projects/${project.id}/updates`)).body.updates.some((u: { body: string }) => u.body.includes("Sentimiento del cliente: Bien"))).toBe(true);
     // Procesada: no se vuelve a procesar.
     expect((await ana("POST", `/api/ops/projects/${project.id}/meetings/${meeting.id}/process`)).status).toBe(409);
     expect(calls).toHaveLength(1);
@@ -316,7 +343,7 @@ describe("procesamiento de reuniones", () => {
     const cookie = `pp_session=${login.cookies.find((c) => c.name === "pp_session")!.value}`;
     const retried = await second.inject({ method: "POST", url: `/api/sales/leads/${lead.id}/meetings/${created.body.meeting.id}/process`, headers: { cookie } });
     expect(retried.statusCode).toBe(200);
-    expect(retried.json().meeting).toMatchObject({ status: "processed", sentimentSignal: 72 });
+    expect(retried.json().meeting).toMatchObject({ status: "processed", clientSentiment: "good" });
   });
 
   it("sin clave de Anthropic queda pendiente y el reproceso responde 503", async () => {
@@ -328,5 +355,9 @@ describe("procesamiento de reuniones", () => {
     expect((await marta("GET", `/api/sales/leads/${lead.id}/meetings`)).body.processingAvailable).toBe(false);
     expect((await marta("POST", `/api/sales/leads/${lead.id}/meetings/${created.body.meeting.id}/process`)).status).toBe(503);
     expect((await (await as("ana"))("GET", `/api/sales/leads/${lead.id}/meetings`)).status).toBe(403);
+    // Financiera lee las reuniones comerciales, sin registrar.
+    const fede = await as("fede");
+    expect((await fede("GET", `/api/sales/leads/${lead.id}/meetings`)).body.conversions).toEqual([]);
+    expect((await fede("POST", `/api/sales/leads/${lead.id}/meetings`, { title: "Otra", heldAt: "2026-10-28T10:00:00-05:00" })).status).toBe(403);
   });
 });

@@ -3,10 +3,23 @@ import { type Db, MongoServerError } from "mongodb";
 import { OwnershipError } from "../lib/errors.js";
 import { redact } from "../lib/redact.js";
 import type { AiAgentSettingsDoc } from "../ai/anthropic-adapter.js";
-import type { DealDoc, MeetingDoc, OpsProjectDoc, OpsTaskDoc, ProjectUpdateDoc, VaultAccountDoc } from "../ops/models.js";
+import type { DealDoc, InboxMeetingDoc, MeetingDoc, OpsProjectDoc, OpsTaskDoc, ProjectUpdateDoc, VaultAccountDoc } from "../ops/models.js";
 import type { CompanyDoc, ContactDoc } from "../core/models.js";
-import { migrateToV2 } from "../core/migrate.js";
-import type { CustomerDoc, DemoDoc, LeadDoc, LeadMeetingDoc, LeadSourceDoc, LeadUpdateDoc, ProposalDoc } from "../sales/models.js";
+import { migrateToV2, migrateToV3 } from "../core/migrate.js";
+import type {
+  ActivityDoc,
+  CustomerDoc,
+  DealUpdateDoc,
+  DemoDoc,
+  LeadDoc,
+  LeadMeetingDoc,
+  LeadSourceDoc,
+  LeadUpdateDoc,
+  PartnerDoc,
+  ProductDoc,
+  ProposalDoc,
+  UseCaseDoc
+} from "../sales/models.js";
 import type { InitialPasswordDoc } from "./initial-password-vault.js";
 import type { ProvisioningSecretDoc } from "./provisioning-secrets.js";
 import type { AiSessionDoc, ClientServerRef, DeletionDoc, ServerDoc, TeamDoc, UserDoc } from "./models.js";
@@ -74,6 +87,15 @@ export class AdminStore {
   readonly companies;
   readonly contacts;
   readonly counters;
+  readonly partners;
+  readonly activities;
+  readonly products;
+  readonly useCases;
+  readonly dealUpdates;
+  /** Reuniones de Read.ai que no se pudieron asignar a un proyecto o lead. */
+  readonly meetingInbox;
+  /** request_id de Read.ai ya recibidos (evita procesar dos veces el mismo envío). */
+  readonly webhookDeliveries;
 
   constructor(db: Db, private readonly now: () => Date = () => new Date()) {
     this.clients = db.collection<ClientDoc>("clients");
@@ -104,6 +126,13 @@ export class AdminStore {
     this.companies = db.collection<CompanyDoc>("core_companies");
     this.contacts = db.collection<ContactDoc>("core_contacts");
     this.counters = db.collection<{ _id: string; seq: number }>("counters");
+    this.partners = db.collection<PartnerDoc>("sales_partners");
+    this.activities = db.collection<ActivityDoc>("sales_activities");
+    this.products = db.collection<ProductDoc>("sales_products");
+    this.useCases = db.collection<UseCaseDoc>("sales_use_cases");
+    this.dealUpdates = db.collection<DealUpdateDoc>("core_deal_updates");
+    this.meetingInbox = db.collection<InboxMeetingDoc>("meetings_inbox");
+    this.webhookDeliveries = db.collection<{ _id: string; source: string; receivedAt: Date }>("webhook_deliveries");
   }
 
   /** Siguiente número de una secuencia (atómico): dos altas simultáneas nunca repiten número. */
@@ -165,9 +194,36 @@ export class AdminStore {
       this.contacts.createIndex({ name: 1 }),
       this.contacts.createIndex({ companyId: 1 }),
       this.contacts.createIndex({ emails: 1 }),
-      this.contacts.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_contact_per_monday_id" })
+      this.contacts.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_contact_per_monday_id" }),
+      this.leads.createIndex({ setterUserId: 1 }),
+      this.leads.createIndex({ closerUserId: 1 }),
+      this.leads.createIndex({ contactId: 1 }),
+      this.leads.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_lead_per_monday_id" }),
+      this.deals.createIndex({ partnerId: 1 }),
+      this.partners.createIndex({ name: 1 }, { unique: true }),
+      this.partners.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_partner_per_monday_id" }),
+      this.activities.createIndex({ leadId: 1, dueDate: 1 }),
+      this.activities.createIndex({ dealId: 1, dueDate: 1 }),
+      this.activities.createIndex({ ownerUserId: 1, status: 1 }),
+      this.activities.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_activity_per_monday_id" }),
+      this.demos.createIndex({ scheduledAt: -1 }),
+      this.demos.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_demo_per_monday_id" }),
+      this.proposals.createIndex({ dealId: 1 }),
+      this.proposals.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_proposal_per_monday_id" }),
+      this.products.createIndex({ name: 1 }, { unique: true }),
+      this.useCases.createIndex({ productId: 1 }),
+      this.dealUpdates.createIndex({ dealId: 1, createdAt: -1 }),
+      this.meetings.createIndex({ dealId: 1 }),
+      this.leadMeetings.createIndex({ dealId: 1 }),
+      this.meetings.createIndex({ attendeeContactIds: 1 }),
+      this.leadMeetings.createIndex({ attendeeContactIds: 1 }),
+      this.meetingInbox.createIndex({ externalId: 1 }, { unique: true, partialFilterExpression: { externalId: { $type: "string" } }, name: "one_inbox_meeting_per_external_id" }),
+      this.meetingInbox.createIndex({ heldAt: -1 }),
+      // Los ids de envío solo sirven unos días (Read.ai reintenta durante minutos).
+      this.webhookDeliveries.createIndex({ receivedAt: 1 }, { expireAfterSeconds: 14 * 86_400 })
     ]);
     await migrateToV2(this);
+    await migrateToV3(this);
   }
 
   // ---- clientes y trabajos -------------------------------------------------

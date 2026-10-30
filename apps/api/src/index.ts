@@ -11,6 +11,7 @@ import { createClaudeMeetingAnalyzer } from "./meetings/analyzer.js";
 import {
   appBaseDomain,
   loadAccountVaultKey,
+  loadReadAiSigningKey,
   loadAnthropicKey,
   loadEnv,
   loadInitialPasswordKey,
@@ -38,6 +39,8 @@ const accountVaultKey = loadAccountVaultKey(env);
 const serverKeysKey = loadServerKeysKey(env);
 const anthropicKey = loadAnthropicKey(env);
 registerSecret(anthropicKey);
+const readAiSigningKey = loadReadAiSigningKey(env);
+if (readAiSigningKey) registerSecret(readAiSigningKey.toString("base64"));
 if (server) registerSecret(server.provisionerKey);
 
 const adminClient = new MongoClient(env.ADMIN_MONGODB_URI, { appName: "provisioning-platform" });
@@ -85,6 +88,7 @@ const app = await buildApp({
   logLevel: env.LOG_LEVEL,
   servers,
   vaultKey: accountVaultKey,
+  readAiSigningKey,
   // Reuniones de Comercial y Operativa: la misma clave de Anthropic que el AI Developer.
   meetingAnalyzer: anthropicKey ? createClaudeMeetingAnalyzer(anthropicKey, env.ANTHROPIC_WORKSPACE) : undefined,
   ai: anthropicKey

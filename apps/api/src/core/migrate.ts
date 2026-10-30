@@ -1,5 +1,8 @@
 import { dealCodeOf, projectedCents, SOLD_DEAL_STATUSES, type DealDoc, type DealStatus, type SalesStage } from "../ops/models.js";
+import { actionItemsOf } from "../meetings/routes.js";
+import type { ClientSentiment, MeetingCore } from "../ops/models.js";
 import type { AdminStore } from "../store/admin-store.js";
+import type { Collection, Filter } from "mongodb";
 
 /** Etapa comercial de un deal de la Fase 1, que solo tenía estado operativo. */
 const stageOf = (status: DealStatus): SalesStage => (status === "cancelled" ? "lost" : SOLD_DEAL_STATUSES.includes(status) ? "won" : "proposal");
@@ -60,5 +63,39 @@ export async function migrateToV2(store: AdminStore) {
     };
     // Solo si sigue sin código (otra instancia pudo migrarlo a la vez).
     await store.deals.updateOne({ _id: deal._id, dealCode: { $exists: false } }, { $set: set });
+  }
+}
+
+/** Sentimiento numérico de la v1 → categoría (Excelente / Bien / Neutral / Fricción). */
+export const sentimentCategory = (value: number): ClientSentiment => (value >= 80 ? "excellent" : value >= 60 ? "good" : value >= 40 ? "neutral" : "friction");
+
+/**
+ * Pasos 3 y 4 (Comercial y reuniones), idempotente como la anterior:
+ * - Leads: el responsable de la v1 pasa a Closer, y la fecha de llegada es la de alta.
+ * - Reuniones: los action items de texto pasan a subregistros, el sentimiento numérico a su
+ *   categoría, y las que no tienen estado de proceso quedan «Nueva sin procesar».
+ */
+export async function migrateToV3(store: AdminStore) {
+  for (const lead of await store.leads.find({ ownerUserId: { $exists: true } }, { projection: { ownerUserId: 1, closerUserId: 1 } }).toArray()) {
+    await store.leads.updateOne({ _id: lead._id }, { $set: { closerUserId: lead.closerUserId ?? lead.ownerUserId ?? null }, $unset: { ownerUserId: "" } });
+  }
+  for (const lead of await store.leads.find({ submittedAt: { $exists: false } }, { projection: { createdAt: 1 } }).toArray()) {
+    await store.leads.updateOne({ _id: lead._id }, { $set: { submittedAt: lead.createdAt.toISOString().slice(0, 10) } });
+  }
+  for (const collection of [store.meetings, store.leadMeetings] as unknown as Collection<MeetingCore>[]) {
+    const stale = await collection.find({ $or: [{ reviewStatus: { $exists: false } }, { "actionItems.0": { $type: "string" } }, { sentimentSignal: { $type: "number" } }] } as Filter<MeetingCore>).toArray();
+    for (const meeting of stale) {
+      await collection.updateOne(
+        { _id: meeting._id },
+        {
+          $set: {
+            actionItems: actionItemsOf(meeting.actionItems),
+            reviewStatus: meeting.reviewStatus ?? "new",
+            clientSentiment: meeting.clientSentiment ?? (typeof meeting.sentimentSignal === "number" ? sentimentCategory(meeting.sentimentSignal) : null)
+          },
+          $unset: { sentimentSignal: "" }
+        }
+      );
+    }
   }
 }

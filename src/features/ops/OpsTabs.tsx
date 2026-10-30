@@ -552,23 +552,10 @@ export function ProposalsTab({ projectId, canManage }: { projectId: string; canM
 
 // ---- Reuniones y updates ---------------------------------------------------------------
 
-/** Reuniones del proyecto: el Team Leader puede convertir action items en tareas (Claude propone, no cambia el Health). */
-export function MeetingsTab({ projectId, canWork, canManage }: { projectId: string; canWork: boolean; canManage: boolean }) {
-  const refresh = useRefresh(projectId);
-  return (
-    <MeetingsPanel
-      base={opsBase(projectId)}
-      canWork={canWork}
-      onCreateTask={
-        canManage
-          ? async (title) => {
-              await createTask(projectId, { title: title.slice(0, 160) });
-              await refresh();
-            }
-          : undefined
-      }
-    />
-  );
+/** Reuniones del proyecto: Claude propone; el Team Leader convierte los action items en Tasks o Change Orders. */
+export function MeetingsTab({ projectId, canWork }: { projectId: string; canWork: boolean }) {
+  const { data: deals } = useProjectDeals(projectId);
+  return <MeetingsPanel base={opsBase(projectId)} canWork={canWork} deals={(deals ?? []).map((d) => ({ id: d.id, dealCode: d.dealCode, title: d.title }))} />;
 }
 
 export function UpdatesTab({ projectId, canWork }: { projectId: string; canWork: boolean }) {

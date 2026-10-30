@@ -93,6 +93,7 @@ export interface Deal {
   lead: { id: string; title: string } | null;
   contacts: Ref[];
   owner: Ref | null;
+  partner: Ref | null;
   salesStage: SalesStage;
   status: DealStatus;
   hours: number;
@@ -110,6 +111,8 @@ export interface Deal {
   channel: string | null;
   lostReason: string | null;
   partnerCommissionPct: number | null;
+  /** (calc) comisión % × valor del deal. */
+  partnerCommissionCents: number;
   proposalUrl: string | null;
   sowUrl: string | null;
   paidAt: string | null;
@@ -123,6 +126,7 @@ export interface DealInput {
   description: string;
   projectId: string | null;
   leadId: string | null;
+  partnerId: string | null;
   contactIds: string[];
   ownerUserId: string | null;
   salesStage: SalesStage;
@@ -207,6 +211,17 @@ export const useProjectDeals = (projectId: string) =>
     queryKey: [...coreKeys.deals, "project", projectId],
     queryFn: async () => (await apiFetch<{ rows: Deal[] }>(`/api/deals?projectId=${projectId}&pageSize=100&sort=dealCode&dir=asc`)).rows,
   });
+
+/** Reuniones que hablaron del deal (del proyecto o del lead). */
+export const useDealMeetings = (id: string) =>
+  useQuery({
+    queryKey: [...coreKeys.deal(id), "meetings"],
+    queryFn: async () =>
+      (await apiFetch<{ meetings: { id: string; title: string; heldAt: string; kind: string | null; reviewStatus: string; owner: { kind: "project" | "lead"; id: string } }[] }>(`/api/deals/${id}/meetings`)).meetings,
+  });
+
+/** Base de la bitácora del deal (mismo panel de novedades que el proyecto y el lead). */
+export const dealBase = (id: string) => `/api/deals/${id}`;
 
 // ---- acciones ----------------------------------------------------------------------
 

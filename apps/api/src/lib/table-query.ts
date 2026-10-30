@@ -40,7 +40,8 @@ export async function runTableQuery<T extends Document>(
     defaultSort,
     search = [],
     facetField,
-    sums = {}
+    sums = {},
+    projection
   }: {
     match: Filter<T>;
     query: TableQuery;
@@ -51,6 +52,8 @@ export async function runTableQuery<T extends Document>(
     facetField?: string;
     /** Total → campo numérico a sumar. */
     sums?: Record<string, string>;
+    /** Campos pesados que no hacen falta en la tabla (p. ej. el payload original del lead). */
+    projection?: Record<string, 0>;
   }
 ): Promise<TableResult<T>> {
   const filter: Document = { ...match };
@@ -69,7 +72,7 @@ export async function runTableQuery<T extends Document>(
       : [{ $addFields: { _rank: { $indexOfArray: [spec.order, `$${spec.field}`] } } }, { $sort: { _rank: direction, _id: 1 } }, { $unset: "_rank" }];
 
   const facet: Document = {
-    rows: [...sortStages, { $skip: (query.page - 1) * query.pageSize }, { $limit: query.pageSize }],
+    rows: [...sortStages, { $skip: (query.page - 1) * query.pageSize }, { $limit: query.pageSize }, ...(projection ? [{ $project: projection }] : [])],
     total: [{ $count: "n" }]
   };
   if (facetField) facet.facets = [{ $group: { _id: `$${facetField}`, n: { $sum: 1 } } }];

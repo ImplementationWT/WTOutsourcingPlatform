@@ -4,6 +4,14 @@ import AppLayout from "@/components/layout/AppLayout";
 import UsersPage from "@/features/admin/UsersPage";
 import LoginPage from "@/features/auth/LoginPage";
 import RequireAuth from "@/features/auth/RequireAuth";
+import ActivitiesPage from "@/features/commercial/ActivitiesPage";
+import CatalogPage from "@/features/commercial/CatalogPage";
+import DemosPage from "@/features/commercial/DemosPage";
+import MeetingsInboxPage from "@/features/commercial/MeetingsInboxPage";
+import PartnerDetailPage from "@/features/commercial/PartnerDetailPage";
+import PartnersPage from "@/features/commercial/PartnersPage";
+import ProposalDetailPage from "@/features/commercial/ProposalDetailPage";
+import ProposalsPage from "@/features/commercial/ProposalsPage";
 import CompaniesPage from "@/features/core/CompaniesPage";
 import CompanyDetailPage from "@/features/core/CompanyDetailPage";
 import ContactDetailPage from "@/features/core/ContactDetailPage";
@@ -36,6 +44,14 @@ export const router = createBrowserRouter([
         children: [
           { path: "/comercial", element: <LeadsPage /> },
           { path: "/comercial/leads/:id", element: <LeadDetailPage /> },
+          { path: "/comercial/actividades", element: <ActivitiesPage /> },
+          { path: "/comercial/demos", element: <DemosPage /> },
+          { path: "/comercial/propuestas", element: <ProposalsPage /> },
+          { path: "/comercial/propuestas/:id", element: <ProposalDetailPage /> },
+          { path: "/comercial/partners", element: <PartnersPage /> },
+          { path: "/comercial/partners/:id", element: <PartnerDetailPage /> },
+          { path: "/comercial/catalogo", element: <CatalogPage /> },
+          { path: "/comercial/reuniones", element: <MeetingsInboxPage /> },
           // Clientes pasó a Empresas (núcleo compartido).
           { path: "/comercial/clientes", element: <Navigate to="/comercial/empresas" replace /> },
           { path: "/comercial/empresas", element: <CompaniesPage /> },

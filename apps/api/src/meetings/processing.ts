@@ -1,6 +1,7 @@
+import { randomUUID } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
 import type { Collection, Filter } from "mongodb";
-import type { MeetingCore } from "../ops/models.js";
+import type { ActionItemDoc, MeetingCore } from "../ops/models.js";
 import type { MeetingAnalyzer } from "./analyzer.js";
 
 /** Un procesamiento que quedó a medias (p. ej. reinicio del servidor) se puede repetir pasado este tiempo. */
@@ -9,7 +10,8 @@ const STALE_MS = 10 * 60_000;
 const FAILED_MESSAGE = "No se pudo procesar la transcripción. Vuelve a intentarlo en unos minutos.";
 
 /**
- * Procesamiento de reuniones con Claude: resumen, feedback, action items y sentimiento sugerido.
+ * Procesamiento de reuniones con Claude: resumen, feedback, action items propuestos, sentimiento
+ * del cliente y tipo de reunión. Claude propone: no crea tareas ni cambia el Health (§4.2).
  * Se toma la reunión con un cambio atómico a "processing", así dos peticiones no la procesan dos
  * veces. Sin analizador (sin clave de Anthropic) las reuniones quedan pendientes.
  */
@@ -40,6 +42,16 @@ export class MeetingProcessing {
     try {
       const analysis = await this.analyzer.analyze({ title: claimed.title, transcript: claimed.transcript, context });
       const done = this.now();
+      const actionItems: ActionItemDoc[] = analysis.actionItems.map((a) => ({
+        _id: randomUUID(),
+        text: a.text,
+        kind: a.kind,
+        ownerName: a.owner,
+        ownerUserId: null,
+        projectedHours: a.projectedHours,
+        phase: a.phase,
+        status: "proposed"
+      }));
       const updated = await collection.findOneAndUpdate(
         { _id: id } as Filter<T>,
         {
@@ -47,8 +59,10 @@ export class MeetingProcessing {
             status: "processed",
             summary: analysis.summary,
             feedback: analysis.feedback,
-            actionItems: analysis.actionItems,
-            sentimentSignal: analysis.sentiment,
+            actionItems,
+            clientSentiment: analysis.clientSentiment,
+            // El tipo lo sugiere el modelo solo si nadie lo indicó.
+            ...(claimed.kind ? {} : { kind: analysis.kind }),
             processingError: null,
             processedAt: done,
             usage: { inputTokens: analysis.inputTokens, outputTokens: analysis.outputTokens },

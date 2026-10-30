@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink, Loader2, Plus, Save } from "lucide-react";
 import { tableSelectClass } from "@/components/data-table/DataTable";
 import { TotalCell } from "@/components/data-table/cells";
@@ -9,7 +10,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/features/auth/auth";
-import { DEAL_STATUS_LABELS, type DealStatus } from "@/features/ops/api";
+import { ActivitiesTable } from "@/features/commercial/ActivitiesTable";
+import { createProposal, usePartnerOptions, useProposals } from "@/features/commercial/api";
+import { UpdatesPanel } from "@/features/activity/ActivityPanels";
+import { dateText, MEETING_KIND_LABELS, REVIEW_STATUS_LABELS, type MeetingKind, type MeetingReviewStatus } from "@/features/activity/api";
+import { DEAL_STATUS_LABELS, PROPOSAL_STATUS_LABELS, type DealStatus } from "@/features/ops/api";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
@@ -21,9 +26,11 @@ import {
   SALES_STAGE_LABELS,
   SALES_STAGES,
   updateChangeOrder,
+  dealBase,
   updateDeal,
   useContactOptions,
   useDeal,
+  useDealMeetings,
   type ChangeOrderStatus,
   type Deal,
   type DealInput,
@@ -58,6 +65,7 @@ function DealForm({ deal }: { deal: Deal }) {
   const locked = dealLocked(deal);
   const pickContacts = role === "boss" || role === "commercial";
   const contacts = useContactOptions(null, pickContacts).data ?? [];
+  const partners = usePartnerOptions(pickContacts).data ?? [];
   const initial = {
     title: deal.title,
     description: deal.description,
@@ -77,6 +85,7 @@ function DealForm({ deal }: { deal: Deal }) {
     proposalUrl: deal.proposalUrl ?? "",
     sowUrl: deal.sowUrl ?? "",
     contactIds: deal.contacts.map((c) => c.id),
+    partnerId: deal.partner?.id ?? "",
   };
   const [form, setForm] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -108,6 +117,7 @@ function DealForm({ deal }: { deal: Deal }) {
     if (changed("proposalUrl")) out.proposalUrl = orNull(form.proposalUrl);
     if (changed("sowUrl")) out.sowUrl = orNull(form.sowUrl);
     if (changed("contactIds")) out.contactIds = form.contactIds;
+    if (changed("partnerId")) out.partnerId = form.partnerId || null;
     return out;
   }
 
@@ -184,6 +194,18 @@ function DealForm({ deal }: { deal: Deal }) {
             ))}
           </select>
         </Field>
+        {pickContacts && (
+          <Field label="Partner" htmlFor="deal-partner-id">
+            <select id="deal-partner-id" className={cn(tableSelectClass, "w-full")} value={form.partnerId} onChange={(e) => set("partnerId", e.target.value)}>
+              <option value="">Sin partner</option>
+              {partners.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.commissionPct}%)
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="Comisión del partner (%)" htmlFor="deal-partner">
           <Input id="deal-partner" inputMode="decimal" value={form.partnerCommissionPct} onChange={(e) => set("partnerCommissionPct", e.target.value)} />
         </Field>
@@ -437,6 +459,7 @@ export default function DealDetailPage() {
                 ["Producto", deal.product ?? "—"],
                 ["Canal", deal.channel ?? "—"],
                 ["Responsable", deal.owner?.name ?? "—"],
+                ["Partner", deal.partner?.name ?? "—"],
                 ["Comisión del partner", deal.partnerCommissionPct === null ? "—" : `${deal.partnerCommissionPct}%`],
                 ...(deal.lostReason ? [["Razón de pérdida", deal.lostReason]] : []),
               ].map(([label, value]) => (
@@ -459,6 +482,138 @@ export default function DealDetailPage() {
           <ChangeOrders deal={deal} />
         </CardContent>
       </Card>
+
+      <DealSections deal={deal} />
+    </div>
+  );
+}
+
+type SectionId = "activities" | "proposals" | "meetings" | "updates";
+
+/** Lo comercial del deal (§4.1): actividades, propuestas, reuniones donde se habló de él y su bitácora. */
+function DealSections({ deal }: { deal: Deal }) {
+  const role = useSession().data?.role;
+  const salesSide = role === "boss" || role === "commercial" || role === "finance";
+  const [tab, setTab] = useState<SectionId>(salesSide ? "activities" : "meetings");
+  const meetings = useDealMeetings(deal.id).data ?? [];
+  const tabs: { id: SectionId; label: string; visible: boolean }[] = [
+    { id: "activities", label: "Actividades", visible: salesSide },
+    { id: "proposals", label: "Propuestas", visible: salesSide },
+    { id: "meetings", label: `Reuniones (${meetings.length})`, visible: true },
+    { id: "updates", label: "Bitácora", visible: true },
+  ];
+  return (
+    <div className="space-y-4">
+      <div role="tablist" aria-label="Secciones del deal" className="-mx-4 flex gap-1 overflow-x-auto border-b border-foreground/10 px-4 sm:mx-0 sm:px-0">
+        {tabs
+          .filter((t) => t.visible)
+          .map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              type="button"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className={cn("-mb-px shrink-0 border-b-2 px-3 py-2 text-sm whitespace-nowrap", tab === t.id ? "border-primary font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}
+            >
+              {t.label}
+            </button>
+          ))}
+      </div>
+      <div role="tabpanel">
+        {tab === "activities" && salesSide && <ActivitiesTable dealId={deal.id} prefix="a." />}
+        {tab === "proposals" && salesSide && <DealProposals deal={deal} canWrite={role === "boss" || role === "commercial"} />}
+        {tab === "meetings" &&
+          (!meetings.length ? (
+            <p className="text-sm text-muted-foreground">Ninguna reunión está ligada a este deal. Se liga desde la reunión, en el proyecto o el lead.</p>
+          ) : (
+            <ul className="divide-y divide-foreground/10 rounded-lg border border-foreground/10">
+              {meetings.map((m) => (
+                <li key={m.id} className="flex flex-wrap items-center gap-2 p-3 text-sm">
+                  <Link className="font-medium text-primary underline-offset-4 hover:underline" to={m.owner.kind === "project" ? `/operativa/${m.owner.id}` : `/comercial/leads/${m.owner.id}`}>
+                    {m.title}
+                  </Link>
+                  {m.kind && <span className="text-xs text-muted-foreground">{MEETING_KIND_LABELS[m.kind as MeetingKind] ?? m.kind}</span>}
+                  <span className="text-xs text-muted-foreground">{REVIEW_STATUS_LABELS[m.reviewStatus as MeetingReviewStatus] ?? m.reviewStatus}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">{dateText(m.heldAt)}</span>
+                </li>
+              ))}
+            </ul>
+          ))}
+        {tab === "updates" && <UpdatesPanel base={dealBase(deal.id)} canWork={deal.canEdit || role === "boss" || role === "commercial"} />}
+      </div>
+    </div>
+  );
+}
+
+/** Cotizaciones del deal; desde aquí se crea una nueva ligada al deal. */
+function DealProposals({ deal, canWrite }: { deal: Deal; canWrite: boolean }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const query = `dealId=${deal.id}&pageSize=100&sort=createdAt&dir=desc`;
+  const { data, isLoading } = useProposals(query);
+  const [title, setTitle] = useState("");
+  const [url, setUrl] = useState(deal.proposalUrl ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const valid = title.trim().length >= 3 && /^https?:\/\//i.test(url.trim());
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!valid) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { proposal } = await createProposal({ title: title.trim(), url: url.trim(), dealId: deal.id, currency: deal.currency });
+      await queryClient.invalidateQueries({ queryKey: ["commercial"] });
+      navigate(`/comercial/propuestas/${proposal.id}`);
+    } catch (err) {
+      setError(message(err, "No se pudo crear la propuesta."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      {canWrite && (
+        <form onSubmit={add} className="grid items-end gap-3 rounded-lg border border-foreground/10 p-3 sm:grid-cols-[1.5fr_2fr_auto]">
+          <Field label="Propuesta" htmlFor="dp-title">
+            <Input id="dp-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Propuesta del módulo" />
+          </Field>
+          <Field label="Enlace" htmlFor="dp-url">
+            <Input id="dp-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
+          </Field>
+          <Button type="submit" disabled={!valid || busy}>
+            {busy ? <Loader2 className="animate-spin" /> : <Plus />}
+            Crear
+          </Button>
+        </form>
+      )}
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      {isLoading ? (
+        <Skeleton className="h-12 w-full" />
+      ) : !data?.rows.length ? (
+        <p className="text-sm text-muted-foreground">Este deal no tiene propuestas.</p>
+      ) : (
+        <ul className="divide-y divide-foreground/10 rounded-lg border border-foreground/10">
+          {data.rows.map((p) => (
+            <li key={p.id} className="flex flex-wrap items-center gap-2 p-3 text-sm">
+              <Link className="font-medium text-primary underline-offset-4 hover:underline" to={`/comercial/propuestas/${p.id}`}>
+                {p.title}
+              </Link>
+              <span className="text-xs text-muted-foreground">{PROPOSAL_STATUS_LABELS[p.status]}</span>
+              <span className="ml-auto">
+                <TotalCell cents={p.amountCents} currency={p.currency} strong />
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

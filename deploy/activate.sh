@@ -32,6 +32,7 @@ start() {
     -v "$APP_DIR/server-keys.key:/run/secrets/server-keys.key:ro" \
     -v "$APP_DIR/account-vault.key:/run/secrets/account-vault.key:ro" \
     -v "$APP_DIR/anthropic.key:/run/secrets/anthropic.key:ro" \
+    -v "$APP_DIR/read-ai.key:/run/secrets/read-ai.key:ro" \
     --log-opt max-size=10m --log-opt max-file=5 \
     "$IMAGE:$1" >/dev/null
 }
@@ -48,6 +49,8 @@ chown root:root "$APP_DIR/api.env"
 mv "$INCOMING/github-app.pem" "$APP_DIR/github-app.pem"
 # Clave de la API de Anthropic (AI Developer). Vacía si no está configurada en GitHub.
 if [ -f "$INCOMING/anthropic.key" ]; then mv "$INCOMING/anthropic.key" "$APP_DIR/anthropic.key"; else : > "$APP_DIR/anthropic.key"; fi
+# Signing key del webhook de Read.ai (reuniones). Vacía si no está configurada en GitHub.
+if [ -f "$INCOMING/read-ai.key" ]; then mv "$INCOMING/read-ai.key" "$APP_DIR/read-ai.key"; else : > "$APP_DIR/read-ai.key"; fi
 # Clave de la revelación única de contraseñas iniciales: se genera una vez en el servidor,
 # nunca sale de él y se conserva entre despliegues.
 [ -s "$APP_DIR/initial-password.key" ] || openssl rand -base64 32 > "$APP_DIR/initial-password.key"
@@ -64,8 +67,8 @@ if [ -f "$INCOMING/anthropic.key" ]; then mv "$INCOMING/anthropic.key" "$APP_DIR
 [ -s "$APP_DIR/provisioner_ed25519" ] ||
   ssh-keygen -q -t ed25519 -N "" -C "launchpad-provisioner" -f "$APP_DIR/provisioner_ed25519"
 # El contenedor corre como el usuario "node" (uid 1000) de la imagen, no como root.
-chown 1000:1000 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key" "$APP_DIR/provisioner_ed25519" "$APP_DIR/integration.key" "$APP_DIR/server-keys.key" "$APP_DIR/account-vault.key" "$APP_DIR/anthropic.key"
-chmod 400 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key" "$APP_DIR/provisioner_ed25519" "$APP_DIR/integration.key" "$APP_DIR/server-keys.key" "$APP_DIR/account-vault.key" "$APP_DIR/anthropic.key"
+chown 1000:1000 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key" "$APP_DIR/provisioner_ed25519" "$APP_DIR/integration.key" "$APP_DIR/server-keys.key" "$APP_DIR/account-vault.key" "$APP_DIR/anthropic.key" "$APP_DIR/read-ai.key"
+chmod 400 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key" "$APP_DIR/provisioner_ed25519" "$APP_DIR/integration.key" "$APP_DIR/server-keys.key" "$APP_DIR/account-vault.key" "$APP_DIR/anthropic.key" "$APP_DIR/read-ai.key"
 
 echo "Cargando imagen $IMAGE:$RELEASE…"
 gunzip -c "$INCOMING/api-image.tar.gz" | docker load
