@@ -2,15 +2,14 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink, Loader2, Plus, Save, Trash2 } from "lucide-react";
-import { tableSelectClass } from "@/components/data-table/DataTable";
 import { TotalCell } from "@/components/data-table/cells";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { dateText } from "@/features/activity/api";
 import { PROPOSAL_STATUS_LABELS, PROPOSAL_STATUSES, type ProposalStatus } from "@/features/ops/api";
-import { cn } from "@/lib/utils";
 import { commercialKeys, updateProposal, useProducts, useProposal, useUseCases, type ProposalDetail } from "./api";
 
 type Draft = { key: string; productId: string; description: string; hours: string; rate: string };
@@ -69,22 +68,16 @@ function LinesEditor({ proposal, canWrite }: { proposal: ProposalDetail; canWrit
     <div className="space-y-3">
       {lines.map((l, i) => (
         <div key={l.key} className="grid items-end gap-2 rounded-lg border border-foreground/10 p-2 sm:grid-cols-[1.2fr_2fr_0.7fr_0.8fr_auto_auto]">
-          <select
-            aria-label={`Producto de la línea ${i + 1}`}
-            className={cn(tableSelectClass, "w-full")}
-            value={l.productId}
-            onChange={(e) => {
-              const product = products.find((p) => p.id === e.target.value);
-              set(l.key, { productId: e.target.value, ...(product && !l.rate ? { rate: String(product.defaultRateCents / 100) } : {}) });
+          <Select
+            label={`Producto de la línea ${i + 1}`}
+            value={l.productId || null}
+            emptyLabel="Sin producto"
+            options={products.map((p) => ({ value: p.id, label: p.name }))}
+            onValueChange={(v) => {
+              const product = products.find((p) => p.id === (v ?? ""));
+              set(l.key, { productId: (v ?? ""), ...(product && !l.rate ? { rate: String(product.defaultRateCents / 100) } : {}) });
             }}
-          >
-            <option value="">Sin producto</option>
-            {products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+          />
           <Input aria-label={`Descripción de la línea ${i + 1}`} value={l.description} onChange={(e) => set(l.key, { description: e.target.value })} placeholder="Descripción" />
           <Input aria-label={`Horas de la línea ${i + 1}`} inputMode="decimal" value={l.hours} onChange={(e) => set(l.key, { hours: e.target.value })} placeholder="Horas" />
           <Input aria-label={`Tarifa de la línea ${i + 1}`} inputMode="decimal" value={l.rate} onChange={(e) => set(l.key, { rate: e.target.value })} placeholder="Tarifa" />
@@ -184,27 +177,22 @@ export default function ProposalDetailPage() {
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{proposal.title}</h1>
           {canWrite ? (
-            <select
-              aria-label="Estado de la propuesta"
-              className={tableSelectClass}
+            <Select
+              label="Estado de la propuesta"
+              className="w-auto min-w-36"
               value={proposal.status}
-              onChange={async (e) => {
+              options={PROPOSAL_STATUSES.map((s) => ({ value: s, label: PROPOSAL_STATUS_LABELS[s] }))}
+              onValueChange={async (v) => {
                 setStatusError(null);
                 try {
-                  await updateProposal(proposal.id, { status: e.target.value as ProposalStatus });
+                  await updateProposal(proposal.id, { status: (v ?? "") as ProposalStatus });
                   await queryClient.invalidateQueries({ queryKey: ["commercial"] });
                   await queryClient.invalidateQueries({ queryKey: ["sales"] });
                 } catch (err) {
                   setStatusError(err instanceof Error ? err.message : "No se pudo cambiar el estado.");
                 }
               }}
-            >
-              {PROPOSAL_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {PROPOSAL_STATUS_LABELS[s]}
-                </option>
-              ))}
-            </select>
+            />
           ) : (
             <span className="rounded-full border border-foreground/15 px-2 text-xs">{PROPOSAL_STATUS_LABELS[proposal.status]}</span>
           )}

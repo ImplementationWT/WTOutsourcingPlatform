@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ConfirmProvider } from "@/components/ui/confirm-provider";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import AppSidebar from "@/components/layout/AppSidebar";
 import type { SessionUser } from "@/features/auth/auth";
@@ -10,6 +11,7 @@ import LeadDetailPage from "@/features/sales/LeadDetailPage";
 import LeadsPage from "@/features/sales/LeadsPage";
 import SourcesPage from "@/features/sales/SourcesPage";
 import type { Lead, LeadDetail, LeadSource } from "@/features/sales/api";
+import { optionLabels, pick } from "./pick";
 import { LEAD } from "./session";
 
 const COMMERCIAL: SessionUser = { id: "u-com", username: "marta", name: "Marta", role: "commercial", teamId: null, mustChangeCredentials: false };
@@ -62,7 +64,8 @@ function renderAt(path: string, user: SessionUser, fetchImpl: (url: string, init
   queryClient.setQueryData(["session"], user);
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
+      <ConfirmProvider>
+        <MemoryRouter initialEntries={[path]}>
         <AppSidebar />
         <Routes>
           <Route path="/comercial" element={<LeadsPage />} />
@@ -71,6 +74,7 @@ function renderAt(path: string, user: SessionUser, fetchImpl: (url: string, init
           <Route path="/operativa/:id" element={<OpsProjectDetailPage />} />
         </Routes>
       </MemoryRouter>
+      </ConfirmProvider>
     </QueryClientProvider>,
   );
   return { calls, queryClient };
@@ -101,7 +105,7 @@ describe("leads", () => {
     expect(row.getByText("Meta Ads")).toBeTruthy();
     expect(row.getByText("Upwork")).toBeTruthy();
     expect(row.getByText("3 d")).toBeTruthy();
-    expect((row.getByLabelText("Temperatura de Manpersa SAC") as HTMLSelectElement).value).toBe("hot");
+    expect(row.getByRole("combobox", { name: "Temperatura de Manpersa SAC" }).textContent).toContain("Hot");
     const funnel = within(screen.getByRole("group", { name: "Embudo" }));
     fireEvent.click(funnel.getByRole("button", { name: /Ganado/ }));
     await waitFor(() => expect(calls.some((c) => c.url.includes("status=won"))).toBe(true));
@@ -117,9 +121,8 @@ describe("leads", () => {
 
   it("editar el Closer en la celda guarda solo ese campo", async () => {
     const { calls } = renderAt("/comercial", COMMERCIAL, (url, init) => (init?.method === "PATCH" ? json({ lead }) : route(url)));
-    const select = await screen.findByLabelText("Closer de Manpersa SAC");
-    await waitFor(() => expect(within(select).getAllByRole("option").length).toBe(2));
-    fireEvent.change(select, { target: { value: "u-com" } });
+    await waitFor(async () => expect(await optionLabels("Closer de Manpersa SAC")).toEqual(["Sin asignar", "Marta"]));
+    await pick("Closer de Manpersa SAC", "Marta");
     await waitFor(() => expect(calls.some((c) => c.init?.method === "PATCH")).toBe(true));
     expect(JSON.parse(String(calls.find((c) => c.init?.method === "PATCH")!.init?.body))).toEqual({ closerUserId: "u-com" });
   });
@@ -141,7 +144,7 @@ describe("leads", () => {
     expect(await screen.findByRole("heading", { name: "Manpersa SAC" })).toBeTruthy();
     expect(screen.getByText(/Primero registra la propuesta/)).toBeTruthy();
     // "Ganado" no se puede elegir a mano.
-    expect(within(screen.getByLabelText("Estado del lead")).queryByRole("option", { name: "Ganado" })).toBeNull();
+    expect(await optionLabels("Estado del lead")).not.toContain("Ganado");
     fireEvent.click(screen.getByRole("tab", { name: "Datos del source" }));
     expect(screen.getByText("form.campaign")).toBeTruthy();
     expect(screen.getByText("octubre")).toBeTruthy();
@@ -149,23 +152,21 @@ describe("leads", () => {
 
   it("convertir pregunta antes de crear; si se cancela no envía nada", async () => {
     const proposal = { id: "22222222-2222-4222-8222-222222222222", leadId: lead.id, projectId: null, dealId: null, title: "Propuesta Manpersa", url: "https://p.example.com/", amountCents: null, currency: "USD", status: "accepted", area: "commercial", sentAt: null, decidedAt: null, createdAt: "2026-10-27T10:00:00Z" };
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     const { calls } = renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, (url) => {
       if (url === `/api/sales/leads/${lead.id}`) return json({ lead, demos: [], proposals: [proposal], company: null, project: null, deal: null, canWrite: true });
       if (url.startsWith("/api/teams")) return json({ teams: [{ id: "t-1", name: "Equipo A" }] });
       return json({ owners: [], members: [], meetings: [], updates: [], processingAvailable: true });
     });
-    await screen.findByRole("option", { name: "Equipo A" });
-    fireEvent.change(screen.getByLabelText("Equipo"), { target: { value: "t-1" } });
+    await pick("Equipo", "Equipo A");
     fireEvent.click(screen.getByRole("button", { name: /Convertir en cliente/ }));
-    expect(confirm).toHaveBeenCalledTimes(1);
-    expect(String(confirm.mock.calls[0][0])).toMatch(/empresa «Manpersa SAC».*\n.*proyecto «Proyecto Manpersa SAC» en Kick Off[\s\S]*deal aprobado/);
+    const dialog = await screen.findByRole("alertdialog", { name: "¿Convertir «Manpersa SAC» en cliente?" });
+    expect(dialog.textContent).toMatch(/empresa «Manpersa SAC»[\s\S]*proyecto «Proyecto Manpersa SAC» en Kick Off[\s\S]*deal aprobado/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(calls.some((c) => c.url.endsWith("/convert"))).toBe(false);
-    confirm.mockRestore();
   });
 
   it("convertir envía equipo, proyecto y propuesta, y abre el proyecto en Operativa", async () => {
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const proposal = { id: "22222222-2222-4222-8222-222222222222", leadId: lead.id, projectId: null, dealId: null, title: "Propuesta Manpersa", url: "https://p.example.com/", amountCents: null, currency: "USD", status: "accepted", area: "commercial", sentAt: null, decidedAt: null, createdAt: "2026-10-27T10:00:00Z" };
     const { calls } = renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, (url, init) => {
       if (url.endsWith("/convert") && init?.method === "POST") return json({ company: { id: "c1", name: "Manpersa SAC" }, project: { id: "p1", name: "Proyecto Manpersa SAC" }, deal: { id: "d1", dealCode: "DL-0001" } }, 201);
@@ -175,13 +176,12 @@ describe("leads", () => {
       if (url.startsWith("/api/ops/projects/p1")) return json({ error: "x" }, 404);
       return json({ owners: [], meetings: [], updates: [], processingAvailable: true });
     });
-    await screen.findByRole("option", { name: "Equipo A" });
-    fireEvent.change(screen.getByLabelText("Equipo"), { target: { value: "t-1" } });
+    await pick("Equipo", "Equipo A");
     fireEvent.click(screen.getByRole("button", { name: /Convertir en cliente/ }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Convertir en cliente" }));
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/convert"))).toBe(true));
     const body = JSON.parse(String(calls.find((c) => c.url.endsWith("/convert"))!.init?.body));
     expect(body).toMatchObject({ teamId: "t-1", projectName: "Proyecto Manpersa SAC", proposalId: proposal.id });
-    confirm.mockRestore();
   });
 });
 
@@ -282,13 +282,13 @@ describe("reuniones procesadas en Operativa", () => {
     // Sin deal en la reunión, el change order pide elegirlo.
     const changeOrder = screen.getAllByRole("button", { name: /Crear change order/ })[1];
     expect((changeOrder as HTMLButtonElement).disabled).toBe(true);
-    await waitFor(() => expect(screen.getAllByLabelText(/Deal del change order/).length).toBe(2));
-    fireEvent.change(screen.getAllByLabelText(/Deal del change order/)[1], { target: { value: "d1" } });
+    await waitFor(() => expect(screen.getAllByRole("combobox", { name: /Deal del change order/ }).length).toBe(2));
+    await pick(screen.getAllByRole("combobox", { name: /Deal del change order/ })[1], /DL-0001/);
     fireEvent.click(changeOrder);
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/action-items/a2/convert"))).toBe(true));
     expect(JSON.parse(String(calls.find((c) => c.url.endsWith("/a2/convert"))!.init?.body))).toEqual({ to: "change_order", dealId: "d1" });
 
-    fireEvent.change(screen.getByLabelText("Estado de proceso de «Revisión semanal»"), { target: { value: "reviewed" } });
+    await pick("Estado de proceso de «Revisión semanal»", "Revisada");
     await waitFor(() => expect(calls.some((c) => c.init?.method === "PATCH" && c.url.endsWith("/meetings/m1"))).toBe(true));
     expect(JSON.parse(String(calls.find((c) => c.init?.method === "PATCH")!.init?.body))).toEqual({ reviewStatus: "reviewed" });
     expect(calls.some((c) => c.init?.method === "PATCH" && c.url === `/api/ops/projects/${project.id}`)).toBe(false);

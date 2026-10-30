@@ -103,7 +103,7 @@ export default function DashboardPage() {
       ) : isError || !data ? (
         <Card>
           <CardContent className="flex items-center gap-3 text-sm">
-            <AlertTriangle className="size-5 text-amber-400" />
+            <AlertTriangle className="size-5 text-warn-fg" />
             {error?.message ?? "No se pudo cargar el dashboard."}
           </CardContent>
         </Card>
@@ -153,7 +153,7 @@ function StatTiles({ data }: { data: DashboardData }) {
         <Card key={tile.label} className="h-full">
           <CardHeader>
             <CardDescription>{tile.label}</CardDescription>
-            <CardTitle className={cn("font-semibold tabular-nums", tile.text ? "text-2xl leading-9" : "text-3xl", tile.warn && "text-amber-400")}>
+            <CardTitle className={cn("font-semibold tabular-nums", tile.text ? "text-2xl leading-9" : "text-3xl", tile.warn && "text-warn-fg")}>
               {tile.value}
             </CardTitle>
             <p className="text-xs text-muted-foreground">{tile.hint}</p>

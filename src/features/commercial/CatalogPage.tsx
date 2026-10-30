@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus } from "lucide-react";
-import { tableSelectClass } from "@/components/data-table/DataTable";
 import { TotalCell } from "@/components/data-table/cells";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -141,14 +141,13 @@ function UseCases() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="uc-product">Producto</Label>
-              <select id="uc-product" className={cn(tableSelectClass, "w-full")} value={productId} onChange={(e) => setProductId(e.target.value)}>
-                <option value="">Sin producto</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+              <Select
+                id="uc-product"
+                value={productId || null}
+                emptyLabel="Sin producto"
+                options={products.map((p) => ({ value: p.id, label: p.name }))}
+                onValueChange={(v) => setProductId((v ?? ""))}
+              />
             </div>
             <Button type="submit" disabled={title.trim().length < 3 || busy}>
               {busy ? <Loader2 className="animate-spin" /> : <Plus />}

@@ -2,6 +2,9 @@ import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { Select } from "@/components/ui/select";
+import { optionsOf } from "@/components/ui/select-styles";
+import { errorText, toast } from "@/lib/toast";
 import { tableSelectClass } from "./DataTable";
 
 /** Celda de relación: enlace navegable a otro registro (Deal, Proyecto, Contacto…). */
@@ -37,8 +40,9 @@ export function TotalCell({ cents, hours, currency = "USD", strong }: { cents?: 
 }
 
 /**
- * Edición en la celda: un select que guarda al cambiar. Sin permiso (`disabled`) muestra el valor
- * con `display` (p. ej. una insignia de color).
+ * Edición en la celda: el valor (p. ej. una insignia de estado) abre un menú ligero y guarda al
+ * elegir; si falla, avisa con un Toast y vuelve al valor anterior. Sin permiso (`disabled`) solo
+ * muestra el valor.
  */
 export function InlineSelect<V extends string>({
   label,
@@ -61,40 +65,33 @@ export function InlineSelect<V extends string>({
   allowEmpty?: string;
 }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  if (disabled) return <>{display ?? (value ? (labels as Record<string, string>)[value] : (allowEmpty ?? "—"))}</>;
+  const text = (v: V | null) => (v ? ((labels as Record<string, string>)[v] ?? v) : (allowEmpty ?? "—"));
+  if (disabled) return <>{display ?? text(value)}</>;
   return (
-    <span data-cell-control className="inline-flex flex-col">
-      <select
-        aria-label={label}
-        className={cn(tableSelectClass, "h-7 max-w-44 text-xs", error && "border-destructive")}
-        value={value ?? ""}
+    <span data-cell-control className="inline-flex max-w-full">
+      <Select
+        label={label}
+        value={value}
+        options={optionsOf(options, labels)}
+        emptyLabel={allowEmpty}
         disabled={busy}
-        title={error ?? undefined}
-        onChange={async (e) => {
+        size="sm"
+        className="w-auto max-w-56 border-transparent bg-transparent px-1.5 hover:border-input dark:bg-transparent"
+        renderValue={() => display ?? text(value)}
+        onValueChange={async (next) => {
+          const before = value;
+          if (next === before) return;
           setBusy(true);
-          setError(null);
           try {
-            await onSave((e.target.value || null) as V | null);
+            await onSave(next as V | null);
+            toast.success(`${label.split(" de ")[0]}: ${text(next as V | null)}`, { undo: () => onSave(before) });
           } catch (err) {
-            setError(err instanceof Error ? err.message : "No se pudo guardar.");
+            toast.error("No se pudo guardar el cambio.", { description: errorText(err, "Inténtalo de nuevo.") });
           } finally {
             setBusy(false);
           }
         }}
-      >
-        {(allowEmpty !== undefined || !value) && <option value="">{allowEmpty ?? "—"}</option>}
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {(labels as Record<string, string>)[o]}
-          </option>
-        ))}
-      </select>
-      {error && (
-        <span role="alert" className="mt-0.5 max-w-44 text-[11px] whitespace-normal text-destructive">
-          {error}
-        </span>
-      )}
+      />
     </span>
   );
 }

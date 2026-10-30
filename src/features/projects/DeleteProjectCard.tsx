@@ -14,13 +14,13 @@ function StepIcon({ status }: { status: Deletion["steps"][number]["status"] }) {
     case "running":
       return <Loader2 className="size-4 animate-spin text-brand-300" aria-label="En curso" />;
     case "done":
-      return <Check className="size-4 text-emerald-400" aria-label="Hecho" />;
+      return <Check className="size-4 text-ok-fg" aria-label="Hecho" />;
     case "skipped":
       return <Minus className="size-4 text-muted-foreground" aria-label="No aplica" />;
     case "warning":
-      return <AlertTriangle className="size-4 text-amber-400" aria-label="Aviso" />;
+      return <AlertTriangle className="size-4 text-warn-fg" aria-label="Aviso" />;
     case "failed":
-      return <X className="size-4 text-red-400" aria-label="Falló" />;
+      return <X className="size-4 text-danger-fg" aria-label="Falló" />;
     default:
       return <Circle className="size-2.5 fill-foreground/15 text-transparent" aria-label="Pendiente" />;
   }
@@ -69,9 +69,9 @@ export default function DeleteProjectCard({ client, repository, database }: { cl
   }
 
   return (
-    <Card className="border-red-400/30">
+    <Card className="border-danger/30">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-red-300">
+        <CardTitle className="flex items-center gap-2 text-danger-fg">
           <Trash2 className="size-4" />
           Zona de peligro
         </CardTitle>
@@ -94,7 +94,7 @@ export default function DeleteProjectCard({ client, repository, database }: { cl
               ))}
             </ul>
             {deletion.status === "succeeded" && (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-200">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-ok/30 bg-ok/10 px-3 py-2 text-sm text-ok-fg">
                 Proyecto borrado.
                 <Button size="sm" nativeButton={false} render={<Link to="/projects" />}>
                   Volver a proyectos
@@ -103,7 +103,7 @@ export default function DeleteProjectCard({ client, repository, database }: { cl
             )}
             {deletion.status === "failed" && (
               <div className="space-y-3">
-                <p role="alert" className="rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                <p role="alert" className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger-fg">
                   {deletion.error?.message ?? "El borrado se detuvo."} Lo ya borrado no se repite al reintentar.
                 </p>
                 <Button size="sm" variant="destructive" onClick={handleDelete} disabled={submitting}>
@@ -143,7 +143,7 @@ export default function DeleteProjectCard({ client, repository, database }: { cl
               <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" spellCheck={false} aria-label="Identificador del proyecto" />
             </label>
             {error && (
-              <p role="alert" className="text-sm text-red-300">
+              <p role="alert" className="text-sm text-danger-fg">
                 {error}
               </p>
             )}

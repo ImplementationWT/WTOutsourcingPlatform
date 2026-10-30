@@ -23,7 +23,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
         setTimeout(() => setCopied(false), 1500);
       }}
     >
-      {copied ? <Check className="text-emerald-400" /> : <Copy />}
+      {copied ? <Check className="text-ok-fg" /> : <Copy />}
     </Button>
   );
 }
@@ -140,7 +140,7 @@ export default function InitialCredentialsCard({ slug }: { slug: string }) {
         </Row>
 
         {revealed && (
-          <p role="status" className="flex items-start gap-2 rounded-md border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+          <p role="status" className="flex items-start gap-2 rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn-fg">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
             Esta es la única vez que se muestra: el servidor ya la eliminó. Entrégala por un canal seguro.
           </p>
@@ -152,7 +152,7 @@ export default function InitialCredentialsCard({ slug }: { slug: string }) {
           </p>
         )}
         {error && (
-          <p role="alert" className="text-sm text-red-300">
+          <p role="alert" className="text-sm text-danger-fg">
             {error}
           </p>
         )}

@@ -6,15 +6,14 @@ import { DataTable, type Column } from "@/components/data-table/DataTable";
 import { InlineSelect, RelationCell, TotalCell } from "@/components/data-table/cells";
 import { useTableState } from "@/components/data-table/table-state";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTeams } from "@/features/admin/api";
-import { selectClass } from "@/features/admin/TeamAssignCard";
 import { useSession } from "@/features/auth/auth";
 import { useCompanyOptions } from "@/features/core/api";
 import { formatDate } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import {
   createProject,
   HEALTH,
@@ -100,14 +99,13 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
             {isBoss && (
               <div className="space-y-1.5">
                 <Label htmlFor="op-company">Empresa cliente</Label>
-                <select id="op-company" className={cn(selectClass, "w-full")} value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
-                  <option value="">Otra (escribir el nombre)</option>
-                  {companies.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  id="op-company"
+                  value={companyId || null}
+                  emptyLabel="Otra (escribir el nombre)"
+                  options={companies.map((c) => ({ value: c.id, label: c.name }))}
+                  onValueChange={(v) => setCompanyId((v ?? ""))}
+                />
               </div>
             )}
             {!companyId && (
@@ -119,60 +117,49 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
             {isBoss && (
               <div className="space-y-1.5">
                 <Label htmlFor="op-team">Equipo</Label>
-                <select
+                <Select
                   id="op-team"
-                  className={cn(selectClass, "w-full")}
-                  value={teamId}
-                  onChange={(e) => {
-                    setTeamId(e.target.value);
+                  value={teamId || null}
+                  emptyLabel="Elige un equipo"
+                  options={teams.map((t) => ({ value: t.id, label: t.name }))}
+                  onValueChange={(v) => {
+                    setTeamId((v ?? ""));
                     setLeadId("");
                     setDeveloperId("");
                   }}
-                >
-                  <option value="">Elige un equipo</option>
-                  {teams.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
             )}
             <div className="space-y-1.5">
               <Label htmlFor="op-priority">Prioridad</Label>
-              <select id="op-priority" className={cn(selectClass, "w-full")} value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
-                {PRIORITIES.map((p) => (
-                  <option key={p} value={p}>
-                    {PRIORITY_LABELS[p]}
-                  </option>
-                ))}
-              </select>
+              <Select
+                id="op-priority"
+                value={priority}
+                options={PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABELS[p] }))}
+                onValueChange={(v) => setPriority((v ?? "") as Priority)}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="op-lead">Team Leader</Label>
-              <select id="op-lead" className={cn(selectClass, "w-full")} value={leadId} disabled={!effectiveTeam} onChange={(e) => setLeadId(e.target.value)}>
-                <option value="">{isBoss ? "Sin asignar" : "Yo"}</option>
-                {members
-                  .filter((m) => m.role === "lead")
-                  .map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-              </select>
+              <Select
+                id="op-lead"
+                value={leadId || null}
+                emptyLabel={isBoss ? "Sin asignar" : "Yo"}
+                options={members.filter((m) => m.role === "lead").map((m) => ({ value: m.id, label: m.name }))}
+                disabled={!effectiveTeam}
+                onValueChange={(v) => setLeadId((v ?? ""))}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="op-dev">Developer</Label>
-              <select id="op-dev" className={cn(selectClass, "w-full")} value={developerId} disabled={!effectiveTeam} onChange={(e) => setDeveloperId(e.target.value)}>
-                <option value="">Sin asignar</option>
-                {members
-                  .filter((m) => m.role === "developer")
-                  .map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-              </select>
+              <Select
+                id="op-dev"
+                value={developerId || null}
+                emptyLabel="Sin asignar"
+                options={members.filter((m) => m.role === "developer").map((m) => ({ value: m.id, label: m.name }))}
+                disabled={!effectiveTeam}
+                onValueChange={(v) => setDeveloperId((v ?? ""))}
+              />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="op-proposal">Propuesta (enlace, opcional)</Label>

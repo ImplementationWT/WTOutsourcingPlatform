@@ -4,9 +4,8 @@ import { AlertTriangle, Check, CircleDashed, Fingerprint, KeyRound, Loader2, Ref
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { textareaClass } from "@/features/ai/ChatPanel";
 import { Code } from "@/features/projects/new-project/parts";
 import type { DeployServer, ServerCheck } from "@/types/server";
 import { bootstrapCommands } from "./bootstrap";
@@ -15,9 +14,9 @@ import { deleteServer, pinHostKey, readFingerprint, rotateServerKey, verifyServe
 import { useSession } from "@/features/auth/auth";
 
 const STATUS: Record<DeployServer["status"], { label: string; className: string }> = {
-  host_key: { label: "Falta confirmar la huella", className: "border-amber-400/30 text-amber-300" },
-  verify: { label: "Pendiente de verificar", className: "border-amber-400/30 text-amber-300" },
-  ready: { label: "Listo", className: "border-emerald-400/30 text-emerald-300" },
+  host_key: { label: "Falta confirmar la huella", className: "border-warn/30 text-warn-fg" },
+  verify: { label: "Pendiente de verificar", className: "border-warn/30 text-warn-fg" },
+  ready: { label: "Listo", className: "border-ok/30 text-ok-fg" },
 };
 
 function Step({ n, title, done, children }: { n: number; title: string; done: boolean; children: ReactNode }) {
@@ -26,7 +25,7 @@ function Step({ n, title, done, children }: { n: number; title: string; done: bo
       <div
         className={cn(
           "flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-medium",
-          done ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-300" : "border-foreground/20 text-muted-foreground",
+          done ? "border-ok/40 bg-ok/15 text-ok-fg" : "border-foreground/20 text-muted-foreground",
         )}
       >
         {done ? <Check className="size-3.5" /> : n}
@@ -45,11 +44,11 @@ function Checks({ checks }: { checks: ServerCheck[] }) {
       {checks.map((check) => (
         <li key={check.id} className="flex items-start gap-2">
           {check.ok ? (
-            <Check className="mt-0.5 size-4 shrink-0 text-emerald-400" />
+            <Check className="mt-0.5 size-4 shrink-0 text-ok-fg" />
           ) : check.required ? (
-            <X className="mt-0.5 size-4 shrink-0 text-red-400" />
+            <X className="mt-0.5 size-4 shrink-0 text-danger-fg" />
           ) : (
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-300" />
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warn-fg" />
           )}
           <span>
             {check.label}
@@ -146,13 +145,13 @@ export default function ServerCard({ server, ghcrOrg }: { server: DeployServer; 
                     si coincide con la que le presenta el servidor: así nadie puede suplantarlo.
                   </p>
                   <CommandBlock label="Comando para ver la huella">ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</CommandBlock>
-                  <textarea
+                  <Textarea
                     rows={2}
                     value={consoleOutput}
                     onChange={(e) => setConsoleOutput(e.target.value)}
                     placeholder="256 SHA256:… root@servidor (ED25519)"
                     aria-label="Salida de ssh-keygen"
-                    className={cn(textareaClass, "font-mono text-xs")}
+                    className="font-mono text-xs"
                   />
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
@@ -184,7 +183,7 @@ export default function ServerCard({ server, ghcrOrg }: { server: DeployServer; 
                 comodín. Solo los servidores verificados se pueden elegir al crear un proyecto.
               </p>
               {server.verification?.error && (
-                <p role="alert" className="text-sm text-red-300">
+                <p role="alert" className="text-sm text-danger-fg">
                   {server.verification.error}
                 </p>
               )}
@@ -204,7 +203,7 @@ export default function ServerCard({ server, ghcrOrg }: { server: DeployServer; 
         )}
 
         {error && (
-          <p role="alert" className="text-sm text-red-300">
+          <p role="alert" className="text-sm text-danger-fg">
             {error}
           </p>
         )}
@@ -245,7 +244,7 @@ export default function ServerCard({ server, ghcrOrg }: { server: DeployServer; 
               <Button
                 size="xs"
                 variant="ghost"
-                className="text-red-300"
+                className="text-danger-fg"
                 onClick={() => setConfirmDelete("")}
                 disabled={busy !== null || server.projects > 0}
                 title={server.projects > 0 ? "Tiene proyectos: bórralos antes" : undefined}

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import type { Tone } from "@/components/ui/tones";
 import { apiFetch } from "@/lib/api-client";
 import { useSession } from "@/features/auth/auth";
 import { useTablePage } from "@/components/data-table/use-table-page";
@@ -93,23 +94,18 @@ export const SENTIMENT_BY_HEALTH: Record<Health, number> = {
   escalated: 10,
 };
 
-/** Clases de color por health: verdes los buenos, grises los neutros, ámbar y rojos los de riesgo. */
-export const HEALTH_TONE: Record<Health, string> = {
-  champion: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
-  very_happy: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
-  happy: "bg-green-500/15 text-green-600 dark:text-green-300",
-  mixed: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300",
-  neutral: "bg-foreground/10 text-muted-foreground",
-  concerned: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-  escalated: "bg-orange-500/15 text-orange-700 dark:text-orange-300",
-  at_risk: "bg-red-500/15 text-red-600 dark:text-red-300",
+/** Tono por health: los buenos en verde, los neutros en gris, los de riesgo en ámbar y rojo. */
+export const HEALTH_TONE: Record<Health, Tone> = {
+  champion: "ok",
+  very_happy: "ok",
+  happy: "ok",
+  mixed: "warn",
+  neutral: "neutral",
+  concerned: "warn",
+  escalated: "danger",
+  at_risk: "danger",
 };
-export const PRIORITY_TONE: Record<Priority, string> = {
-  critical: "bg-red-500/15 text-red-600 dark:text-red-300",
-  high: "bg-orange-500/15 text-orange-700 dark:text-orange-300",
-  medium: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
-  low: "bg-foreground/10 text-muted-foreground",
-};
+export const PRIORITY_TONE: Record<Priority, Tone> = { critical: "danger", high: "warn", medium: "info", low: "neutral" };
 
 // ---- tipos de la API -------------------------------------------------------------
 

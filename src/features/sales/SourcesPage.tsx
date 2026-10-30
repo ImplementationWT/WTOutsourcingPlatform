@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useConfirm } from "@/components/ui/confirm-context";
 import { Check, Copy, KeyRound, Loader2, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { selectClass } from "@/features/admin/TeamAssignCard";
 import { Empty, ErrorLine, Loading } from "@/features/activity/ActivityPanels";
 import { dateText } from "@/features/activity/api";
-import { cn } from "@/lib/utils";
 import {
   createSource,
   LEAD_FIELD_LABELS,
@@ -51,7 +51,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
 function KeyOnce({ source, ingestKey, onClose }: { source: LeadSource; ingestKey: string; onClose: () => void }) {
   const example = `curl -X POST ${endpointOf(source)} \\\n  -H "X-Ingest-Key: ${ingestKey}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"name":"Ana Pérez","email":"ana@empresa.pe","company":"Empresa SAC"}'`;
   return (
-    <div role="status" className="space-y-2 rounded-md border border-amber-400/30 bg-amber-500/10 p-3 text-sm">
+    <div role="status" className="space-y-2 rounded-md border border-warn/30 bg-warn/10 p-3 text-sm">
       <p className="font-medium">Clave de ingesta de {source.name}</p>
       <p className="text-xs text-muted-foreground">Cópiala ahora: no se vuelve a mostrar. Si se pierde, rota la clave.</p>
       <div className="flex flex-wrap items-center gap-2">
@@ -110,13 +110,13 @@ function MappingEditor({ source, onSaved }: { source: LeadSource; onSaved: () =>
             placeholder="campo del envío"
           />
           <span className="text-muted-foreground">→</span>
-          <select aria-label="Campo del lead" className={selectClass} value={row.to} onChange={(e) => setRows((r) => r.map((x, j) => (j === i ? { ...x, to: e.target.value as LeadField } : x)))}>
-            {LEAD_FIELDS.map((f) => (
-              <option key={f} value={f}>
-                {LEAD_FIELD_LABELS[f]}
-              </option>
-            ))}
-          </select>
+          <Select
+            label="Campo del lead"
+            className="w-auto min-w-40"
+            value={row.to}
+            options={LEAD_FIELDS.map((f) => ({ value: f, label: LEAD_FIELD_LABELS[f] }))}
+            onValueChange={(v) => setRows((r) => r.map((x, j) => (j === i ? { ...x, to: (v ?? "") as LeadField } : x)))}
+          />
           <Button size="icon-xs" variant="ghost" aria-label="Quitar fila" onClick={() => setRows((r) => r.filter((_, j) => j !== i))}>
             <Trash2 />
           </Button>
@@ -140,6 +140,7 @@ function MappingEditor({ source, onSaved }: { source: LeadSource; onSaved: () =>
 }
 
 function SourceCard({ source }: { source: LeadSource }) {
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const refresh = () => queryClient.invalidateQueries({ queryKey: salesKeys.sources });
   const [key, setKey] = useState<string | null>(null);
@@ -190,8 +191,14 @@ function SourceCard({ source }: { source: LeadSource }) {
               size="xs"
               variant="outline"
               disabled={busy !== null}
-              onClick={() => {
-                if (!window.confirm(`¿Rotar la clave de ${source.name}? La actual deja de funcionar en el acto.`)) return;
+              onClick={async () => {
+                const ok = await confirm({
+                  title: `¿Rotar la clave de ${source.name}?`,
+                  description: "La clave actual deja de funcionar en el acto: hay que poner la nueva en el formulario o la integración que envía los leads.",
+                  confirmLabel: "Rotar clave",
+                  tone: "danger",
+                });
+                if (!ok) return;
                 void run("rotate", async () => {
                   setKey((await rotateSourceKey(source.id)).ingestKey);
                   await refresh();
@@ -262,13 +269,12 @@ function NewSourceForm() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="src-kind">Tipo</Label>
-            <select id="src-kind" className={cn(selectClass, "w-full")} value={kind} onChange={(e) => setKind(e.target.value as SourceKind)}>
-              {SOURCE_KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {SOURCE_KIND_LABELS[k]}
-                </option>
-              ))}
-            </select>
+            <Select
+              id="src-kind"
+              value={kind}
+              options={SOURCE_KINDS.map((k) => ({ value: k, label: SOURCE_KIND_LABELS[k] }))}
+              onValueChange={(v) => setKind((v ?? "") as SourceKind)}
+            />
           </div>
           <Button type="submit" disabled={name.trim().length < 2 || busy}>
             {busy ? <Loader2 className="animate-spin" /> : <Plus />}

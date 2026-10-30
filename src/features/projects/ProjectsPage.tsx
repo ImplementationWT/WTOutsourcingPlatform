@@ -133,7 +133,7 @@ export default function ProjectsPage() {
       ) : isError ? (
         <Card>
           <CardContent className="flex flex-wrap items-center gap-4">
-            <AlertTriangle className="size-5 shrink-0 text-amber-400" />
+            <AlertTriangle className="size-5 shrink-0 text-warn-fg" />
             <div className="min-w-0 flex-1">
               <p className="font-medium">No se pudieron cargar los proyectos</p>
               <p className="mt-0.5 text-sm text-muted-foreground">{error.message}</p>

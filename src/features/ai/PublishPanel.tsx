@@ -51,7 +51,7 @@ export default function PublishPanel({ session, agentBusy }: { session: AiSessio
   return (
     <div className="space-y-5 p-4 text-sm">
       {review.mainTouched && (
-        <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-400/40 bg-red-500/10 p-3 text-red-200">
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-danger/40 bg-danger/10 p-3 text-danger-fg">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           Hay commits del agente directamente en main. Revísalos en GitHub: main despliega a producción.
         </div>
@@ -94,11 +94,11 @@ export default function PublishPanel({ session, agentBusy }: { session: AiSessio
                 {checks.checks.map((check) => (
                   <li key={check.name} className="flex items-center gap-2">
                     {check.status !== "completed" ? (
-                      <Loader2 className="size-3.5 animate-spin text-sky-300" />
+                      <Loader2 className="size-3.5 animate-spin text-info-fg" />
                     ) : ["success", "skipped", "neutral"].includes(check.conclusion ?? "") ? (
-                      <CheckCircle2 className="size-3.5 text-emerald-400" />
+                      <CheckCircle2 className="size-3.5 text-ok-fg" />
                     ) : (
-                      <XCircle className="size-3.5 text-red-400" />
+                      <XCircle className="size-3.5 text-danger-fg" />
                     )}
                     {check.url ? (
                       <a href={check.url} target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">
@@ -111,7 +111,7 @@ export default function PublishPanel({ session, agentBusy }: { session: AiSessio
                 ))}
               </ul>
             )}
-            {checks && checks.failed > 0 && <p className="text-red-300">Pide a Will Doo en el chat que corrija los fallos; las validaciones se repiten con cada push.</p>}
+            {checks && checks.failed > 0 && <p className="text-danger-fg">Pide a Will Doo en el chat que corrija los fallos; las validaciones se repiten con cada push.</p>}
           </div>
         </li>
 
@@ -120,7 +120,7 @@ export default function PublishPanel({ session, agentBusy }: { session: AiSessio
           <div className="min-w-0 flex-1 space-y-2">
             <p className="font-medium">3. Aprobar y desplegar</p>
             {session.status === "merged" || result ? (
-              <p className="flex flex-wrap items-center gap-2 text-emerald-300">
+              <p className="flex flex-wrap items-center gap-2 text-ok-fg">
                 <GitMerge className="size-4" />
                 Fusionado en main{(result?.deploying ?? true) ? ": el despliegue a producción está en marcha." : "."}
                 {result && (
@@ -130,7 +130,7 @@ export default function PublishPanel({ session, agentBusy }: { session: AiSessio
                 )}
               </p>
             ) : confirming ? (
-              <div className="space-y-2 rounded-lg border border-amber-400/40 bg-amber-500/10 p-3">
+              <div className="space-y-2 rounded-lg border border-warn/40 bg-warn/10 p-3">
                 <p>Se fusionará el PR en main y se desplegará a producción para el cliente. ¿Continuar?</p>
                 <div className="flex gap-2">
                   <Button size="sm" onClick={() => act(async () => setResult(await mergeAiSession(session.id)))} disabled={busy}>
@@ -165,7 +165,7 @@ export default function PublishPanel({ session, agentBusy }: { session: AiSessio
       </ol>
 
       {error && (
-        <p role="alert" className="text-red-300">
+        <p role="alert" className="text-danger-fg">
           {error}
         </p>
       )}

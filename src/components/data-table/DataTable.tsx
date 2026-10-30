@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState, useSyncExternalStore, type ReactNode } f
 import { useNavigate } from "react-router-dom";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -75,8 +76,15 @@ function useCards() {
   );
 }
 
-/** Los clics en controles de la celda (enlaces, selects, inputs) no abren el detalle. */
-const fromControl = (target: EventTarget) => target instanceof Element && Boolean(target.closest("a,button,select,input,textarea,label,[data-cell-control]"));
+/**
+ * Los clics en controles de la celda (enlaces, selects, inputs) no abren el detalle; tampoco los
+ * que llegan desde un panel en portal (las opciones de un Select), que React propaga a la fila.
+ */
+const fromControl = (event: React.MouseEvent) => {
+  const target = event.target;
+  if (!(target instanceof Element) || !event.currentTarget.contains(target)) return true;
+  return Boolean(target.closest("a,button,select,input,textarea,label,[role=combobox],[data-cell-control]"));
+};
 
 function SearchBox({ value, placeholder, onChange }: { value: string; placeholder: string; onChange: (q: string) => void }) {
   const [draft, setDraft] = useState(value);
@@ -153,20 +161,15 @@ export function DataTable<T>({
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtros">
         <SearchBox value={state.q} placeholder={searchPlaceholder} onChange={(q) => set({ q })} />
         {filters.map((f) => (
-          <select
+          <Select
             key={f.key}
-            aria-label={f.label}
-            className={tableSelectClass}
-            value={state.filters[f.key] ?? ""}
-            onChange={(e) => set({ filters: { [f.key]: e.target.value || undefined } })}
-          >
-            <option value="">{f.all}</option>
-            {f.options.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+            label={f.label}
+            value={state.filters[f.key] ?? null}
+            emptyLabel={f.all}
+            options={f.options}
+            className="w-auto max-w-56"
+            onValueChange={(v) => set({ filters: { [f.key]: v ?? undefined } })}
+          />
         ))}
         {grouping && (
           <label className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border border-input px-2.5 text-sm">
@@ -228,7 +231,7 @@ export function DataTable<T>({
                       <tr
                         key={rowKey(row)}
                         tabIndex={rowHref ? 0 : undefined}
-                        onClick={(e) => !fromControl(e.target) && open(row)}
+                        onClick={(e) => !fromControl(e) && open(row)}
                         onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && open(row)}
                         className={cn("border-b border-foreground/10 last:border-0 transition-colors", rowHref && "cursor-pointer hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.04] focus-visible:outline-none")}
                       >
@@ -269,7 +272,7 @@ export function DataTable<T>({
                     key={rowKey(row)}
                     role={rowHref ? "link" : undefined}
                     tabIndex={rowHref ? 0 : undefined}
-                    onClick={(e) => !fromControl(e.target) && open(row)}
+                    onClick={(e) => !fromControl(e) && open(row)}
                     onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && open(row)}
                     className={cn("rounded-xl border border-foreground/10 bg-foreground/[0.02] p-3", rowHref && "cursor-pointer active:bg-foreground/[0.05]")}
                   >
@@ -310,13 +313,13 @@ export function DataTable<T>({
             {pages > 1 && ` · página ${state.page} de ${pages}`}
           </p>
           <div className="flex items-center gap-2">
-            <select aria-label="Filas por página" className={tableSelectClass} value={state.pageSize} onChange={(e) => set({ pageSize: Number(e.target.value) })}>
-              {PAGE_SIZES.map((n) => (
-                <option key={n} value={n}>
-                  {n} por página
-                </option>
-              ))}
-            </select>
+            <Select
+              label="Filas por página"
+              value={String(state.pageSize)}
+              options={PAGE_SIZES.map((n) => ({ value: String(n), label: `${n} por página` }))}
+              className="w-auto"
+              onValueChange={(v) => v && set({ pageSize: Number(v) })}
+            />
             <Button size="icon-sm" variant="outline" aria-label="Página anterior" disabled={state.page <= 1} onClick={() => set({ page: state.page - 1 })}>
               <ChevronLeft />
             </Button>

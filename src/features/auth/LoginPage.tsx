@@ -84,7 +84,7 @@ export default function LoginPage() {
                 {...register("username", { onChange: () => setError(null) })}
               />
             </div>
-            {errors.username && <p className="text-xs text-red-300">{errors.username.message}</p>}
+            {errors.username && <p className="text-xs text-danger-fg">{errors.username.message}</p>}
           </div>
 
           <div className="space-y-2">
@@ -101,11 +101,11 @@ export default function LoginPage() {
                 {...register("password", { onChange: () => setError(null) })}
               />
             </div>
-            {errors.password && <p className="text-xs text-red-300">{errors.password.message}</p>}
+            {errors.password && <p className="text-xs text-danger-fg">{errors.password.message}</p>}
           </div>
 
           {error && (
-            <p role="alert" className="rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            <p role="alert" className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger-fg">
               {error}
             </p>
           )}

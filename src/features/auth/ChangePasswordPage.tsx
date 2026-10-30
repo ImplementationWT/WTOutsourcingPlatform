@@ -77,19 +77,19 @@ export function ChangePasswordForm({ glass = false, onDone }: { glass?: boolean;
       {field("current-password", "Contraseña actual", current, setCurrent, "current-password")}
       {field("new-password", "Nueva contraseña", next, setNext, "new-password")}
       {field("repeat-password", "Repite la nueva contraseña", repeat, setRepeat, "new-password")}
-      <p className={cn("text-xs", localError ? "text-red-300" : "text-muted-foreground")}>
+      <p className={cn("text-xs", localError ? "text-danger-fg" : "text-muted-foreground")}>
         {localError ?? `Mínimo ${MIN_LENGTH} caracteres. Usa una frase que no uses en otro sitio.`}
       </p>
       {error && (
-        <p role="alert" className="rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+        <p role="alert" className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger-fg">
           {error}
         </p>
       )}
-      {saved && !onDone && <p className="text-sm text-emerald-400">Contraseña actualizada.</p>}
+      {saved && !onDone && <p className="text-sm text-ok-fg">Contraseña actualizada.</p>}
       <Button
         type="submit"
         disabled={saving || Boolean(localError) || !current || !next || next !== repeat}
-        className={cn(glass && "h-11 w-full bg-white text-slate-900 hover:bg-foreground/90")}
+        className={cn(glass && "h-11 w-full bg-foreground text-background hover:bg-foreground/90")}
       >
         {saving ? <Loader2 className="animate-spin" /> : <KeyRound />}
         Cambiar contraseña

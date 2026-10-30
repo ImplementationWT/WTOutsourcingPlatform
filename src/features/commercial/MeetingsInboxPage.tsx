@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Loader2, Trash2 } from "lucide-react";
-import { tableSelectClass } from "@/components/data-table/DataTable";
+import { useConfirm } from "@/components/ui/confirm-context";
+import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Empty } from "@/features/activity/ActivityPanels";
@@ -10,10 +11,10 @@ import { assignInboxMeeting, dateText, discardInboxMeeting, inboxKey, inboxQuery
 import { useSession } from "@/features/auth/auth";
 import { opsKeys, type OpsProjectRow } from "@/features/ops/api";
 import { apiFetch } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
 
 /** Una reunión sin dueño: sus candidatos (por los correos) y a quién asignarla. */
 function InboxItem({ meeting, canAssignProjects }: { meeting: InboxMeeting; canAssignProjects: boolean }) {
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   // El CEO/CCO puede elegir cualquier proyecto, no solo los que coinciden por correo.
@@ -68,22 +69,16 @@ function InboxItem({ meeting, canAssignProjects }: { meeting: InboxMeeting; canA
       <div className="flex flex-wrap items-center gap-2">
         {options.length ? (
           <>
-            <select aria-label={`Asignar «${meeting.title}»`} className={cn(tableSelectClass, "min-w-56")} value={target} onChange={(e) => setPicked(e.target.value)}>
-              {candidates.map((c) => (
-                <option key={`${c.kind}:${c.id}`} value={`${c.kind}:${c.id}`}>
-                  {c.kind === "project" ? "Proyecto" : "Lead"}: {c.name}
-                </option>
-              ))}
-              {others.length > 0 && (
-                <optgroup label="Otros proyectos">
-                  {others.map((c) => (
-                    <option key={`project:${c.id}`} value={`project:${c.id}`}>
-                      {c.name}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
+            <Select
+              label={`Asignar «${meeting.title}»`}
+              className="w-auto min-w-56"
+              value={target || null}
+              options={[
+                ...candidates.map((c) => ({ value: `${c.kind}:${c.id}`, label: `${c.kind === "project" ? "Proyecto" : "Lead"}: ${c.name}`, description: "Coincide por correo" })),
+                ...others.map((c) => ({ value: `project:${c.id}`, label: c.name, description: "Otro proyecto" })),
+              ]}
+              onValueChange={(v) => v && setPicked(v)}
+            />
             <Button
               size="sm"
               disabled={!target || busy !== null}
@@ -104,7 +99,10 @@ function InboxItem({ meeting, canAssignProjects }: { meeting: InboxMeeting; canA
             Ningún proyecto ni lead coincide con los correos. Agrega el correo al contacto (o al lead) y vuelve a enviarla desde Read.ai, o descártala si es interna.
           </span>
         )}
-        <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => window.confirm(`¿Descartar «${meeting.title}»? No se guardará.`) && void run("discard", () => discardInboxMeeting(meeting.id))}>
+        <Button size="sm" variant="ghost" disabled={busy !== null} onClick={async () => {
+            const ok = await confirm({ title: `¿Descartar «${meeting.title}»?`, description: "La reunión no se guarda en ningún proyecto ni lead. Si la necesitas después, hay que reenviarla desde Read.ai.", confirmLabel: "Descartar", tone: "danger" });
+            if (ok) void run("discard", () => discardInboxMeeting(meeting.id));
+          }}>
           <Trash2 />
           Descartar
         </Button>

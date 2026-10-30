@@ -147,7 +147,7 @@ export default function TopicsEditor({
       </div>
       <p className="text-xs text-muted-foreground">Se guardan como topics del repositorio en GitHub: minúsculas, números y guiones.</p>
       {error && (
-        <p role="alert" className="text-xs text-red-300">
+        <p role="alert" className="text-xs text-danger-fg">
           {error}
         </p>
       )}

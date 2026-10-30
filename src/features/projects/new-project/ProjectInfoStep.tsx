@@ -1,13 +1,13 @@
-import { useFormContext, useWatch } from "react-hook-form";
+import { Controller, useFormContext, useWatch } from "react-hook-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { slugify } from "../config";
 import { fieldClass } from "./parts";
 import type { NewProjectValues } from "./schema";
 import { useTeams } from "@/features/admin/api";
-import { selectClass } from "@/features/admin/TeamAssignCard";
 import { useIsBoss } from "@/features/auth/auth";
 
 export default function ProjectInfoStep({
@@ -61,7 +61,7 @@ export default function ProjectInfoStep({
             aria-invalid={!!errors.name}
             {...nameField}
           />
-          {errors.name && <p className="text-xs text-red-400">{errors.name.message}</p>}
+          {errors.name && <p className="text-xs text-danger-fg">{errors.name.message}</p>}
         </div>
 
         <div className="space-y-2">
@@ -76,7 +76,7 @@ export default function ProjectInfoStep({
             {...slugField}
           />
           {errors.slug ? (
-            <p className="text-xs text-red-400">{errors.slug.message}</p>
+            <p className="text-xs text-danger-fg">{errors.slug.message}</p>
           ) : (
             <p className="text-xs text-muted-foreground">
               Se utilizará para nombrar el repositorio, la base de datos y el subdominio. Minúsculas,
@@ -102,22 +102,28 @@ export default function ProjectInfoStep({
             )}
             {...register("description")}
           />
-          {errors.description && <p className="text-xs text-red-400">{errors.description.message}</p>}
+          {errors.description && <p className="text-xs text-danger-fg">{errors.description.message}</p>}
         </div>
 
         {isBoss && (
           <div className="space-y-2">
             <Label htmlFor="teamId">Equipo *</Label>
-            <select id="teamId" className={cn(selectClass, "h-10 w-full", fieldClass)} aria-invalid={!!errors.teamId} {...register("teamId")}>
-              <option value="">Elige el equipo que llevará el proyecto</option>
-              {teams.data?.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
-                </option>
-              ))}
-            </select>
+            <Controller
+              control={control}
+              name="teamId"
+              render={({ field }) => (
+                <Select
+                  id="teamId"
+                  value={field.value || null}
+                  placeholder="Elige el equipo que llevará el proyecto"
+                  options={(teams.data ?? []).map((team) => ({ value: team.id, label: team.name }))}
+                  aria-invalid={!!errors.teamId}
+                  onValueChange={(v) => field.onChange(v ?? "")}
+                />
+              )}
+            />
             {errors.teamId ? (
-              <p className="text-xs text-red-400">{errors.teamId.message}</p>
+              <p className="text-xs text-danger-fg">{errors.teamId.message}</p>
             ) : (
               <p className="text-xs text-muted-foreground">Solo ese equipo (y los CEO/CCO) verá y operará el proyecto.</p>
             )}

@@ -79,7 +79,7 @@ export default function NewServerForm({ onCreated, onCancel }: { onCreated: () =
             <p className="text-xs text-muted-foreground">A la que apunta el comodín *.dominio.</p>
           </div>
           {error && (
-            <p role="alert" className="text-sm text-red-300 sm:col-span-2">
+            <p role="alert" className="text-sm text-danger-fg sm:col-span-2">
               {error}
             </p>
           )}

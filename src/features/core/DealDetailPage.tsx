@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { DatePicker } from "@/components/ui/date-picker";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink, Loader2, Plus, Save } from "lucide-react";
-import { tableSelectClass } from "@/components/data-table/DataTable";
 import { TotalCell } from "@/components/data-table/cells";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/features/auth/auth";
@@ -149,22 +150,20 @@ function DealForm({ deal }: { deal: Deal }) {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {text("title", "Nombre", undefined, "sm:col-span-2")}
         <Field label="Estado de venta" htmlFor="deal-salesStage">
-          <select id="deal-salesStage" className={cn(tableSelectClass, "w-full")} value={form.salesStage} onChange={(e) => set("salesStage", e.target.value as SalesStage)}>
-            {SALES_STAGES.map((s) => (
-              <option key={s} value={s}>
-                {SALES_STAGE_LABELS[s]}
-              </option>
-            ))}
-          </select>
+          <Select
+            id="deal-salesStage"
+            value={form.salesStage}
+            options={SALES_STAGES.map((s) => ({ value: s, label: SALES_STAGE_LABELS[s] }))}
+            onValueChange={(v) => set("salesStage", (v ?? "") as SalesStage)}
+          />
         </Field>
         <Field label="Estado" htmlFor="deal-status">
-          <select id="deal-status" className={cn(tableSelectClass, "w-full")} value={form.status} onChange={(e) => set("status", e.target.value as DealStatus)}>
-            {(statuses.includes(deal.status) ? statuses : [deal.status, ...statuses]).map((s) => (
-              <option key={s} value={s}>
-                {DEAL_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
+          <Select
+            id="deal-status"
+            value={form.status}
+            options={(statuses.includes(deal.status) ? statuses : [deal.status,...statuses]).map((s) => ({ value: s, label: DEAL_STATUS_LABELS[s] }))}
+            onValueChange={(v) => set("status", (v ?? "") as DealStatus)}
+          />
         </Field>
         <Field label="Horas" htmlFor="deal-hours">
           <Input id="deal-hours" inputMode="decimal" disabled={locked} value={form.hours} onChange={(e) => set("hours", e.target.value)} />
@@ -179,31 +178,29 @@ function DealForm({ deal }: { deal: Deal }) {
           <Input id="deal-probability" inputMode="numeric" value={form.probability} onChange={(e) => set("probability", e.target.value)} />
         </Field>
         <Field label="Cierre estimado" htmlFor="deal-expected">
-          <Input id="deal-expected" type="date" value={form.expectedCloseDate} onChange={(e) => set("expectedCloseDate", e.target.value)} />
+          <DatePicker id="deal-expected" label="Cierre estimado" value={form.expectedCloseDate || null} onValueChange={(v) => set("expectedCloseDate", v ?? "")} />
         </Field>
         <Field label="Cierre real" htmlFor="deal-actual">
-          <Input id="deal-actual" type="date" value={form.actualCloseDate} onChange={(e) => set("actualCloseDate", e.target.value)} />
+          <DatePicker id="deal-actual" label="Cierre real" value={form.actualCloseDate || null} onValueChange={(v) => set("actualCloseDate", v ?? "")} />
         </Field>
         <Field label="Tipo de venta" htmlFor="deal-saleType">
-          <select id="deal-saleType" className={cn(tableSelectClass, "w-full")} value={form.saleType} onChange={(e) => set("saleType", e.target.value)}>
-            <option value="">Sin definir</option>
-            {SALE_TYPES.map((s) => (
-              <option key={s} value={s}>
-                {SALE_TYPE_LABELS[s]}
-              </option>
-            ))}
-          </select>
+          <Select
+            id="deal-saleType"
+            value={form.saleType || null}
+            emptyLabel="Sin definir"
+            options={SALE_TYPES.map((s) => ({ value: s, label: SALE_TYPE_LABELS[s] }))}
+            onValueChange={(v) => set("saleType", (v ?? ""))}
+          />
         </Field>
         {pickContacts && (
           <Field label="Partner" htmlFor="deal-partner-id">
-            <select id="deal-partner-id" className={cn(tableSelectClass, "w-full")} value={form.partnerId} onChange={(e) => set("partnerId", e.target.value)}>
-              <option value="">Sin partner</option>
-              {partners.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.commissionPct}%)
-                </option>
-              ))}
-            </select>
+            <Select
+              id="deal-partner-id"
+              value={form.partnerId || null}
+              emptyLabel="Sin partner"
+              options={partners.map((p) => ({ value: p.id, label: `${p.name} (${p.commissionPct}%)` }))}
+              onValueChange={(v) => set("partnerId", (v ?? ""))}
+            />
           </Field>
         )}
         <Field label="Comisión del partner (%)" htmlFor="deal-partner">
@@ -215,10 +212,9 @@ function DealForm({ deal }: { deal: Deal }) {
         {text("sowUrl", "SOW (enlace)", "https://…", "sm:col-span-2")}
         {(form.salesStage === "lost" || form.lostReason) && text("lostReason", "Razón de pérdida", undefined, "sm:col-span-2 lg:col-span-4")}
         <Field label="Descripción" htmlFor="deal-description" className="sm:col-span-2 lg:col-span-4">
-          <textarea
+          <Textarea
             id="deal-description"
             rows={3}
-            className="w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
             value={form.description}
             onChange={(e) => set("description", e.target.value)}
           />
@@ -341,13 +337,12 @@ function ChangeOrders({ deal }: { deal: Deal }) {
               </span>
               <TotalCell cents={co.amountCents} currency={deal.currency} strong />
               {deal.canEdit ? (
-                <select aria-label={`Estado de ${co.description}`} className={cn(tableSelectClass, "w-full")} value={co.status} onChange={(e) => void setStatus(co.id, e.target.value as ChangeOrderStatus)}>
-                  {CHANGE_ORDER_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {CHANGE_ORDER_STATUS_LABELS[s]}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  label={`Estado de ${co.description}`}
+                  value={co.status}
+                  options={CHANGE_ORDER_STATUSES.map((s) => ({ value: s, label: CHANGE_ORDER_STATUS_LABELS[s] }))}
+                  onValueChange={(v) => void setStatus(co.id, (v ?? "") as ChangeOrderStatus)}
+                />
               ) : (
                 <span>{CHANGE_ORDER_STATUS_LABELS[co.status]}</span>
               )}

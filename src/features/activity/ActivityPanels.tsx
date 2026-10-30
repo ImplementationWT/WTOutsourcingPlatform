@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { DateTimePicker } from "@/components/ui/date-picker";
 import { ExternalLink, Loader2, Plus, RotateCw, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Input, Textarea } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -36,8 +39,6 @@ import {
 } from "./api";
 
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
-export const textareaClass =
-  "w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 export function ErrorLine({ error }: { error: string | null }) {
   return error ? (
@@ -68,7 +69,6 @@ const STATUS_BADGE: Record<Meeting["status"], { label: string; variant: "seconda
 };
 
 const CONVERSION_LABELS: Record<Conversion, string> = { task: "Crear tarea", change_order: "Crear change order", activity: "Crear actividad" };
-const inlineSelect = "h-7 rounded-md border border-input bg-transparent px-1.5 text-xs outline-none focus-visible:border-ring dark:bg-input/30";
 
 /** Deal que se puede ligar a la reunión (los del proyecto o del lead). */
 export interface MeetingDealOption {
@@ -117,7 +117,7 @@ function ActionItemRow({
     <li className={cn("rounded-md border border-foreground/10 p-2", item.status === "discarded" && "opacity-60")}>
       <div className="flex flex-wrap items-start gap-2">
         <p className={cn("min-w-0 flex-1 text-sm", item.status === "discarded" && "line-through")}>{item.text}</p>
-        <span className={cn("rounded-full px-2 py-px text-[11px] whitespace-nowrap", converted ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-foreground/10 text-muted-foreground")}>
+        <span className={cn("rounded-full px-2 py-px text-[11px] whitespace-nowrap", converted ? "bg-ok/15 text-ok-fg" : "bg-foreground/10 text-muted-foreground")}>
           {ACTION_ITEM_STATUS_LABELS[item.status]}
         </span>
       </div>
@@ -128,29 +128,24 @@ function ActionItemRow({
       </p>
       {canWork && open && (
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-          <select
-            aria-label={`Tipo de «${item.text}»`}
-            className={inlineSelect}
-            value={item.kind ?? ""}
+          <Select
+            label={`Tipo de «${item.text}»`}
+            size="sm" className="w-auto max-w-56"
+            value={item.kind ?? null}
+            emptyLabel="Sin tipo"
+            options={ACTION_ITEM_KINDS.map((k) => ({ value: k, label: ACTION_ITEM_KIND_LABELS[k] }))}
             disabled={busy !== null}
-            onChange={(e) => void run("kind", () => updateActionItem(base, meeting.id, item.id, { kind: (e.target.value || null) as ActionItemKind | null }))}
-          >
-            <option value="">Sin tipo</option>
-            {ACTION_ITEM_KINDS.map((k) => (
-              <option key={k} value={k}>
-                {ACTION_ITEM_KIND_LABELS[k]}
-              </option>
-            ))}
-          </select>
+            onValueChange={(v) => void run("kind", () => updateActionItem(base, meeting.id, item.id, { kind: v as ActionItemKind | null }))}
+          />
           {conversions.includes("change_order") && !meeting.deal && deals.length > 0 && (
-            <select aria-label={`Deal del change order de «${item.text}»`} className={inlineSelect} value={dealId} onChange={(e) => setDealId(e.target.value)}>
-              <option value="">Deal del change order</option>
-              {deals.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.dealCode} · {d.title}
-                </option>
-              ))}
-            </select>
+            <Select
+              label={`Deal del change order de «${item.text}»`}
+              size="sm" className="w-auto max-w-56"
+              value={dealId || null}
+              emptyLabel="Deal del change order"
+              options={deals.map((d) => ({ value: d.id, label: `${d.dealCode} · ${d.title}` }))}
+              onValueChange={(v) => setDealId((v ?? ""))}
+            />
           )}
           {conversions.map((to) => (
             <Button
@@ -230,9 +225,9 @@ function MeetingItem({
         )}
         {badge && <Badge variant={badge.variant}>{badge.label}</Badge>}
         {meeting.clientSentiment && (
-          <span className={cn("inline-flex h-5 items-center rounded-full px-2 text-xs font-medium", CLIENT_SENTIMENT_TONE[meeting.clientSentiment])} title="Sentimiento del cliente (lo propone el procesamiento)">
+          <StatusBadge tone={CLIENT_SENTIMENT_TONE[meeting.clientSentiment]} title="Sentimiento del cliente (lo propone el procesamiento)">
             {CLIENT_SENTIMENT_LABELS[meeting.clientSentiment]}
-          </span>
+          </StatusBadge>
         )}
         <span className="ml-auto text-xs text-muted-foreground">
           {dateText(meeting.heldAt)}
@@ -243,30 +238,33 @@ function MeetingItem({
       <div className="flex flex-wrap items-center gap-2 text-xs">
         {canWork ? (
           <>
-            <select aria-label={`Estado de proceso de «${meeting.title}»`} className={inlineSelect} value={meeting.reviewStatus} disabled={busy !== null} onChange={(e) => save("review", { reviewStatus: e.target.value as MeetingReviewStatus })}>
-              {MEETING_REVIEW_STATUSES.map((st) => (
-                <option key={st} value={st}>
-                  {REVIEW_STATUS_LABELS[st]}
-                </option>
-              ))}
-            </select>
-            <select aria-label={`Tipo de «${meeting.title}»`} className={inlineSelect} value={meeting.kind ?? ""} disabled={busy !== null} onChange={(e) => save("kind", { kind: (e.target.value || null) as MeetingKind | null })}>
-              <option value="">Tipo sin definir</option>
-              {MEETING_KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {MEETING_KIND_LABELS[k]}
-                </option>
-              ))}
-            </select>
+            <Select
+              label={`Estado de proceso de «${meeting.title}»`}
+              size="sm" className="w-auto"
+              value={meeting.reviewStatus}
+              options={MEETING_REVIEW_STATUSES.map((st) => ({ value: st, label: REVIEW_STATUS_LABELS[st] }))}
+              disabled={busy !== null}
+              onValueChange={(v) => save("review", { reviewStatus: (v ?? "") as MeetingReviewStatus })}
+            />
+            <Select
+              label={`Tipo de «${meeting.title}»`}
+              size="sm" className="w-auto"
+              value={meeting.kind ?? null}
+              emptyLabel="Tipo sin definir"
+              options={MEETING_KINDS.map((k) => ({ value: k, label: MEETING_KIND_LABELS[k] }))}
+              disabled={busy !== null}
+              onValueChange={(v) => save("kind", { kind: v as MeetingKind | null })}
+            />
             {deals.length > 0 && (
-              <select aria-label={`Deal de «${meeting.title}»`} className={inlineSelect} value={meeting.deal?.id ?? ""} disabled={busy !== null} onChange={(e) => save("deal", { dealId: e.target.value || null })}>
-                <option value="">Sin deal</option>
-                {deals.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.dealCode} · {d.title}
-                  </option>
-                ))}
-              </select>
+              <Select
+                label={`Deal de «${meeting.title}»`}
+                size="sm" className="w-auto max-w-56"
+                value={meeting.deal?.id ?? null}
+                emptyLabel="Sin deal"
+                options={deals.map((d) => ({ value: d.id, label: `${d.dealCode} · ${d.title}` }))}
+                disabled={busy !== null}
+                onValueChange={(v) => save("deal", { dealId: v })}
+              />
             )}
           </>
         ) : (
@@ -389,26 +387,25 @@ export function MeetingsPanel({ base, canWork, deals = [] }: { base: string; can
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="meet-date">Fecha y hora</Label>
-            <Input id="meet-date" type="datetime-local" value={heldAt} onChange={(e) => setHeldAt(e.target.value)} />
+            <DateTimePicker id="meet-date" label="Fecha y hora" value={heldAt} onValueChange={setHeldAt} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="meet-kind">Tipo</Label>
-            <select id="meet-kind" className="h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm dark:bg-input/30" value={kind} onChange={(e) => setKind(e.target.value as MeetingKind | "")}>
-              <option value="">Que lo sugiera Claude</option>
-              {MEETING_KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {MEETING_KIND_LABELS[k]}
-                </option>
-              ))}
-            </select>
+            <Select
+              id="meet-kind"
+              value={kind || null}
+              emptyLabel="Que lo sugiera Claude"
+              options={MEETING_KINDS.map((k) => ({ value: k, label: MEETING_KIND_LABELS[k] }))}
+              onValueChange={(v) => setKind((v ?? "") as MeetingKind | "")}
+            />
           </div>
           <div className="space-y-1.5 sm:col-span-3">
             <Label htmlFor="meet-transcript">Transcripción (opcional)</Label>
-            <textarea id="meet-transcript" rows={4} className={textareaClass} value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Pega aquí la transcripción de la reunión" />
+            <Textarea id="meet-transcript" rows={4}  value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Pega aquí la transcripción de la reunión" />
           </div>
           <div className="space-y-1.5 sm:col-span-3">
             <Label htmlFor="meet-summary">Resumen escrito a mano (opcional; si lo escribes, no se procesa)</Label>
-            <textarea id="meet-summary" rows={2} className={textareaClass} value={summary} onChange={(e) => setSummary(e.target.value)} />
+            <Textarea id="meet-summary" rows={2}  value={summary} onChange={(e) => setSummary(e.target.value)} />
           </div>
           <div className="flex gap-2 sm:col-span-3">
             <Button type="submit" disabled={title.trim().length < 3 || !heldAt || busy}>
@@ -467,7 +464,7 @@ export function UpdatesPanel({ base, canWork, onPosted }: { base: string; canWor
       {canWork && (
         <form onSubmit={add} className="space-y-2">
           <Label htmlFor="update-body">Nueva novedad</Label>
-          <textarea id="update-body" rows={3} className={textareaClass} value={body} onChange={(e) => setBody(e.target.value)} placeholder="¿Qué pasó?" />
+          <Textarea id="update-body" rows={3}  value={body} onChange={(e) => setBody(e.target.value)} placeholder="¿Qué pasó?" />
           <Button type="submit" disabled={!body.trim() || busy}>
             {busy && <Loader2 className="animate-spin" />}
             Publicar

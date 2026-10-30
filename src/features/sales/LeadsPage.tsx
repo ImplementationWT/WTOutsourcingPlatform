@@ -6,11 +6,10 @@ import { DataTable, type Column } from "@/components/data-table/DataTable";
 import { InlineSelect, RelationCell } from "@/components/data-table/cells";
 import { useTableState } from "@/components/data-table/table-state";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { selectClass } from "@/features/admin/TeamAssignCard";
-import { textareaClass } from "@/features/activity/ActivityPanels";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
@@ -105,29 +104,27 @@ function NewLeadForm({ onClose }: { onClose: () => void }) {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="lead-source">Source</Label>
-              <select id="lead-source" className={cn(selectClass, "w-full")} value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
-                <option value="">Manual</option>
-                {sources.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+              <Select
+                id="lead-source"
+                value={sourceId || null}
+                emptyLabel="Manual"
+                options={sources.map((s) => ({ value: s.id, label: s.name }))}
+                onValueChange={(v) => setSourceId((v ?? ""))}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="lead-funnel">Funnel</Label>
-              <select id="lead-funnel" className={cn(selectClass, "w-full")} value={funnel} onChange={(e) => setFunnel(e.target.value as LeadFunnel | "")}>
-                <option value="">Sin definir</option>
-                {LEAD_FUNNELS.map((f) => (
-                  <option key={f} value={f}>
-                    {LEAD_FUNNEL_LABELS[f]}
-                  </option>
-                ))}
-              </select>
+              <Select
+                id="lead-funnel"
+                value={funnel || null}
+                emptyLabel="Sin definir"
+                options={LEAD_FUNNELS.map((f) => ({ value: f, label: LEAD_FUNNEL_LABELS[f] }))}
+                onValueChange={(v) => setFunnel((v ?? "") as LeadFunnel | "")}
+              />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="lead-notes">Notas</Label>
-              <textarea id="lead-notes" rows={2} className={textareaClass} value={notes} onChange={(e) => setNotes(e.target.value)} />
+              <Textarea id="lead-notes" rows={2}  value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
           </div>
           {error && (

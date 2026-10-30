@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ConfirmProvider } from "@/components/ui/confirm-provider";
 import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
 import type { SessionUser } from "@/features/auth/auth";
 import type { CompanyRow, Contact, Deal } from "@/features/core/api";
@@ -8,6 +9,7 @@ import CompaniesPage from "@/features/core/CompaniesPage";
 import ContactDetailPage from "@/features/core/ContactDetailPage";
 import DealDetailPage from "@/features/core/DealDetailPage";
 import DealsPage from "@/features/core/DealsPage";
+import { optionLabels } from "./pick";
 import { BOSS, LEAD } from "./session";
 
 const COMMERCIAL: SessionUser = { id: "u-com", username: "marta", name: "Marta", role: "commercial", teamId: null, mustChangeCredentials: false };
@@ -61,7 +63,8 @@ function renderAt(path: string, user: SessionUser, fetchImpl: (url: string, init
   queryClient.setQueryData(["session"], user);
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
+      <ConfirmProvider>
+        <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/comercial/deals" element={<DealsPage />} />
           <Route path="/deals/:id" element={<DealDetailPage />} />
@@ -71,6 +74,7 @@ function renderAt(path: string, user: SessionUser, fetchImpl: (url: string, init
           <Route path="/comercial/clientes" element={<Navigate to="/comercial/empresas" replace />} />
         </Routes>
       </MemoryRouter>
+      </ConfirmProvider>
     </QueryClientProvider>,
   );
   return { calls };
@@ -97,8 +101,7 @@ describe("Deals", () => {
 
   it("Comercial solo elige estados hasta «Propuesto» en la celda", async () => {
     renderAt("/comercial/deals", COMMERCIAL, () => json(page([deal], { canCreate: true })));
-    const select = await screen.findByLabelText("Estado de Módulo de pedidos");
-    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Borrador", "Propuesto"]);
+    expect(await optionLabels("Estado de Módulo de pedidos")).toEqual(["Borrador", "Propuesto"]);
   });
 
   it("editar las horas en la celda guarda solo ese campo", async () => {

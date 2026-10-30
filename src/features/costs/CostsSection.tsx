@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Info, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -186,13 +186,13 @@ export default function CostsSection() {
           <Label htmlFor="costs-from" className="text-xs">
             Desde
           </Label>
-          <Input id="costs-from" type="date" value={range.from} max={range.to || undefined} onChange={(e) => setRange({ ...range, from: e.target.value })} className="w-40" />
+          <DatePicker id="costs-from" label="Desde" value={range.from || null} max={range.to || undefined} onValueChange={(v) => setRange({ ...range, from: v ?? "" })} className="w-44" />
         </div>
         <div className="space-y-1">
           <Label htmlFor="costs-to" className="text-xs">
             Hasta
           </Label>
-          <Input id="costs-to" type="date" value={range.to} min={range.from || undefined} onChange={(e) => setRange({ ...range, to: e.target.value })} className="w-40" />
+          <DatePicker id="costs-to" label="Hasta" value={range.to || null} min={range.from || undefined} onValueChange={(v) => setRange({ ...range, to: v ?? "" })} className="w-44" />
         </div>
         <Button variant="ghost" onClick={() => setRange(defaultRange())}>
           Este mes
@@ -202,8 +202,8 @@ export default function CostsSection() {
         </Button>
       </div>
 
-      <p className="flex items-start gap-2 rounded-lg border border-sky-400/20 bg-sky-500/5 px-3 py-2 text-sm text-muted-foreground">
-        <Info className="mt-0.5 size-4 shrink-0 text-sky-400" />
+      <p className="flex items-start gap-2 rounded-lg border border-info/20 bg-info/5 px-3 py-2 text-sm text-muted-foreground">
+        <Info className="mt-0.5 size-4 shrink-0 text-info-fg" />
         Precio de lista que informa Anthropic por sesión, en USD. No es la factura: descuentos, créditos o impuestos no se reflejan.
       </p>
 
@@ -214,7 +214,7 @@ export default function CostsSection() {
           ))}
         </div>
       ) : summary.isError || !data ? (
-        <p className="text-sm text-red-300">{summary.error?.message ?? "No se pudieron cargar los costos."}</p>
+        <p className="text-sm text-danger-fg">{summary.error?.message ?? "No se pudieron cargar los costos."}</p>
       ) : (
         <>
           <div className={GRID}>
@@ -266,7 +266,7 @@ export default function CostsSection() {
                 title="Gasto por persona"
                 description="Según quién inició cada sesión."
                 rows={data.byPerson.slice(0, 10)}
-                barClass="bg-sky-400/80"
+                barClass="bg-info/80"
                 label={(row) => (
                   <>
                     {row.name} <span className="font-mono text-xs text-muted-foreground">{row.username}</span>

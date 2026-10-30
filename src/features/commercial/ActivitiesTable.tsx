@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Loader2, Plus, X } from "lucide-react";
-import { DataTable, tableSelectClass, type Column } from "@/components/data-table/DataTable";
+import { DataTable, type Column } from "@/components/data-table/DataTable";
 import { InlineSelect, RelationCell } from "@/components/data-table/cells";
 import { useTableState } from "@/components/data-table/table-state";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useOwners } from "@/features/sales/api";
@@ -60,28 +62,26 @@ function NewActivityForm({ leadId, dealId, onClose }: { leadId?: string; dealId?
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="act-kind">Tipo</Label>
-        <select id="act-kind" className={cn(tableSelectClass, "w-full")} value={kind} onChange={(e) => setKind(e.target.value as ActivityKind)}>
-          {ACTIVITY_KINDS.map((k) => (
-            <option key={k} value={k}>
-              {ACTIVITY_KIND_LABELS[k]}
-            </option>
-          ))}
-        </select>
+        <Select
+          id="act-kind"
+          value={kind}
+          options={ACTIVITY_KINDS.map((k) => ({ value: k, label: ACTIVITY_KIND_LABELS[k] }))}
+          onValueChange={(v) => setKind((v ?? "") as ActivityKind)}
+        />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="act-due">Vence</Label>
-        <Input id="act-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        <DatePicker id="act-due" label="Vence" value={dueDate || null} onValueChange={(v) => setDueDate(v ?? "")} />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="act-owner">Responsable</Label>
-        <select id="act-owner" className={cn(tableSelectClass, "w-full")} value={ownerUserId} onChange={(e) => setOwnerUserId(e.target.value)}>
-          <option value="">Yo</option>
-          {owners.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </select>
+        <Select
+          id="act-owner"
+          value={ownerUserId || null}
+          emptyLabel="Yo"
+          options={owners.map((o) => ({ value: o.id, label: o.name }))}
+          onValueChange={(v) => setOwnerUserId((v ?? ""))}
+        />
       </div>
       <div className="flex gap-1">
         <Button type="submit" disabled={!valid || busy}>

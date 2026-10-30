@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ConfirmProvider } from "@/components/ui/confirm-provider";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { SessionUser } from "@/features/auth/auth";
 import ActivitiesPage from "@/features/commercial/ActivitiesPage";
@@ -8,6 +9,7 @@ import MeetingsInboxPage from "@/features/commercial/MeetingsInboxPage";
 import PartnersPage from "@/features/commercial/PartnersPage";
 import ProposalDetailPage from "@/features/commercial/ProposalDetailPage";
 import ProposalsPage from "@/features/commercial/ProposalsPage";
+import { optionLabels, pick } from "./pick";
 import { BOSS } from "./session";
 
 const COMMERCIAL: SessionUser = { id: "u-com", username: "marta", name: "Marta", role: "commercial", teamId: null, mustChangeCredentials: false };
@@ -25,7 +27,8 @@ function renderAt(path: string, user: SessionUser, fetchImpl: (url: string, init
   queryClient.setQueryData(["session"], user);
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
+      <ConfirmProvider>
+        <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/comercial/actividades" element={<ActivitiesPage />} />
           <Route path="/comercial/partners" element={<PartnersPage />} />
@@ -35,6 +38,7 @@ function renderAt(path: string, user: SessionUser, fetchImpl: (url: string, init
           <Route path="/operativa/:id" element={<p>Proyecto abierto</p>} />
         </Routes>
       </MemoryRouter>
+      </ConfirmProvider>
     </QueryClientProvider>,
   );
   return { calls };
@@ -47,7 +51,7 @@ describe("actividades y partners", () => {
     const table = await screen.findByRole("table", { name: "Actividades" });
     expect(within(table).getByText(/vencida/)).toBeTruthy();
     expect(within(table).getByRole("link", { name: "Manpersa" }).getAttribute("href")).toBe("/comercial/leads/l1");
-    fireEvent.change(screen.getByLabelText("Estado de Llamar a Francisco"), { target: { value: "done" } });
+    await pick("Estado de Llamar a Francisco", "Hecha");
     await waitFor(() => expect(calls.some((c) => c.init?.method === "PATCH")).toBe(true));
     expect(JSON.parse(String(calls.find((c) => c.init?.method === "PATCH")!.init?.body))).toEqual({ status: "done" });
   });
@@ -155,13 +159,14 @@ describe("reuniones por asignar", () => {
   });
 
   it("Comercial solo ve los leads candidatos; descartar pide confirmación", async () => {
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const { calls } = renderAt("/comercial/reuniones", COMMERCIAL, (_url, init) => (init?.method === "DELETE" ? json({ ok: true }) : json({ meetings: [inbox] })));
-    const select = await screen.findByLabelText("Asignar «Sprint review Acme»");
-    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Lead: Acme (lead)"]);
+    expect(await optionLabels("Asignar «Sprint review Acme»")).toEqual(["Lead: Acme (lead)Coincide por correo"]);
     fireEvent.click(screen.getByRole("button", { name: /Descartar/ }));
+    // El diálogo dice qué se pierde; sin confirmar no se borra nada.
+    const dialog = await screen.findByRole("alertdialog", { name: "¿Descartar «Sprint review Acme»?" });
+    expect(within(dialog).getByText(/hay que reenviarla desde Read.ai/)).toBeTruthy();
+    expect(calls.some((c) => c.init?.method === "DELETE")).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Descartar" }));
     await waitFor(() => expect(calls.some((c) => c.init?.method === "DELETE" && c.url === "/api/meetings/inbox/m1")).toBe(true));
-    expect(confirm).toHaveBeenCalled();
-    confirm.mockRestore();
   });
 });

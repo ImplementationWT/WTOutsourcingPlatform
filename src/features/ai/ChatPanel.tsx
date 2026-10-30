@@ -10,9 +10,6 @@ import { confirmAiTool, interruptAi, sendAiMessage } from "./api";
 import type { ChatItem, ToolCall } from "./useAiEvents";
 import { useMarkdownAttachments } from "./useMarkdownAttachments";
 
-export const textareaClass =
-  "w-full min-w-0 resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 dark:bg-input/30";
-
 const TOOL_ICONS: Record<string, typeof Terminal> = { bash: Terminal, read: FileText, write: FileText, edit: FileText, glob: Search, grep: Search };
 const TOOL_VERBS: Record<string, string> = { bash: "Ejecutó", read: "Leyó", write: "Escribió", edit: "Editó", glob: "Buscó", grep: "Buscó" };
 
@@ -31,12 +28,12 @@ function ToolRow({ call }: { call: ToolCall }) {
         className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-xs text-muted-foreground hover:bg-foreground/5"
       >
         <ChevronRight className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")} />
-        <Icon className={cn("size-3.5 shrink-0", failed && "text-red-400")} />
+        <Icon className={cn("size-3.5 shrink-0", failed && "text-danger-fg")} />
         <span className="shrink-0">{TOOL_VERBS[call.tool] ?? call.tool}</span>
         <code className="truncate font-mono text-foreground/80">{call.summary}</code>
         {!call.result && !failed && <Loader2 className="ml-auto size-3 shrink-0 animate-spin" />}
-        {call.denied && <span className="ml-auto shrink-0 text-red-400">bloqueado</span>}
-        {call.confirmation?.allowed === false && <span className="ml-auto shrink-0 text-red-400">denegado</span>}
+        {call.denied && <span className="ml-auto shrink-0 text-danger-fg">bloqueado</span>}
+        {call.confirmation?.allowed === false && <span className="ml-auto shrink-0 text-danger-fg">denegado</span>}
       </button>
       {open && (
         <pre className="mt-1 mb-2 ml-6 max-h-72 overflow-auto rounded-md border border-foreground/10 bg-foreground/5 p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
@@ -64,7 +61,7 @@ function Steps({ calls, live }: { calls: ToolCall[]; live: boolean }) {
         {running ? <Loader2 className="size-3.5 shrink-0 animate-spin text-brand-300" /> : <Wrench className="size-3.5 shrink-0" />}
         <span className="shrink-0">
           {running ? "Trabajando" : "Trabajó"} en {calls.length} paso{calls.length === 1 ? "" : "s"}
-          {failed > 0 && <span className="text-red-400"> · {failed} con error</span>}
+          {failed > 0 && <span className="text-danger-fg"> · {failed} con error</span>}
         </span>
         {!open && (
           <span className="truncate text-foreground/60">
@@ -98,7 +95,7 @@ export function WillDooAvatar({ className }: { className?: string }) {
 function Message({ item }: { item: Extract<ChatItem, { kind: "user" | "assistant" | "error" }> }) {
   if (item.kind === "error") {
     return (
-      <div role="alert" className="ml-10 flex items-start gap-2 rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+      <div role="alert" className="ml-10 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger-fg">
         <AlertTriangle className="mt-0.5 size-4 shrink-0" />
         {item.message}
       </div>
@@ -202,9 +199,9 @@ export default function ChatPanel({
           )}
 
           {pending.map((call) => (
-            <div key={call.id} className="ml-10 space-y-2 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-sm">
+            <div key={call.id} className="ml-10 space-y-2 rounded-xl border border-warn/40 bg-warn/10 p-3 text-sm">
               <p className="flex items-center gap-2 font-medium">
-                <ShieldAlert className="size-4 text-amber-300" />
+                <ShieldAlert className="size-4 text-warn-fg" />
                 Will Doo pide permiso para este paso
               </p>
               <code className="block rounded bg-background/60 px-2 py-1 font-mono text-xs break-all">{call.summary}</code>
@@ -232,7 +229,7 @@ export default function ChatPanel({
               )}
             </div>
           )}
-          {connection === "lost" && <p className="ml-10 text-xs text-amber-300">Se perdió la conexión con Will Doo. Reconectando…</p>}
+          {connection === "lost" && <p className="ml-10 text-xs text-warn-fg">Se perdió la conexión con Will Doo. Reconectando…</p>}
           <div ref={bottom} />
         </div>
       </div>
@@ -241,7 +238,7 @@ export default function ChatPanel({
         {active ? (
           <>
             {error && (
-              <p role="alert" className="mb-2 text-xs text-red-300">
+              <p role="alert" className="mb-2 text-xs text-danger-fg">
                 {error}
               </p>
             )}

@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useConfirm } from "@/components/ui/confirm-context";
 import { Check, Copy, Eye, EyeOff, KeyRound, Loader2, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { selectClass } from "@/features/admin/TeamAssignCard";
 import { ApiError } from "@/lib/api-client";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -130,25 +131,23 @@ export function TasksTab({ projectId, teamId, canWork, canManage, currentUserId 
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="task-deal">Deal</Label>
-            <select id="task-deal" className={cn(selectClass, "w-full")} value={dealId} onChange={(e) => setDealId(e.target.value)}>
-              <option value="">Sin deal</option>
-              {(deals ?? []).map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.dealCode} · {d.title}
-                </option>
-              ))}
-            </select>
+            <Select
+              id="task-deal"
+              value={dealId || null}
+              emptyLabel="Sin deal"
+              options={(deals ?? []).map((d) => ({ value: d.id, label: `${d.dealCode} · ${d.title}` }))}
+              onValueChange={(v) => setDealId((v ?? ""))}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="task-assignee">Responsable</Label>
-            <select id="task-assignee" className={cn(selectClass, "w-full")} value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
-              <option value="">Sin asignar</option>
-              {members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
+            <Select
+              id="task-assignee"
+              value={assigneeId || null}
+              emptyLabel="Sin asignar"
+              options={members.map((m) => ({ value: m.id, label: m.name }))}
+              onValueChange={(v) => setAssigneeId((v ?? ""))}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="task-hours">Horas</Label>
@@ -182,13 +181,12 @@ export function TasksTab({ projectId, teamId, canWork, canManage, currentUserId 
                 <p className="truncate text-sm">{task.assigneeName ?? "Sin asignar"}</p>
                 <p className="text-sm tabular-nums text-muted-foreground">{hoursText(task.estimatedHours)}</p>
                 {editable ? (
-                  <select aria-label={`Estado de ${task.title}`} className={cn(selectClass, "w-full")} value={task.status} onChange={(e) => void setStatus(task, e.target.value as TaskStatus)}>
-                    {TASK_STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {TASK_STATUS_LABELS[s]}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    label={`Estado de ${task.title}`}
+                    value={task.status}
+                    options={TASK_STATUSES.map((s) => ({ value: s, label: TASK_STATUS_LABELS[s] }))}
+                    onValueChange={(v) => void setStatus(task, (v ?? "") as TaskStatus)}
+                  />
                 ) : (
                   <Badge variant="outline">{TASK_STATUS_LABELS[task.status]}</Badge>
                 )}
@@ -211,7 +209,7 @@ function RevealedValue({ username, credential, onHide }: { username: string | nu
     return () => window.clearTimeout(timer);
   }, [onHide]);
   return (
-    <div role="status" className="mt-2 rounded-md border border-amber-400/30 bg-amber-500/10 p-3 text-sm">
+    <div role="status" className="mt-2 rounded-md border border-warn/30 bg-warn/10 p-3 text-sm">
       {username && (
         <p className="text-xs text-muted-foreground">
           Usuario: <span className="font-mono text-foreground">{username}</span>
@@ -241,6 +239,7 @@ function RevealedValue({ username, credential, onHide }: { username: string | nu
 }
 
 function AccountRow({ projectId, account, canManage }: { projectId: string; account: VaultAccount; canManage: boolean }) {
+  const confirm = useConfirm();
   const refresh = useRefresh(projectId);
   const [revealed, setRevealed] = useState<{ username: string | null; credential: string } | null>(null);
   const [rotating, setRotating] = useState(false);
@@ -305,8 +304,14 @@ function AccountRow({ projectId, account, canManage }: { projectId: string; acco
               variant="ghost"
               aria-label={`Eliminar ${account.label}`}
               disabled={busy !== null}
-              onClick={() => {
-                if (!window.confirm(`¿Eliminar la cuenta "${account.label}"? No se puede deshacer.`)) return;
+              onClick={async () => {
+                const ok = await confirm({
+                  title: `¿Eliminar la cuenta «${account.label}»?`,
+                  description: "Se borran su usuario y su clave guardados en el vault. No se puede deshacer.",
+                  confirmLabel: "Eliminar cuenta",
+                  tone: "danger",
+                });
+                if (!ok) return;
                 void run("delete", async () => {
                   await deleteAccount(projectId, account.id);
                   await refresh();
@@ -391,13 +396,12 @@ export function AccountsTab({ projectId, canManage }: { projectId: string; canMa
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="acc-kind">Tipo</Label>
-            <select id="acc-kind" className={cn(selectClass, "w-full")} value={kind} onChange={(e) => setKind(e.target.value as AccountKind)}>
-              {ACCOUNT_KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {ACCOUNT_KIND_LABELS[k]}
-                </option>
-              ))}
-            </select>
+            <Select
+              id="acc-kind"
+              value={kind}
+              options={ACCOUNT_KINDS.map((k) => ({ value: k, label: ACCOUNT_KIND_LABELS[k] }))}
+              onValueChange={(v) => setKind((v ?? "") as AccountKind)}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="acc-url">Enlace (opcional)</Label>
@@ -492,14 +496,13 @@ export function ProposalsTab({ projectId, canManage }: { projectId: string; canM
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="prop-deal">Deal</Label>
-            <select id="prop-deal" className={cn(selectClass, "w-full")} value={dealId} onChange={(e) => setDealId(e.target.value)}>
-              <option value="">Sin deal</option>
-              {(deals ?? []).map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.dealCode} · {d.title}
-                </option>
-              ))}
-            </select>
+            <Select
+              id="prop-deal"
+              value={dealId || null}
+              emptyLabel="Sin deal"
+              options={(deals ?? []).map((d) => ({ value: d.id, label: `${d.dealCode} · ${d.title}` }))}
+              onValueChange={(v) => setDealId((v ?? ""))}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="prop-amount">Monto (USD)</Label>
@@ -532,13 +535,12 @@ export function ProposalsTab({ projectId, canManage }: { projectId: string; canM
               <p className="text-sm tabular-nums">{p.amountCents !== null ? money(p.amountCents, p.currency) : "—"}</p>
               <p className="text-xs text-muted-foreground">{p.sentAt ? `Enviada ${dateText(p.sentAt)}` : ""}</p>
               {canManage ? (
-                <select aria-label={`Estado de ${p.title}`} className={cn(selectClass, "w-full")} value={p.status} onChange={(e) => void setStatus(p, e.target.value as ProposalStatus)}>
-                  {PROPOSAL_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {PROPOSAL_STATUS_LABELS[s]}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  label={`Estado de ${p.title}`}
+                  value={p.status}
+                  options={PROPOSAL_STATUSES.map((s) => ({ value: s, label: PROPOSAL_STATUS_LABELS[s] }))}
+                  onValueChange={(v) => void setStatus(p, (v ?? "") as ProposalStatus)}
+                />
               ) : (
                 <Badge variant="outline">{PROPOSAL_STATUS_LABELS[p.status]}</Badge>
               )}

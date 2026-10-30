@@ -61,7 +61,7 @@ export function AttachmentList({ state }: { state: MarkdownAttachmentsState }) {
         </ul>
       )}
       {state.error && (
-        <p role="alert" className="text-xs text-red-300">
+        <p role="alert" className="text-xs text-danger-fg">
           {state.error}
         </p>
       )}

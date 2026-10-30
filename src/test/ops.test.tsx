@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ConfirmProvider } from "@/components/ui/confirm-provider";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import AppSidebar from "@/components/layout/AppSidebar";
 import OpsProjectDetailPage from "@/features/ops/OpsProjectDetailPage";
 import OpsProjectsPage from "@/features/ops/OpsProjectsPage";
 import type { OpsProject, OpsProjectRow } from "@/features/ops/api";
 import type { SessionUser } from "@/features/auth/auth";
+import { pick } from "./pick";
 import { BOSS, LEAD, withSession } from "./session";
 
 const COMMERCIAL: SessionUser = { id: "u-com", username: "marta", name: "Marta", role: "commercial", teamId: null, mustChangeCredentials: false };
@@ -59,13 +61,15 @@ function renderAt(path: string, user: SessionUser, fetchImpl?: typeof fetch) {
   const queryClient = withSession(new QueryClient({ defaultOptions: { queries: { retry: false } } }), user);
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
+      <ConfirmProvider>
+        <MemoryRouter initialEntries={[path]}>
         <AppSidebar />
         <Routes>
           <Route path="/operativa" element={<OpsProjectsPage />} />
           <Route path="/operativa/:id" element={<OpsProjectDetailPage />} />
         </Routes>
       </MemoryRouter>
+      </ConfirmProvider>
     </QueryClientProvider>,
   );
   return queryClient;
@@ -142,7 +146,7 @@ describe("tabla de proyectos (DataTable)", () => {
       return json(page([], { total: 80 }));
     }) as typeof fetch);
     await waitFor(() => expect(urls.some((u) => u.includes("page=3"))).toBe(true));
-    fireEvent.change(screen.getByLabelText("Filtrar por health"), { target: { value: "at_risk" } });
+    await pick("Filtrar por health", "At Risk");
     await waitFor(() => expect(urls.some((u) => u.includes("health=at_risk") && u.includes("page=1"))).toBe(true));
     fireEvent.change(screen.getByLabelText("Buscar"), { target: { value: "manpersa" } });
     await waitFor(() => expect(urls.some((u) => u.includes("q=manpersa"))).toBe(true));
@@ -171,7 +175,7 @@ describe("tabla de proyectos (DataTable)", () => {
       if (init?.method === "PATCH") return json({ project: { ...project, health: "happy" } });
       return json(page([{ ...listItem, canManage: true }]));
     }) as typeof fetch);
-    fireEvent.change(await screen.findByLabelText("Health de Automatización Manpersa"), { target: { value: "happy" } });
+    await pick("Health de Automatización Manpersa", "Happy");
     await waitFor(() => expect(calls.some((c) => c.init?.method === "PATCH")).toBe(true));
     const patch = calls.find((c) => c.init?.method === "PATCH")!;
     expect(patch.url).toBe(`/api/ops/projects/${project.id}`);

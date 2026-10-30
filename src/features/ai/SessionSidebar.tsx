@@ -6,7 +6,7 @@ import type { AiSession } from "@/types/ai";
 import { LOCALE } from "@/lib/format";
 
 const STATUS: Record<AiSession["status"], { label: string; dot: string }> = {
-  active: { label: "En curso", dot: "bg-emerald-400" },
+  active: { label: "En curso", dot: "bg-ok" },
   merged: { label: "Publicada", dot: "bg-brand-400" },
   closed: { label: "Cerrada", dot: "bg-foreground/30" },
 };
@@ -128,7 +128,7 @@ export default function SessionSidebar({
                   onClick={() => setConfirming(session.id)}
                   aria-label={`Borrar ${session.title}`}
                   title="Borrar conversación"
-                  className="absolute top-2 right-2 rounded p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-foreground/10 hover:text-red-300 focus-visible:opacity-100"
+                  className="absolute top-2 right-2 rounded p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-foreground/10 hover:text-danger-fg focus-visible:opacity-100"
                 >
                   <Trash2 className="size-3.5" />
                 </button>
@@ -140,7 +140,7 @@ export default function SessionSidebar({
       </nav>
 
       {error && (
-        <p role="alert" className="px-4 pb-2 text-xs text-red-300">
+        <p role="alert" className="px-4 pb-2 text-xs text-danger-fg">
           {error}
         </p>
       )}

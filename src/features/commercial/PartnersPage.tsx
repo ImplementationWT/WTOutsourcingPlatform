@@ -2,10 +2,11 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, X } from "lucide-react";
-import { DataTable, tableSelectClass, type Column } from "@/components/data-table/DataTable";
+import { DataTable, type Column } from "@/components/data-table/DataTable";
 import { TotalCell } from "@/components/data-table/cells";
 import { useTableState } from "@/components/data-table/table-state";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -62,13 +63,12 @@ export function PartnerForm({ partner, onClose }: { partner?: Partner; onClose: 
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="pt-kind">Tipo</Label>
-          <select id="pt-kind" className={cn(tableSelectClass, "w-full")} value={kind} onChange={(e) => setKind(e.target.value as PartnerKind)}>
-            {PARTNER_KINDS.map((k) => (
-              <option key={k} value={k}>
-                {PARTNER_KIND_LABELS[k]}
-              </option>
-            ))}
-          </select>
+          <Select
+            id="pt-kind"
+            value={kind}
+            options={PARTNER_KINDS.map((k) => ({ value: k, label: PARTNER_KIND_LABELS[k] }))}
+            onValueChange={(v) => setKind((v ?? "") as PartnerKind)}
+          />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="pt-pct">Comisión por defecto (%)</Label>

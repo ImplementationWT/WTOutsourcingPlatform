@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, KeyRound, Loader2, Lock, Plus, Power, UserPlus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,7 +23,6 @@ import {
   useAdminTeams,
   useAdminUsers,
 } from "./api";
-import { selectClass } from "./TeamAssignCard";
 
 const ROLES: UserRole[] = ["developer", "lead", "commercial", "finance", "boss"];
 
@@ -30,7 +30,7 @@ const ROLES: UserRole[] = ["developer", "lead", "commercial", "finance", "boss"]
 function TemporaryPassword({ username, password, onClose }: { username: string; password: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div role="status" className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-4 text-sm">
+    <div role="status" className="rounded-lg border border-warn/30 bg-warn/10 p-4 text-sm">
       <p className="font-medium">Contraseña temporal de {username}</p>
       <p className="mt-1 text-muted-foreground">Solo se muestra ahora. Entrégala por un canal seguro; tendrá que cambiarla al entrar.</p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -93,20 +93,15 @@ function TeamsCard({ teams, users }: { teams: AdminTeam[]; users: AdminUser[] })
                 <span className="text-muted-foreground tabular-nums">
                   {team.projects} {team.projects === 1 ? "proyecto" : "proyectos"}
                 </span>
-                <select
-                  aria-label={`Líder de ${team.name}`}
-                  className={selectClass}
-                  value={team.leadUserId ?? ""}
+                <Select
+                  label={`Líder de ${team.name}`}
+                  size="sm" className="w-auto min-w-40"
+                  value={team.leadUserId ?? null}
+                  emptyLabel="Sin líder"
+                  options={leads.map((u) => ({ value: u.id, label: u.name }))}
                   disabled={busy !== null}
-                  onChange={(e) => run(team.id, () => updateTeam(team.id, { leadUserId: e.target.value || null }))}
-                >
-                  <option value="">Sin líder</option>
-                  {leads.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={(v) => run(team.id, () => updateTeam(team.id, { leadUserId: v }))}
+                />
                 {busy === team.id && <Loader2 className="size-4 animate-spin" />}
               </li>
             );
@@ -129,7 +124,7 @@ function TeamsCard({ teams, users }: { teams: AdminTeam[]; users: AdminUser[] })
             Crear equipo
           </Button>
         </form>
-        {error && <p className="text-sm text-red-300">{error}</p>}
+        {error && <p className="text-sm text-danger-fg">{error}</p>}
       </CardContent>
     </Card>
   );
@@ -171,25 +166,24 @@ function NewUserForm({ teams, onCreated }: { teams: AdminTeam[]; onCreated: (use
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="space-y-1.5">
           <Label htmlFor="new-role">1. Rol</Label>
-          <select id="new-role" className={cn(selectClass, "w-full")} value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {ROLE_LABELS[r]}
-              </option>
-            ))}
-          </select>
+          <Select
+            id="new-role"
+            value={role}
+            options={ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
+            onValueChange={(v) => setRole((v ?? "") as UserRole)}
+          />
         </div>
         {needsTeam ? (
           <div className="space-y-1.5">
             <Label htmlFor="new-team">2. Equipo</Label>
-            <select id="new-team" className={cn(selectClass, "w-full")} value={teamId} disabled={!teams.length} onChange={(e) => setTeamId(e.target.value)}>
-              <option value="">{teams.length ? "Elige un equipo" : "Primero crea un equipo"}</option>
-              {teams.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+            <Select
+              id="new-team"
+              value={teamId || null}
+              emptyLabel={teams.length ? "Elige un equipo" : "Primero crea un equipo"}
+              options={teams.map((t) => ({ value: t.id, label: t.name }))}
+              disabled={!teams.length}
+              onValueChange={(v) => setTeamId((v ?? ""))}
+            />
           </div>
         ) : (
           <div className="space-y-1.5">
@@ -213,7 +207,7 @@ function NewUserForm({ teams, onCreated }: { teams: AdminTeam[]; onCreated: (use
         </Button>
         {needsTeam && !teamId && <span className="text-xs text-muted-foreground">Asigna un equipo antes de crear el usuario.</span>}
       </div>
-      {error && <p className="text-sm text-red-300">{error}</p>}
+      {error && <p className="text-sm text-danger-fg">{error}</p>}
     </form>
   );
 }
@@ -257,38 +251,26 @@ function UserRow({ user, teams, self, onPassword }: { user: AdminUser; teams: Ad
           )}
           {user.mustChangeCredentials && user.active && <Badge variant="outline">Contraseña temporal</Badge>}
         </div>
-        <select
-          aria-label={`Rol de ${user.username}`}
-          className={cn(selectClass, "lg:w-full")}
+        <Select
+          label={`Rol de ${user.username}`}
           value={user.role}
+          options={ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
           disabled={busy !== null || self}
-          onChange={(e) => {
-            const role = e.target.value as UserRole;
+          onValueChange={(v) => {
+            const role = (v ?? "") as UserRole;
             // Pasar a lead/developer exige equipo: se mantiene el actual o el primero.
             const teamId = TEAMLESS_ROLES.includes(role) ? null : (user.teamId ?? teams[0]?.id ?? null);
             void run("role", () => updateUser(user.id, { role, teamId }));
           }}
-        >
-          {ROLES.map((r) => (
-            <option key={r} value={r}>
-              {ROLE_LABELS[r]}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label={`Equipo de ${user.username}`}
-          className={cn(selectClass, "lg:w-full")}
-          value={user.teamId ?? ""}
+        />
+        <Select
+          label={`Equipo de ${user.username}`}
+          value={user.teamId ?? null}
+          emptyLabel={TEAMLESS_ROLES.includes(user.role) ? "Sin equipo" : undefined}
+          options={teams.map((t) => ({ value: t.id, label: t.name }))}
           disabled={busy !== null || TEAMLESS_ROLES.includes(user.role)}
-          onChange={(e) => void run("team", () => updateUser(user.id, { teamId: e.target.value || null }))}
-        >
-          {TEAMLESS_ROLES.includes(user.role) && <option value="">Sin equipo</option>}
-          {teams.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
+          onValueChange={(v) => void run("team", () => updateUser(user.id, { teamId: v }))}
+        />
         <Button
           size="xs"
           variant="outline"
@@ -308,7 +290,7 @@ function UserRow({ user, teams, self, onPassword }: { user: AdminUser; teams: Ad
           </Button>
         )}
       </div>
-      {error && <p className="text-xs text-red-300">{error}</p>}
+      {error && <p className="text-xs text-danger-fg">{error}</p>}
     </li>
   );
 }
@@ -335,7 +317,7 @@ export default function UsersPage() {
       {users.isLoading || teams.isLoading ? (
         <Skeleton className="h-64 rounded-xl" />
       ) : users.isError || teams.isError ? (
-        <p className="text-sm text-red-300">{(users.error ?? teams.error)?.message}</p>
+        <p className="text-sm text-danger-fg">{(users.error ?? teams.error)?.message}</p>
       ) : (
         <>
           <TeamsCard teams={teams.data ?? []} users={users.data ?? []} />

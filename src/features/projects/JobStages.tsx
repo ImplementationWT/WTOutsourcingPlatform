@@ -8,11 +8,11 @@ function SubStepIcon({ status }: { status: SubStep["status"] }) {
     case "running":
       return <Loader2 className="size-3.5 animate-spin text-brand-300" aria-label="En curso" />;
     case "done":
-      return <Check className="size-3.5 text-emerald-400" aria-label="Hecho" />;
+      return <Check className="size-3.5 text-ok-fg" aria-label="Hecho" />;
     case "skipped":
       return <Minus className="size-3.5 text-muted-foreground" aria-label="Omitido" />;
     case "failed":
-      return <X className="size-3.5 text-red-400" aria-label="Falló" />;
+      return <X className="size-3.5 text-danger-fg" aria-label="Falló" />;
     default:
       return <Circle className="size-2 fill-foreground/15 text-transparent" aria-label="Pendiente" />;
   }
@@ -51,13 +51,13 @@ function SubSteps({ stage }: { stage: JobStage }) {
                     "text-sm",
                     step.status === "pending" && "text-muted-foreground/70",
                     step.status === "running" && "font-medium text-foreground",
-                    step.status === "failed" && "text-red-200",
+                    step.status === "failed" && "text-danger-fg",
                   )}
                 >
                   {step.label}
                 </p>
                 {step.detail && step.status !== "pending" && (
-                  <p className={cn("text-xs break-words", step.status === "failed" ? "text-red-300" : "text-muted-foreground")}>
+                  <p className={cn("text-xs break-words", step.status === "failed" ? "text-danger-fg" : "text-muted-foreground")}>
                     {step.detail}
                   </p>
                 )}
@@ -75,9 +75,9 @@ function StageIcon({ status }: { status: JobStage["status"] }) {
     case "running":
       return <Loader2 className="size-5 animate-spin text-brand-300" aria-label="En curso" />;
     case "succeeded":
-      return <CheckCircle2 className="size-5 text-emerald-400" aria-label="Completada" />;
+      return <CheckCircle2 className="size-5 text-ok-fg" aria-label="Completada" />;
     case "failed":
-      return <XCircle className="size-5 text-red-400" aria-label="Fallida" />;
+      return <XCircle className="size-5 text-danger-fg" aria-label="Fallida" />;
     default:
       return <Circle className="size-5 text-foreground/20" aria-label="Pendiente" />;
   }
@@ -101,7 +101,7 @@ export default function JobStages({ job }: { job: Job }) {
         <div
           className={cn(
             "h-full rounded-full transition-[width] duration-500",
-            job.status === "failed" ? "bg-red-400/70" : job.status === "succeeded" ? "bg-emerald-400" : "bg-brand-400",
+            job.status === "failed" ? "bg-danger/70" : job.status === "succeeded" ? "bg-ok" : "bg-brand-400",
           )}
           style={{ width: `${Math.max(progress, job.status === "running" ? 4 : 0)}%` }}
         />
@@ -115,7 +115,7 @@ export default function JobStages({ job }: { job: Job }) {
               <div className="flex flex-col items-center">
                 <StageIcon status={stage.status} />
                 {index < job.stages.length - 1 && (
-                  <span className={cn("my-1 w-px flex-1", stage.status === "succeeded" ? "bg-emerald-400/30" : "bg-foreground/10")} />
+                  <span className={cn("my-1 w-px flex-1", stage.status === "succeeded" ? "bg-ok/30" : "bg-foreground/10")} />
                 )}
               </div>
               <div className="min-w-0 flex-1 pb-4">
@@ -130,8 +130,8 @@ export default function JobStages({ job }: { job: Job }) {
                   </span>
                 </div>
                 {stage.error ? (
-                  <p className="mt-1 rounded-md border border-red-400/20 bg-red-500/10 px-2.5 py-1.5 text-sm break-words text-red-200">
-                    <span className="font-mono text-xs text-red-300">{stage.error.code}</span> · {stage.error.message}
+                  <p className="mt-1 rounded-md border border-danger/20 bg-danger/10 px-2.5 py-1.5 text-sm break-words text-danger-fg">
+                    <span className="font-mono text-xs text-danger-fg">{stage.error.code}</span> · {stage.error.message}
                   </p>
                 ) : (
                   // Con pasos internos, el detalle vive en cada paso; el de la etapa solo al final.

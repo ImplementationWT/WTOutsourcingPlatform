@@ -64,7 +64,7 @@ export default function IntegrationsPage() {
           {data && !data.available && (
             <Card>
               <CardContent className="flex items-start gap-3 text-sm">
-                <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-400" />
+                <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warn-fg" />
                 <p>
                   Para añadir servidores falta la clave que cifra sus claves SSH en la plataforma (
                   <code className="font-mono">SERVER_KEYS_ENCRYPTION_KEY_SECRET_REF</code>). Se crea sola en el próximo despliegue de
@@ -79,7 +79,7 @@ export default function IntegrationsPage() {
           {isLoading ? (
             <Skeleton className="h-40 rounded-xl" />
           ) : error ? (
-            <p role="alert" className="text-sm text-red-300">
+            <p role="alert" className="text-sm text-danger-fg">
               {error instanceof Error ? error.message : "No se pudieron cargar los servidores."}
             </p>
           ) : data?.servers.length ? (

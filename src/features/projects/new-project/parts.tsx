@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 const pillTones = {
   brand: "border-brand-400/25 bg-brand-400/10 text-brand-200",
-  emerald: "border-emerald-400/25 bg-emerald-400/10 text-emerald-300",
+  emerald: "border-ok/25 bg-ok/10 text-ok-fg",
 };
 
 export function Pill({ tone = "brand", children }: { tone?: keyof typeof pillTones; children: ReactNode }) {

@@ -108,13 +108,13 @@ export default function IntegrationFields({
         </Button>
         <span role="status" aria-live="polite" className="text-sm">
           {outcome?.ok === true && (
-            <span className="inline-flex items-center gap-1.5 text-emerald-400">
+            <span className="inline-flex items-center gap-1.5 text-ok-fg">
               <CheckCircle2 className="size-4" />
               Conexión correcta
             </span>
           )}
           {outcome && outcome.ok === false && (
-            <span className="inline-flex items-center gap-1.5 text-red-300">
+            <span className="inline-flex items-center gap-1.5 text-danger-fg">
               <XCircle className="size-4" />
               {outcome.error}
             </span>

@@ -1,3 +1,4 @@
+import type { Tone } from "@/components/ui/tones";
 import { apiFetch } from "@/lib/api-client";
 import { formatDateTime } from "@/lib/format";
 
@@ -30,12 +31,7 @@ export const MEETING_KIND_LABELS: Record<MeetingKind, string> = {
 };
 export const REVIEW_STATUS_LABELS: Record<MeetingReviewStatus, string> = { new: "Nueva sin procesar", reviewed: "Revisada", actioned: "Accionada", not_needed: "No necesaria" };
 export const CLIENT_SENTIMENT_LABELS: Record<ClientSentiment, string> = { excellent: "Excelente", good: "Bien", neutral: "Neutral", friction: "Fricción" };
-export const CLIENT_SENTIMENT_TONE: Record<ClientSentiment, string> = {
-  excellent: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
-  good: "bg-green-500/15 text-green-600 dark:text-green-300",
-  neutral: "bg-foreground/10 text-muted-foreground",
-  friction: "bg-red-500/15 text-red-600 dark:text-red-300",
-};
+export const CLIENT_SENTIMENT_TONE: Record<ClientSentiment, Tone> = { excellent: "ok", good: "ok", neutral: "neutral", friction: "danger" };
 export const ACTION_ITEM_KIND_LABELS: Record<ActionItemKind, string> = {
   quick_admin: "Admin rápido",
   internal_work: "Trabajo interno",

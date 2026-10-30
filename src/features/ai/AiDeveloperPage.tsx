@@ -177,8 +177,8 @@ function SessionView({ session }: { session: AiSession }) {
 function Notice({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full items-center justify-center p-6">
-      <div className="flex max-w-xl items-start gap-3 rounded-xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm">
-        <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-400" />
+      <div className="flex max-w-xl items-start gap-3 rounded-xl border border-warn/30 bg-warn/10 p-4 text-sm">
+        <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warn-fg" />
         <div>{children}</div>
       </div>
     </div>

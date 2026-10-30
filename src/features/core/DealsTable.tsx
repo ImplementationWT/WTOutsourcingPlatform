@@ -2,10 +2,13 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Plus, X } from "lucide-react";
-import { DataTable, tableSelectClass, type Column } from "@/components/data-table/DataTable";
+import { DataTable, type Column } from "@/components/data-table/DataTable";
 import { InlineNumber, InlineSelect, RelationCell, RelationsCell, TotalCell } from "@/components/data-table/cells";
 import { useTableState } from "@/components/data-table/table-state";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
+import { StatusBadge } from "@/components/ui/status-badge";
+import type { Tone } from "@/components/ui/tones";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSession } from "@/features/auth/auth";
@@ -26,20 +29,22 @@ import {
   type SalesStage,
 } from "./api";
 
-const STATUS_TONE: Partial<Record<DealStatus, string>> = {
-  approved: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
-  in_progress: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300",
-  delivered: "bg-purple-500/15 text-purple-700 dark:text-purple-300",
-  invoiced: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-  paid: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
-  cancelled: "bg-foreground/10 text-muted-foreground line-through",
+const STATUS_TONE: Record<DealStatus, Tone> = {
+  draft: "outline",
+  proposed: "outline",
+  approved: "info",
+  in_progress: "accent",
+  delivered: "primary",
+  invoiced: "warn",
+  paid: "ok",
+  cancelled: "neutral",
 };
 
 export function DealStatusBadge({ value }: { value: DealStatus }) {
   return (
-    <span className={cn("inline-flex h-5 w-fit items-center rounded-full px-2 text-xs font-medium whitespace-nowrap", STATUS_TONE[value] ?? "border border-foreground/15 text-foreground/80")}>
+    <StatusBadge tone={STATUS_TONE[value]} className={cn(value === "cancelled" && "line-through")}>
       {DEAL_STATUS_LABELS[value]}
-    </span>
+    </StatusBadge>
   );
 }
 
@@ -105,14 +110,13 @@ function NewDealForm({ projectId, onClose }: { projectId?: string; onClose: () =
         {!projectId && (
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="deal-project">Proyecto</Label>
-            <select id="deal-project" className={cn(tableSelectClass, "w-full")} value={project} onChange={(e) => setProject(e.target.value)}>
-              <option value="">{role === "lead" ? "Elige un proyecto" : "Sin proyecto (aún no se gana)"}</option>
-              {(projects ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} · {p.customerName}
-                </option>
-              ))}
-            </select>
+            <Select
+              id="deal-project"
+              value={project || null}
+              emptyLabel={role === "lead" ? "Elige un proyecto" : "Sin proyecto (aún no se gana)"}
+              options={(projects ?? []).map((p) => ({ value: p.id, label: `${p.name} · ${p.customerName}` }))}
+              onValueChange={(v) => setProject((v ?? ""))}
+            />
           </div>
         )}
         <div className="space-y-1.5">
@@ -129,23 +133,21 @@ function NewDealForm({ projectId, onClose }: { projectId?: string; onClose: () =
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="deal-stage">Estado de venta</Label>
-          <select id="deal-stage" className={cn(tableSelectClass, "w-full")} value={salesStage} onChange={(e) => setSalesStage(e.target.value as SalesStage)}>
-            {SALES_STAGES.map((s) => (
-              <option key={s} value={s}>
-                {SALES_STAGE_LABELS[s]}
-              </option>
-            ))}
-          </select>
+          <Select
+            id="deal-stage"
+            value={salesStage}
+            options={SALES_STAGES.map((s) => ({ value: s, label: SALES_STAGE_LABELS[s] }))}
+            onValueChange={(v) => setSalesStage((v ?? "") as SalesStage)}
+          />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="deal-status">Estado</Label>
-          <select id="deal-status" className={cn(tableSelectClass, "w-full")} value={status} onChange={(e) => setStatus(e.target.value as DealStatus)}>
-            {statuses.map((s) => (
-              <option key={s} value={s}>
-                {DEAL_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
+          <Select
+            id="deal-status"
+            value={status}
+            options={statuses.map((s) => ({ value: s, label: DEAL_STATUS_LABELS[s] }))}
+            onValueChange={(v) => setStatus((v ?? "") as DealStatus)}
+          />
         </div>
       </div>
       {error && (

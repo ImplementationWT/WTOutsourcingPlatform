@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Select } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { selectClass } from "@/features/admin/TeamAssignCard";
 import { useSession } from "@/features/auth/auth";
 import { TotalCell } from "@/components/data-table/cells";
 import { useCompanyOptions, useContactOptions } from "@/features/core/api";
@@ -82,14 +83,13 @@ function ProjectControls({ project }: { project: OpsProject }) {
 
   const select = <V extends string>(label: string, value: V | null, options: readonly V[], labels: Record<V, string>, onChange: (v: V | null) => void, empty?: string) => (
     <Field label={label}>
-      <select aria-label={label} className={cn(selectClass, "w-full")} value={value ?? ""} onChange={(e) => onChange((e.target.value || null) as V | null)}>
-        {(empty !== undefined || !value) && <option value="">{empty ?? "—"}</option>}
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {labels[o]}
-          </option>
-        ))}
-      </select>
+      <Select
+        label={label}
+        value={value ?? null}
+        emptyLabel={empty}
+        options={options.map((o) => ({ value: o, label: labels[o] }))}
+        onValueChange={(v) => onChange(v as V | null)}
+      />
     </Field>
   );
 
@@ -103,44 +103,37 @@ function ProjectControls({ project }: { project: OpsProject }) {
         </Field>
         {select("Prioridad", project.priority, PRIORITIES, PRIORITY_LABELS, (v) => v && void save({ priority: v }))}
         <Field label="Kickoff">
-          <Input aria-label="Kickoff" type="date" value={project.kickoffDate ?? ""} onChange={(e) => void save({ kickoffDate: e.target.value || null })} />
+          <DatePicker label="Kickoff" value={project.kickoffDate} onValueChange={(v) => void save({ kickoffDate: v })} />
         </Field>
         <Field label="Team Leader">
-          <select aria-label="Team Leader" className={cn(selectClass, "w-full")} value={project.lead?.id ?? ""} onChange={(e) => void save({ leadUserId: e.target.value || null })}>
-            <option value="">Sin asignar</option>
-            {members
-              .filter((m) => m.role === "lead")
-              .map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-          </select>
+          <Select
+            label="Team Leader"
+            value={project.lead?.id ?? null}
+            emptyLabel="Sin asignar"
+            options={members.filter((m) => m.role === "lead").map((m) => ({ value: m.id, label: m.name }))}
+            onValueChange={(v) => void save({ leadUserId: v })}
+          />
         </Field>
         <Field label="Developer">
-          <select aria-label="Developer" className={cn(selectClass, "w-full")} value={project.developer?.id ?? ""} onChange={(e) => void save({ developerUserId: e.target.value || null })}>
-            <option value="">Sin asignar</option>
-            {members
-              .filter((m) => m.role === "developer")
-              .map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-          </select>
+          <Select
+            label="Developer"
+            value={project.developer?.id ?? null}
+            emptyLabel="Sin asignar"
+            options={members.filter((m) => m.role === "developer").map((m) => ({ value: m.id, label: m.name }))}
+            onValueChange={(v) => void save({ developerUserId: v })}
+          />
         </Field>
         {select("Tipo de pago", project.paymentType, PAYMENT_TYPES, PAYMENT_TYPE_LABELS, (v) => void save({ paymentType: v }), "Sin definir")}
         {select("Siguiente acción", project.nextAction, NEXT_ACTIONS, NEXT_ACTION_LABELS, (v) => void save({ nextAction: v }), "Sin definir")}
         {seesCompanies ? (
           <Field label="Empresa">
-            <select aria-label="Empresa" className={cn(selectClass, "w-full")} value={project.company?.id ?? ""} onChange={(e) => e.target.value && void save({ companyId: e.target.value, contactIds: [] })}>
-              {!project.company && <option value="">{project.customerName} (sin empresa)</option>}
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <Select
+              label="Empresa"
+              value={project.company?.id ?? null}
+              placeholder={`${project.customerName} (sin empresa)`}
+              options={companies.map((c) => ({ value: c.id, label: c.name }))}
+              onValueChange={(v) => v && void save({ companyId: v, contactIds: [] })}
+            />
           </Field>
         ) : (
           <Field label="Cliente">{project.customerName}</Field>

@@ -24,7 +24,7 @@ export default function ProvisioningPanel({
   if (!job && submitError) {
     return (
       <div className="space-y-6">
-        <p role="alert" className="rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+        <p role="alert" className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger-fg">
           {submitError.message}
         </p>
         <div className="flex items-center justify-between border-t border-foreground/10 pt-6">
@@ -70,7 +70,7 @@ export default function ProvisioningPanel({
           <CardAction>
             {job?.status === "succeeded" && <Pill tone="emerald">Ready</Pill>}
             {job?.status === "failed" && (
-              <span className="rounded-full border border-red-400/25 bg-red-400/10 px-2.5 py-0.5 text-xs font-medium text-red-300">
+              <span className="rounded-full border border-danger/25 bg-danger/10 px-2.5 py-0.5 text-xs font-medium text-danger-fg">
                 Error
               </span>
             )}
@@ -86,7 +86,7 @@ export default function ProvisioningPanel({
             </p>
           )}
           {(streamError || submitError) && (
-            <p role="status" className="text-sm text-amber-200">
+            <p role="status" className="text-sm text-warn-fg">
               {submitError?.message ?? streamError}
             </p>
           )}

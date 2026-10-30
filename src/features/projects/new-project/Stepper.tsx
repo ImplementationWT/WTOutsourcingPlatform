@@ -15,7 +15,7 @@ export default function Stepper({ steps, current }: { steps: string[]; current: 
                 className={cn(
                   "flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition-colors",
                   active && "border-brand-400/60 bg-brand-500/20 text-brand-100",
-                  done && "border-emerald-400/40 bg-emerald-400/10 text-emerald-300",
+                  done && "border-ok/40 bg-ok/10 text-ok-fg",
                   !active && !done && "border-foreground/15 bg-foreground/5 text-muted-foreground",
                 )}
               >
@@ -31,7 +31,7 @@ export default function Stepper({ steps, current }: { steps: string[]; current: 
               </span>
             </div>
             {index < steps.length - 1 && (
-              <span className={cn("h-px flex-1", done ? "bg-emerald-400/30" : "bg-foreground/10")} />
+              <span className={cn("h-px flex-1", done ? "bg-ok/30" : "bg-foreground/10")} />
             )}
           </li>
         );

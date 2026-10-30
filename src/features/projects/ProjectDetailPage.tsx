@@ -92,7 +92,7 @@ export default function ProjectDetailPage() {
       ) : isError || !data ? (
         <Card>
           <CardContent className="flex items-center gap-3 text-sm">
-            <AlertTriangle className="size-5 text-amber-400" />
+            <AlertTriangle className="size-5 text-warn-fg" />
             {error?.message ?? "No se encontró el proyecto."}
           </CardContent>
         </Card>
@@ -176,7 +176,7 @@ export default function ProjectDetailPage() {
                 </ResourceRow>
                 <ResourceRow icon={data.client.readiness.ready ? CheckCircle2 : Loader2} label="Readiness">
                   {data.client.readiness.ready ? (
-                    <span className="text-emerald-400">
+                    <span className="text-ok-fg">
                       Listo{data.client.readiness.detail && ` · ${data.client.readiness.detail}`}
                     </span>
                   ) : (
@@ -209,7 +209,7 @@ export default function ProjectDetailPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {job && <JobStages job={job} />}
-                {(retryError || live.error) && <p className="text-sm text-amber-200">{retryError ?? live.error}</p>}
+                {(retryError || live.error) && <p className="text-sm text-warn-fg">{retryError ?? live.error}</p>}
               </CardContent>
             </Card>
           </div>

@@ -75,7 +75,7 @@ export default function Welcome({
           placeholder="Por ejemplo: en la pantalla de inicio, cambia el título «Bienvenido» por «Hola de nuevo». También puedes soltar aquí archivos .md con especificaciones."
         />
         {error && (
-          <p role="alert" className="text-center text-sm text-red-300">
+          <p role="alert" className="text-center text-sm text-danger-fg">
             {error}
           </p>
         )}

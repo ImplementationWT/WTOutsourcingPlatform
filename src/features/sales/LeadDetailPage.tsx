@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useConfirm } from "@/components/ui/confirm-context";
+import { DatePicker, DateTimePicker } from "@/components/ui/date-picker";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink, Loader2, Plus, UserCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTeams } from "@/features/admin/api";
-import { selectClass } from "@/features/admin/TeamAssignCard";
 import { Empty, ErrorLine, MeetingsPanel, UpdatesPanel } from "@/features/activity/ActivityPanels";
 import { activityKeys, dateText } from "@/features/activity/api";
 import { money, opsKeys, PROPOSAL_STATUS_LABELS, PROPOSAL_STATUSES, STAGE_LABELS, useTeamMembers, type Proposal, type ProposalStatus } from "@/features/ops/api";
@@ -97,14 +99,13 @@ function LeadControls({ lead, canWrite }: { lead: LeadDetail; canWrite: boolean 
   const people = (label: string, value: { id: string; name: string | null } | null, key: "setterUserId" | "closerUserId") => (
     <Field label={label}>
       {canWrite ? (
-        <select aria-label={label} className={cn(selectClass, "w-full")} value={value?.id ?? ""} onChange={(e) => void save({ [key]: e.target.value || null })}>
-          <option value="">Sin asignar</option>
-          {owners.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </select>
+        <Select
+          label={label}
+          value={value?.id ?? null}
+          emptyLabel="Sin asignar"
+          options={owners.map((o) => ({ value: o.id, label: o.name }))}
+          onValueChange={(v) => void save({ [key]: v })}
+        />
       ) : (
         (value?.name ?? "Sin asignar")
       )}
@@ -115,39 +116,33 @@ function LeadControls({ lead, canWrite }: { lead: LeadDetail; canWrite: boolean 
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Estado">
-          <select
-            aria-label="Estado del lead"
-            className={cn(selectClass, "w-full")}
+          <Select
+            label="Estado del lead"
             value={lead.status}
+            options={LEAD_STATUSES.filter((s) => s !== "won" || won).map((s) => ({ value: s, label: LEAD_STATUS_LABELS[s] }))}
             disabled={won || disabled}
-            onChange={(e) => void save({ status: e.target.value as LeadStatus, ...(e.target.value === "lost" && lostReason.trim() ? { lostReason: lostReason.trim() } : {}) })}
-          >
-            {LEAD_STATUSES.filter((s) => s !== "won" || won).map((s) => (
-              <option key={s} value={s}>
-                {LEAD_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
+            onValueChange={(v) => void save({ status: (v ?? "") as LeadStatus, ...((v ?? "") === "lost" && lostReason.trim() ? { lostReason: lostReason.trim() } : {}) })}
+          />
         </Field>
         <Field label="Temperatura">
-          <select aria-label="Temperatura" className={cn(selectClass, "w-full")} value={lead.temperature ?? ""} disabled={disabled} onChange={(e) => void save({ temperature: (e.target.value || null) as LeadTemperature | null })}>
-            <option value="">Sin definir</option>
-            {LEAD_TEMPERATURES.map((t) => (
-              <option key={t} value={t}>
-                {LEAD_TEMPERATURE_LABELS[t]}
-              </option>
-            ))}
-          </select>
+          <Select
+            label="Temperatura"
+            value={lead.temperature ?? null}
+            emptyLabel="Sin definir"
+            options={LEAD_TEMPERATURES.map((t) => ({ value: t, label: LEAD_TEMPERATURE_LABELS[t] }))}
+            disabled={disabled}
+            onValueChange={(v) => void save({ temperature: v as LeadTemperature | null })}
+          />
         </Field>
         <Field label="Funnel">
-          <select aria-label="Funnel" className={cn(selectClass, "w-full")} value={lead.funnel ?? ""} disabled={disabled} onChange={(e) => void save({ funnel: (e.target.value || null) as LeadFunnel | null })}>
-            <option value="">Sin definir</option>
-            {LEAD_FUNNELS.map((f) => (
-              <option key={f} value={f}>
-                {LEAD_FUNNEL_LABELS[f]}
-              </option>
-            ))}
-          </select>
+          <Select
+            label="Funnel"
+            value={lead.funnel ?? null}
+            emptyLabel="Sin definir"
+            options={LEAD_FUNNELS.map((f) => ({ value: f, label: LEAD_FUNNEL_LABELS[f] }))}
+            disabled={disabled}
+            onValueChange={(v) => void save({ funnel: v as LeadFunnel | null })}
+          />
         </Field>
         <Field label="Respuesta">
           {lead.responseDays === null ? <span className="text-muted-foreground">Falta la fecha de submission o de reunión</span> : `${lead.responseDays} días`}
@@ -155,21 +150,20 @@ function LeadControls({ lead, canWrite }: { lead: LeadDetail; canWrite: boolean 
         {people("Setter", lead.setter, "setterUserId")}
         {people("Closer", lead.closer, "closerUserId")}
         <Field label="Submission">
-          <Input aria-label="Fecha de submission" type="date" disabled={disabled} value={lead.submittedAt ?? ""} onChange={(e) => void save({ submittedAt: e.target.value || null })} />
+          <DatePicker label="Fecha de submission" disabled={disabled} value={lead.submittedAt} onValueChange={(v) => void save({ submittedAt: v })} />
         </Field>
         <Field label="Reunión">
-          <Input aria-label="Fecha de reunión" type="date" disabled={disabled} value={lead.meetingAt ?? ""} onChange={(e) => void save({ meetingAt: e.target.value || null })} />
+          <DatePicker label="Fecha de reunión" disabled={disabled} value={lead.meetingAt} onValueChange={(v) => void save({ meetingAt: v })} />
         </Field>
         <Field label="Empresa">
           {canWrite ? (
-            <select aria-label="Empresa" className={cn(selectClass, "w-full")} value={lead.companyRef?.id ?? ""} onChange={(e) => void save({ companyId: e.target.value || null })}>
-              <option value="">{lead.company ? `${lead.company} (sin enlazar)` : "Sin empresa"}</option>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <Select
+              label="Empresa"
+              value={lead.companyRef?.id ?? null}
+              emptyLabel={lead.company ? `${lead.company} (sin enlazar)` : "Sin empresa"}
+              options={companies.map((c) => ({ value: c.id, label: c.name }))}
+              onValueChange={(v) => void save({ companyId: v })}
+            />
           ) : lead.companyRef ? (
             <Link className="text-primary underline-offset-4 hover:underline" to={`/comercial/empresas/${lead.companyRef.id}`}>
               {lead.companyRef.name}
@@ -180,14 +174,13 @@ function LeadControls({ lead, canWrite }: { lead: LeadDetail; canWrite: boolean 
         </Field>
         <Field label="Contacto">
           {canWrite ? (
-            <select aria-label="Contacto" className={cn(selectClass, "w-full")} value={lead.contactRef?.id ?? ""} onChange={(e) => void save({ contactId: e.target.value || null })}>
-              <option value="">{lead.contactName ? `${lead.contactName} (sin enlazar)` : "Sin contacto"}</option>
-              {contacts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <Select
+              label="Contacto"
+              value={lead.contactRef?.id ?? null}
+              emptyLabel={lead.contactName ? `${lead.contactName} (sin enlazar)` : "Sin contacto"}
+              options={contacts.map((c) => ({ value: c.id, label: c.name }))}
+              onValueChange={(v) => void save({ contactId: v })}
+            />
           ) : lead.contactRef ? (
             <Link className="text-primary underline-offset-4 hover:underline" to={`/comercial/contactos/${lead.contactRef.id}`}>
               {lead.contactRef.name}
@@ -267,6 +260,7 @@ function LeadControls({ lead, canWrite }: { lead: LeadDetail; canWrite: boolean 
  * con la propuesta aceptada y su deal aprobado. Se pregunta antes de crear.
  */
 function ConvertCard({ lead, proposals }: { lead: LeadDetail; proposals: Proposal[] }) {
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const teams = useTeams().data ?? [];
@@ -286,14 +280,13 @@ function ConvertCard({ lead, proposals }: { lead: LeadDetail; proposals: Proposa
     if (!valid) return;
     const proposal = usable.find((p) => p.id === proposalId);
     const question = [
-      `¿Convertir «${lead.title}» en cliente?`,
-      "",
       `Se marcará el lead como ganado y la propuesta «${proposal?.title ?? ""}» como aceptada, y se creará:`,
       `• la empresa «${lead.company || lead.contactName || lead.title}» y su contacto (si aún no existen),`,
       `• el proyecto «${projectName.trim()}» en Kick Off,`,
       "• un deal aprobado ligado al proyecto.",
     ].join("\n");
-    if (!window.confirm(question)) return;
+    const ok = await confirm({ title: `¿Convertir «${lead.title}» en cliente?`, description: question, confirmLabel: "Convertir en cliente" });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -329,59 +322,48 @@ function ConvertCard({ lead, proposals }: { lead: LeadDetail; proposals: Proposa
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="conv-proposal">Propuesta aceptada</Label>
-                <select id="conv-proposal" className={cn(selectClass, "w-full")} value={proposalId} onChange={(e) => setProposalId(e.target.value)}>
-                  {usable.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.title} ({PROPOSAL_STATUS_LABELS[p.status]})
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  id="conv-proposal"
+                  value={proposalId}
+                  options={usable.map((p) => ({ value: p.id, label: `${p.title} (${PROPOSAL_STATUS_LABELS[p.status]})` }))}
+                  onValueChange={(v) => setProposalId((v ?? ""))}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="conv-team">Equipo</Label>
-                <select
+                <Select
                   id="conv-team"
-                  className={cn(selectClass, "w-full")}
-                  value={teamId}
-                  onChange={(e) => {
-                    setTeamId(e.target.value);
+                  value={teamId || null}
+                  emptyLabel="Elige un equipo"
+                  options={teams.map((t) => ({ value: t.id, label: t.name }))}
+                  onValueChange={(v) => {
+                    setTeamId((v ?? ""));
                     setLeadUserId("");
                     setDeveloperUserId("");
                   }}
-                >
-                  <option value="">Elige un equipo</option>
-                  {teams.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="conv-lead">Team Leader</Label>
-                <select id="conv-lead" className={cn(selectClass, "w-full")} value={leadUserId} disabled={!teamId} onChange={(e) => setLeadUserId(e.target.value)}>
-                  <option value="">Sin asignar</option>
-                  {members
-                    .filter((m) => m.role === "lead")
-                    .map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                </select>
+                <Select
+                  id="conv-lead"
+                  value={leadUserId || null}
+                  emptyLabel="Sin asignar"
+                  options={members.filter((m) => m.role === "lead").map((m) => ({ value: m.id, label: m.name }))}
+                  disabled={!teamId}
+                  onValueChange={(v) => setLeadUserId((v ?? ""))}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="conv-dev">Developer</Label>
-                <select id="conv-dev" className={cn(selectClass, "w-full")} value={developerUserId} disabled={!teamId} onChange={(e) => setDeveloperUserId(e.target.value)}>
-                  <option value="">Sin asignar</option>
-                  {members
-                    .filter((m) => m.role === "developer")
-                    .map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                </select>
+                <Select
+                  id="conv-dev"
+                  value={developerUserId || null}
+                  emptyLabel="Sin asignar"
+                  options={members.filter((m) => m.role === "developer").map((m) => ({ value: m.id, label: m.name }))}
+                  disabled={!teamId}
+                  onValueChange={(v) => setDeveloperUserId((v ?? ""))}
+                />
               </div>
             </div>
             <ErrorLine error={error} />
@@ -490,7 +472,7 @@ function DemosTab({ leadId, demos, canWrite }: { leadId: string; demos: Demo[]; 
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="demo-date">Fecha y hora</Label>
-          <Input id="demo-date" type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />
+          <DateTimePicker id="demo-date" label="Fecha y hora" value={scheduledAt} onValueChange={setScheduledAt} />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="demo-url">Enlace de la demo (opcional)</Label>
@@ -518,13 +500,12 @@ function DemosTab({ leadId, demos, canWrite }: { leadId: string; demos: Demo[]; 
               </div>
               <p className="text-sm text-muted-foreground">{dateText(d.scheduledAt)}</p>
               {canWrite ? (
-                <select aria-label={`Estado de ${d.title}`} className={cn(selectClass, "w-full")} value={d.status} onChange={(e) => void setStatus(d, e.target.value as DemoStatus)}>
-                  {DEMO_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {DEMO_STATUS_LABELS[s]}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  label={`Estado de ${d.title}`}
+                  value={d.status}
+                  options={DEMO_STATUSES.map((s) => ({ value: s, label: DEMO_STATUS_LABELS[s] }))}
+                  onValueChange={(v) => void setStatus(d, (v ?? "") as DemoStatus)}
+                />
               ) : (
                 <Badge variant="outline">{DEMO_STATUS_LABELS[d.status]}</Badge>
               )}
@@ -615,13 +596,12 @@ function ProposalsTab({ leadId, proposals, canWrite }: { leadId: string; proposa
               <p className="text-sm tabular-nums">{p.amountCents !== null ? money(p.amountCents, p.currency) : "—"}</p>
               <p className="text-xs text-muted-foreground">{p.area === "operations" ? "Desde Operativa" : p.sentAt ? `Enviada ${dateText(p.sentAt)}` : ""}</p>
               {canWrite ? (
-                <select aria-label={`Estado de ${p.title}`} className={cn(selectClass, "w-full")} value={p.status} onChange={(e) => void setStatus(p, e.target.value as ProposalStatus)}>
-                  {PROPOSAL_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {PROPOSAL_STATUS_LABELS[s]}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  label={`Estado de ${p.title}`}
+                  value={p.status}
+                  options={PROPOSAL_STATUSES.map((s) => ({ value: s, label: PROPOSAL_STATUS_LABELS[s] }))}
+                  onValueChange={(v) => void setStatus(p, (v ?? "") as ProposalStatus)}
+                />
               ) : (
                 <Badge variant="outline">{PROPOSAL_STATUS_LABELS[p.status]}</Badge>
               )}

@@ -87,7 +87,7 @@ export default function IntegrationsSection() {
           })
         )}
         {error && (
-          <p role="alert" className="text-sm text-red-300">
+          <p role="alert" className="text-sm text-danger-fg">
             {error}
           </p>
         )}

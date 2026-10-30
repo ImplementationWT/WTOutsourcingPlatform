@@ -2,14 +2,14 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, X } from "lucide-react";
-import { DataTable, tableSelectClass, type Column } from "@/components/data-table/DataTable";
+import { DataTable, type Column } from "@/components/data-table/DataTable";
 import { RelationCell } from "@/components/data-table/cells";
 import { useTableState } from "@/components/data-table/table-state";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSession } from "@/features/auth/auth";
-import { cn } from "@/lib/utils";
 import { CONTACT_FILTERS, createContact, updateContact, useCompanyOptions, useContacts, type Contact, type ContactInput } from "./api";
 import { canWriteCore } from "./hooks";
 
@@ -95,14 +95,13 @@ export function ContactForm({ contact, companyId, onClose, stay }: { contact?: C
         {!companyId && (
           <div className="space-y-1.5">
             <Label htmlFor="ct-company">Empresa</Label>
-            <select id="ct-company" className={cn(tableSelectClass, "w-full")} value={form.companyId} onChange={(e) => set("companyId", e.target.value)}>
-              <option value="">Sin empresa</option>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <Select
+              id="ct-company"
+              value={form.companyId || null}
+              emptyLabel="Sin empresa"
+              options={companies.map((c) => ({ value: c.id, label: c.name }))}
+              onValueChange={(v) => set("companyId", (v ?? ""))}
+            />
           </div>
         )}
       </div>

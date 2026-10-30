@@ -92,7 +92,7 @@ export default function PreviewPanel({ session, agentBusy }: { session: AiSessio
     return (
       <div className="space-y-4 p-6 text-sm">
         {preview?.status === "failed" && (
-          <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-red-200">
+          <div role="alert" className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-danger-fg">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
             <p className="whitespace-pre-wrap">{preview.error ?? "La vista previa no arrancó."}</p>
           </div>
@@ -112,7 +112,7 @@ export default function PreviewPanel({ session, agentBusy }: { session: AiSessio
           {agentBusy && !preview && <p className="text-xs text-muted-foreground">Will Doo está trabajando…</p>}
         </div>
         {error && (
-          <p role="alert" className="text-red-300">
+          <p role="alert" className="text-danger-fg">
             {error}
           </p>
         )}
@@ -133,8 +133,8 @@ export default function PreviewPanel({ session, agentBusy }: { session: AiSessio
   return (
     <div className="flex h-full min-h-[28rem] flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-foreground/10 px-3 py-2 text-xs">
-        <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-300">
-          <span className="size-1.5 animate-pulse rounded-full bg-emerald-400" />
+        <span className="flex items-center gap-1.5 rounded-full bg-ok/15 px-2 py-0.5 text-ok-fg">
+          <span className="size-1.5 animate-pulse rounded-full bg-ok" />
           En vivo
         </span>
         <a
@@ -180,13 +180,13 @@ export default function PreviewPanel({ session, agentBusy }: { session: AiSessio
         </div>
       )}
       {preview.updateError && !preview.updating && (
-        <div role="alert" className="flex items-center gap-2 border-b border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200">
+        <div role="alert" className="flex items-center gap-2 border-b border-warn/30 bg-warn/10 px-3 py-1.5 text-xs text-warn-fg">
           <AlertTriangle className="size-3.5 shrink-0" />
           No se pudieron traer los últimos cambios: {preview.updateError}
         </div>
       )}
       {error && (
-        <p role="alert" className="border-b border-foreground/10 px-3 py-2 text-xs text-red-300">
+        <p role="alert" className="border-b border-foreground/10 px-3 py-2 text-xs text-danger-fg">
           {error}
         </p>
       )}

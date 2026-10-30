@@ -86,9 +86,9 @@ export default function DeploymentCard({ client }: { client: ClientDetail["clien
           <Row icon={deployment.https?.trusted === false ? LockOpen : Lock} label="HTTPS">
             {deployment.https ? (
               deployment.https.trusted ? (
-                <span className="text-emerald-400">Certificado válido · verificado {dateTime(deployment.https.verifiedAt)}</span>
+                <span className="text-ok-fg">Certificado válido · verificado {dateTime(deployment.https.verifiedAt)}</span>
               ) : (
-                <span className="text-amber-300">Funciona con la CA de pruebas (staging): no es de confianza</span>
+                <span className="text-warn-fg">Funciona con la CA de pruebas (staging): no es de confianza</span>
               )
             ) : deployment.certificate ? (
               <span className="text-muted-foreground">
@@ -118,7 +118,7 @@ export default function DeploymentCard({ client }: { client: ClientDetail["clien
           </p>
         )}
         {message && (
-          <p role={message.tone === "error" ? "alert" : "status"} className={message.tone === "error" ? "text-sm text-red-300" : "text-sm text-emerald-300"}>
+          <p role={message.tone === "error" ? "alert" : "status"} className={message.tone === "error" ? "text-sm text-danger-fg" : "text-sm text-ok-fg"}>
             {message.text}{" "}
             {message.href && (
               <a href={message.href} target="_blank" rel="noreferrer" className="underline underline-offset-4">

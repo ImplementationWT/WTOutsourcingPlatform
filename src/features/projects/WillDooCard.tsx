@@ -93,7 +93,7 @@ export default function WillDooCard({ client }: { client: ClientDetail["client"]
                   {current === option.mode && <span className="text-xs font-normal text-muted-foreground">Actual</span>}
                 </span>
                 <span className="mt-1 block text-xs text-muted-foreground">{option.description}</span>
-                {needsKey && <span className="mt-1.5 block text-xs text-amber-300">Primero guarda la clave de Anthropic en Integraciones.</span>}
+                {needsKey && <span className="mt-1.5 block text-xs text-warn-fg">Primero guarda la clave de Anthropic en Integraciones.</span>}
               </button>
             );
           })}
@@ -104,7 +104,7 @@ export default function WillDooCard({ client }: { client: ClientDetail["client"]
             Guardar
           </Button>
         )}
-        {message && <p className={cn("text-sm", message.tone === "ok" ? "text-emerald-400" : "text-red-300")}>{message.text}</p>}
+        {message && <p className={cn("text-sm", message.tone === "ok" ? "text-ok-fg" : "text-danger-fg")}>{message.text}</p>}
       </CardContent>
     </Card>
   );

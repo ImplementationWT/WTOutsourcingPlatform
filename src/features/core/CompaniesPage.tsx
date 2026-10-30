@@ -2,13 +2,13 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, X } from "lucide-react";
-import { DataTable, tableSelectClass, type Column } from "@/components/data-table/DataTable";
+import { DataTable, type Column } from "@/components/data-table/DataTable";
 import { useTableState } from "@/components/data-table/table-state";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSession } from "@/features/auth/auth";
-import { cn } from "@/lib/utils";
 import { canWriteCore } from "./hooks";
 import { COMPANY_FILTERS, COMPANY_SIZE_LABELS, COMPANY_SIZES, coreKeys, createCompany, updateCompany, useCompanies, type Company, type CompanyInput, type CompanyRow, type CompanySize } from "./api";
 
@@ -80,14 +80,13 @@ export function CompanyForm({ company, onClose }: { company?: Company; onClose: 
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="co-size">Tamaño</Label>
-          <select id="co-size" className={cn(tableSelectClass, "w-full")} value={form.size} onChange={(e) => set("size", e.target.value)}>
-            <option value="">Sin definir</option>
-            {COMPANY_SIZES.map((s) => (
-              <option key={s} value={s}>
-                {COMPANY_SIZE_LABELS[s]}
-              </option>
-            ))}
-          </select>
+          <Select
+            id="co-size"
+            value={form.size || null}
+            emptyLabel="Sin definir"
+            options={COMPANY_SIZES.map((s) => ({ value: s, label: COMPANY_SIZE_LABELS[s] }))}
+            onValueChange={(v) => set("size", (v ?? ""))}
+          />
         </div>
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="co-location">País / ubicación</Label>

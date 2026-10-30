@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import type { Tone } from "@/components/ui/tones";
 import { useTablePage } from "@/components/data-table/use-table-page";
 import { useSession } from "@/features/auth/auth";
 import { apiFetch } from "@/lib/api-client";
@@ -36,20 +37,16 @@ export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
 export const LEAD_VIEW_LABELS: Record<LeadView, string> = { active: "Activos", cold: "Fríos", won: "Ganados" };
 export const LEAD_FUNNEL_LABELS: Record<LeadFunnel, string> = { lht: "LHT", upwork: "Upwork", guide: "Guía", outreach: "Outreach", aitp: "AITP", other: "Otro" };
 export const LEAD_TEMPERATURE_LABELS: Record<LeadTemperature, string> = { hot: "Hot", warm: "Warm", nurturing: "Nurturing" };
-export const LEAD_TEMPERATURE_TONE: Record<LeadTemperature, string> = {
-  hot: "bg-red-500/15 text-red-600 dark:text-red-300",
-  warm: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-  nurturing: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
-};
-export const LEAD_STATUS_TONE: Record<LeadStatus, string> = {
-  new: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
-  contacted: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300",
-  demo: "bg-purple-500/15 text-purple-700 dark:text-purple-300",
-  proposal_sent: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-  won: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
-  lost: "bg-foreground/10 text-muted-foreground",
-  nurturing: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
-  unqualified: "bg-foreground/10 text-muted-foreground",
+export const LEAD_TEMPERATURE_TONE: Record<LeadTemperature, Tone> = { hot: "danger", warm: "warn", nurturing: "info" };
+export const LEAD_STATUS_TONE: Record<LeadStatus, Tone> = {
+  new: "info",
+  contacted: "accent",
+  demo: "primary",
+  proposal_sent: "warn",
+  won: "ok",
+  lost: "neutral",
+  nurturing: "info",
+  unqualified: "neutral",
 };
 export const DEMO_STATUS_LABELS: Record<DemoStatus, string> = { scheduled: "Agendada", done: "Realizada", cancelled: "Cancelada", no_show: "No asistió" };
 export const SOURCE_KIND_LABELS: Record<SourceKind, string> = { webhook: "Webhook (JSON)", form: "Formulario web", manual: "Manual", import: "Importación" };

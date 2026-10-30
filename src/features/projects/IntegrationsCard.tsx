@@ -72,12 +72,12 @@ function ProviderRow({ client, provider }: { client: ClientDetail["client"]; pro
             {!state ? (
               <span className="text-muted-foreground">Desactivada</span>
             ) : state.configuredAt ? (
-              <span className="inline-flex items-center gap-1.5 text-emerald-400">
+              <span className="inline-flex items-center gap-1.5 text-ok-fg">
                 <CheckCircle2 className="size-4" />
                 Activa · configurada {dateTime(state.updatedAt ?? state.configuredAt)}
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5 text-sky-400">
+              <span className="inline-flex items-center gap-1.5 text-info-fg">
                 <Hourglass className="size-4" />
                 Pendiente: se escribirá al completar el aprovisionamiento
               </span>
@@ -116,7 +116,7 @@ function ProviderRow({ client, provider }: { client: ClientDetail["client"]; pro
       )}
 
       {mode === "confirm-remove" && (
-        <div className="space-y-3 rounded-md border border-amber-400/30 bg-amber-500/10 p-3 text-sm">
+        <div className="space-y-3 rounded-md border border-warn/30 bg-warn/10 p-3 text-sm">
           <p>
             Se borrará la credencial de {provider.label} del repositorio y se redesplegará la app: dejará de mostrar los tableros. ¿Desactivar?
           </p>
@@ -133,7 +133,7 @@ function ProviderRow({ client, provider }: { client: ClientDetail["client"]; pro
       )}
 
       {message && (
-        <p role={message.tone === "error" ? "alert" : "status"} className={message.tone === "error" ? "text-sm text-red-300" : "text-sm text-emerald-300"}>
+        <p role={message.tone === "error" ? "alert" : "status"} className={message.tone === "error" ? "text-sm text-danger-fg" : "text-sm text-ok-fg"}>
           {message.text}
         </p>
       )}

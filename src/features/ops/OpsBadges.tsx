@@ -1,23 +1,22 @@
+import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
 import { HEALTH_LABELS, HEALTH_TONE, PRIORITY_LABELS, PRIORITY_TONE, STAGE_LABELS, STAGES, type Health, type Priority, type Stage } from "./api";
 
-const pill = "inline-flex h-5 w-fit items-center rounded-full px-2 text-xs font-medium whitespace-nowrap";
-
 export function HealthBadge({ value }: { value: Health }) {
-  return <span className={cn(pill, HEALTH_TONE[value])}>{HEALTH_LABELS[value]}</span>;
+  return <StatusBadge tone={HEALTH_TONE[value]}>{HEALTH_LABELS[value]}</StatusBadge>;
 }
 
 export function PriorityBadge({ value }: { value: Priority }) {
-  return <span className={cn(pill, PRIORITY_TONE[value])}>{PRIORITY_LABELS[value]}</span>;
+  return <StatusBadge tone={PRIORITY_TONE[value]}>{PRIORITY_LABELS[value]}</StatusBadge>;
 }
 
 export function StageBadge({ value }: { value: Stage }) {
-  return <span className={cn(pill, "border border-foreground/15 text-foreground/80")}>{STAGE_LABELS[value]}</span>;
+  return <StatusBadge tone="outline">{STAGE_LABELS[value]}</StatusBadge>;
 }
 
 /** Sentimiento de 0 a 100: barra fina con el número al lado. */
 export function SentimentBar({ value }: { value: number }) {
-  const tone = value >= 70 ? "bg-emerald-500" : value >= 40 ? "bg-amber-500" : "bg-red-500";
+  const tone = value >= 70 ? "bg-ok" : value >= 40 ? "bg-warn" : "bg-danger";
   return (
     <div className="flex items-center gap-2" title={`Sentiment score: ${value}/100`}>
       <div className="h-1.5 w-16 overflow-hidden rounded-full bg-foreground/10">

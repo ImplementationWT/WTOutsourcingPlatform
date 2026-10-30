@@ -8,9 +8,9 @@ import { useAiDiff } from "./api";
 const STATUS_LABEL: Record<string, string> = { added: "nuevo", removed: "borrado", modified: "modificado", renamed: "renombrado" };
 
 function lineClass(line: string) {
-  if (line.startsWith("@@")) return "text-sky-300/90 bg-sky-500/5";
-  if (line.startsWith("+")) return "text-emerald-200 bg-emerald-500/10";
-  if (line.startsWith("-")) return "text-red-200 bg-red-500/10";
+  if (line.startsWith("@@")) return "text-info-fg/90 bg-info/5";
+  if (line.startsWith("+")) return "text-ok-fg bg-ok/10";
+  if (line.startsWith("-")) return "text-danger-fg bg-danger/10";
   return "text-foreground/70";
 }
 
@@ -27,8 +27,8 @@ function FileDiffView({ file }: { file: DiffFile }) {
         <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
         <code className="min-w-0 flex-1 truncate font-mono text-xs">{file.filename}</code>
         <span className="shrink-0 text-xs text-muted-foreground">{STATUS_LABEL[file.status] ?? file.status}</span>
-        <span className="shrink-0 font-mono text-xs text-emerald-300">+{file.additions}</span>
-        <span className="shrink-0 font-mono text-xs text-red-300">−{file.deletions}</span>
+        <span className="shrink-0 font-mono text-xs text-ok-fg">+{file.additions}</span>
+        <span className="shrink-0 font-mono text-xs text-danger-fg">−{file.deletions}</span>
       </button>
       {open && (
         <div className="overflow-x-auto border-t border-foreground/10">
@@ -59,7 +59,7 @@ export default function ChangesPanel({ session }: { session: AiSession }) {
       </p>
     );
   }
-  if (error) return <p className="p-4 text-sm text-red-300">{error.message}</p>;
+  if (error) return <p className="p-4 text-sm text-danger-fg">{error.message}</p>;
   if (!data) return null;
   return (
     <div className="space-y-4 p-4">
