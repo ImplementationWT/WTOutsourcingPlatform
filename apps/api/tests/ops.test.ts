@@ -115,7 +115,7 @@ describe("proyectos operativos", () => {
     const ana = await as("ana");
     const created = await ana("POST", "/api/ops/projects", { name: "Manpersa", customerName: "Manpersa SAC", developerUserId: (await store.users.findOne({ username: "dev" }))!._id });
     expect(created.status).toBe(201);
-    expect(created.body.project).toMatchObject({ stage: "kickoff", health: "neutral", priority: "medium", sentimentScore: 50, team: { id: TEST_TEAM_ID }, lead: { id: lead._id, name: "Ana Líder" }, developer: { name: "Diego Dev" } });
+    expect(created.body.project).toMatchObject({ stage: "kickoff", health: "neutral", priority: "medium", sentimentScore: 55, team: { id: TEST_TEAM_ID }, lead: { id: lead._id, name: "Ana Líder" }, developer: { name: "Diego Dev" } });
     expect(await store.auditLog.countDocuments({ action: "ops.project_created", actor: "ana" })).toBe(1);
   });
 
@@ -141,40 +141,40 @@ describe("proyectos operativos", () => {
     const project = await newProject(await as("ana"));
     const olga = await as("olga");
     expect((await olga("GET", `/api/ops/projects/${project.id}`)).status).toBe(404);
-    expect((await olga("GET", "/api/ops/projects")).body.projects).toHaveLength(0);
+    expect((await olga("GET", "/api/ops/projects")).body.rows).toHaveLength(0);
     expect((await olga("PATCH", `/api/ops/projects/${project.id}`, { priority: "low" })).status).toBe(404);
 
     for (const username of ["marta", "fede"]) {
       const api = await as(username);
       expect((await api("GET", `/api/ops/projects/${project.id}`)).status).toBe(200);
-      expect((await api("GET", "/api/ops/projects")).body.projects).toHaveLength(1);
+      expect((await api("GET", "/api/ops/projects")).body.rows).toHaveLength(1);
       expect((await api("PATCH", `/api/ops/projects/${project.id}`, { priority: "low" })).status).toBe(403);
       expect((await api("POST", `/api/ops/projects/${project.id}/tasks`, { title: "No debería poder" })).status).toBe(403);
     }
   });
 
-  it("cambiar etapa, health, prioridad o sentimiento deja una novedad del sistema y auditoría", async () => {
+  it("cambiar etapa, health o prioridad deja una novedad del sistema y auditoría; el Sentiment sale del Health", async () => {
     const { as, store } = await world();
     const ana = await as("ana");
     const project = await newProject(ana);
-    const patched = await ana("PATCH", `/api/ops/projects/${project.id}`, { stage: "structure", health: "at_risk", priority: "critical", sentimentScore: 20 });
+    const patched = await ana("PATCH", `/api/ops/projects/${project.id}`, { stage: "structure", health: "at_risk", priority: "critical" });
     expect(patched.status).toBe(200);
     expect(patched.body.project).toMatchObject({ stage: "structure", health: "at_risk", priority: "critical", sentimentScore: 20 });
     const updates = (await ana("GET", `/api/ops/projects/${project.id}/updates`)).body.updates as { kind: string; body: string }[];
     const system = updates.find((u) => u.kind === "system" && u.body.includes("Etapa"));
     expect(system?.body).toContain("Kick Off → Estructura");
-    expect(system?.body).toContain("Health: Neutral → At Risk");
+    expect(system?.body).toContain("Health: Neutral → At Risk (Sentiment 55 → 20)");
     expect(await store.auditLog.countDocuments({ action: "ops.project_updated" })).toBe(1);
     // Filtros del listado.
-    expect((await ana("GET", "/api/ops/projects?health=at_risk")).body.projects).toHaveLength(1);
-    expect((await ana("GET", "/api/ops/projects?health=happy")).body.projects).toHaveLength(0);
+    expect((await ana("GET", "/api/ops/projects?health=at_risk")).body.rows).toHaveLength(1);
+    expect((await ana("GET", "/api/ops/projects?health=happy")).body.rows).toHaveLength(0);
   });
 
-  it("valida etapa, health, prioridad y sentimiento", async () => {
+  it("valida etapa, health y prioridad; el Sentiment no se escribe a mano", async () => {
     const { as } = await world();
     const ana = await as("ana");
     const project = await newProject(ana);
-    for (const patch of [{ stage: "otra" }, { health: "ok" }, { priority: "urgent" }, { sentimentScore: 101 }, { sentimentScore: 1.5 }, {}]) {
+    for (const patch of [{ stage: "otra" }, { health: "ok" }, { priority: "urgent" }, { sentimentScore: 40 }, {}]) {
       expect((await ana("PATCH", `/api/ops/projects/${project.id}`, patch)).status).toBe(400);
     }
   });
@@ -190,42 +190,21 @@ describe("proyectos operativos", () => {
   });
 });
 
-describe("deals", () => {
-  it("el monto lo calcula el servidor (horas × tarifa) y no se acepta del navegador", async () => {
+describe("deals en el proyecto", () => {
+  it("el monto lo calcula el servidor y el proyecto suma las horas de sus deals aprobados", async () => {
     const { as } = await world();
     const ana = await as("ana");
     const project = await newProject(ana);
-    expect((await ana("POST", `/api/ops/projects/${project.id}/deals`, { title: "Módulo de pedidos", hours: 40, rateCents: 2500, amountCents: 1 })).status).toBe(400);
-    const created = await ana("POST", `/api/ops/projects/${project.id}/deals`, { title: "Módulo de pedidos", hours: 40.5, rateCents: 2500 });
+    expect((await ana("POST", "/api/deals", { projectId: project.id, title: "Módulo de pedidos", hours: 40, rateCents: 2500, amountCents: 1 })).status).toBe(400);
+    const created = await ana("POST", "/api/deals", { projectId: project.id, title: "Módulo de pedidos", hours: 40.5, rateCents: 2500 });
     expect(created.status).toBe(201);
     expect(created.body.deal).toMatchObject({ hours: 40.5, rateCents: 2500, amountCents: dealAmountCents(40.5, 2500), currency: "USD", status: "draft" });
-    const edited = await ana("PATCH", `/api/ops/projects/${project.id}/deals/${created.body.deal.id}`, { hours: 50 });
+    const edited = await ana("PATCH", `/api/deals/${created.body.deal.id}`, { hours: 50, status: "approved" });
     expect(edited.body.deal.amountCents).toBe(125_000);
-    const list = await ana("GET", `/api/ops/projects/${project.id}`);
-    expect(list.status).toBe(200);
-    const projects = (await ana("GET", "/api/ops/projects")).body.projects;
-    expect(projects[0].summary).toMatchObject({ deals: 1, hours: 50, amountCents: 125_000 });
-  });
-
-  it("un proyecto tiene varios deals; facturado o cobrado ya no cambia horas ni tarifa", async () => {
-    const { as } = await world();
-    const ana = await as("ana");
-    const project = await newProject(ana);
-    const a = (await ana("POST", `/api/ops/projects/${project.id}/deals`, { title: "Módulo A", hours: 10, rateCents: 3000 })).body.deal;
-    const b = (await ana("POST", `/api/ops/projects/${project.id}/deals`, { title: "Módulo B", hours: 20, rateCents: 3000 })).body.deal;
-    expect((await ana("GET", `/api/ops/projects/${project.id}/deals`)).body.deals).toHaveLength(2);
-    expect((await ana("PATCH", `/api/ops/projects/${project.id}/deals/${a.id}`, { status: "invoiced" })).status).toBe(200);
-    expect((await ana("PATCH", `/api/ops/projects/${project.id}/deals/${a.id}`, { hours: 99 })).status).toBe(409);
-    const paid = await ana("PATCH", `/api/ops/projects/${project.id}/deals/${a.id}`, { status: "paid" });
-    expect(paid.body.deal.paidAt).toBeTruthy();
-    expect((await ana("PATCH", `/api/ops/projects/${project.id}/deals/${b.id}`, { hours: 25 })).body.deal.amountCents).toBe(75_000);
-  });
-
-  it("solo el Team Leader y el CEO/CCO gestionan deals", async () => {
-    const { as } = await world();
-    const project = await newProject(await as("ana"));
-    expect((await (await as("dev"))("POST", `/api/ops/projects/${project.id}/deals`, { title: "Módulo", hours: 1, rateCents: 100 })).status).toBe(403);
-    expect((await (await as("jefe"))("POST", `/api/ops/projects/${project.id}/deals`, { title: "Módulo", hours: 1, rateCents: 100 })).status).toBe(201);
+    await ana("POST", "/api/deals", { projectId: project.id, title: "Borrador sin aprobar", hours: 10, rateCents: 2500 });
+    const [row] = (await ana("GET", "/api/ops/projects")).body.rows;
+    // Horas vendidas: solo los deals aprobados en adelante.
+    expect(row.summary).toMatchObject({ deals: 2, soldHours: 50, amountCents: 125_000, billableHours: 0, billableVsSold: -50 });
   });
 });
 
@@ -235,12 +214,12 @@ describe("tareas", () => {
     const ana = await as("ana");
     const project = await newProject(ana);
     const other = await newProject(ana, { name: "Otro proyecto" });
-    const deal = (await ana("POST", `/api/ops/projects/${other.id}/deals`, { title: "Módulo ajeno", hours: 5, rateCents: 100 })).body.deal;
+    const deal = (await ana("POST", "/api/deals", { projectId: other.id, title: "Módulo ajeno", hours: 5, rateCents: 100 })).body.deal;
     const dev = (await store.users.findOne({ username: "dev" }))!;
     const olga = (await store.users.findOne({ username: "olga" }))!;
     expect((await ana("POST", `/api/ops/projects/${project.id}/tasks`, { title: "Tarea con deal ajeno", dealId: deal.id })).status).toBe(400);
     expect((await ana("POST", `/api/ops/projects/${project.id}/tasks`, { title: "Tarea para otra persona", assigneeUserId: olga._id })).status).toBe(400);
-    const ownDeal = (await ana("POST", `/api/ops/projects/${project.id}/deals`, { title: "Módulo propio", hours: 5, rateCents: 100 })).body.deal;
+    const ownDeal = (await ana("POST", "/api/deals", { projectId: project.id, title: "Módulo propio", hours: 5, rateCents: 100 })).body.deal;
     const ok = await ana("POST", `/api/ops/projects/${project.id}/tasks`, { title: "Pantalla de pedidos", dealId: ownDeal.id, assigneeUserId: dev._id, estimatedHours: 6 });
     expect(ok.status).toBe(201);
     expect((await ana("GET", `/api/ops/projects/${project.id}/tasks`)).body.tasks[0]).toMatchObject({ assigneeName: "Diego Dev", dealId: ownDeal.id });

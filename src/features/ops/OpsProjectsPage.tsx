@@ -1,33 +1,37 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, X } from "lucide-react";
+import { DataTable, type Column } from "@/components/data-table/DataTable";
+import { InlineSelect, RelationCell, TotalCell } from "@/components/data-table/cells";
+import { useTableState } from "@/components/data-table/table-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useTeams } from "@/features/admin/api";
 import { selectClass } from "@/features/admin/TeamAssignCard";
 import { useSession } from "@/features/auth/auth";
+import { useCompanyOptions } from "@/features/core/api";
+import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   createProject,
   HEALTH,
   HEALTH_LABELS,
-  hoursText,
-  money,
+  NEXT_ACTION_LABELS,
   opsKeys,
   PRIORITIES,
   PRIORITY_LABELS,
+  PROJECT_FILTERS,
   STAGE_LABELS,
   STAGES,
+  updateProject,
   useOpsProjects,
   useTeamMembers,
-  type Health,
+  type OpsProjectRow,
   type Priority,
-  type ProjectFilters,
-  type Stage,
+  type ProjectInput,
 } from "./api";
 import { HealthBadge, PriorityBadge, SentimentBar, StageBadge } from "./OpsBadges";
 
@@ -39,6 +43,9 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
   const teams = useTeams().data ?? [];
   const [name, setName] = useState("");
   const [customerName, setCustomerName] = useState("");
+  // El CEO/CCO elige la empresa cliente; quien no ve Empresas escribe el nombre del cliente.
+  const companies = useCompanyOptions(isBoss).data ?? [];
+  const [companyId, setCompanyId] = useState("");
   const [teamId, setTeamId] = useState("");
   const [leadId, setLeadId] = useState("");
   const [developerId, setDeveloperId] = useState("");
@@ -49,7 +56,7 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
 
   const effectiveTeam = isBoss ? teamId : (session?.teamId ?? "");
   const members = useTeamMembers(effectiveTeam || null, Boolean(effectiveTeam)).data ?? [];
-  const valid = name.trim().length >= 3 && customerName.trim().length >= 2 && Boolean(effectiveTeam);
+  const valid = name.trim().length >= 3 && (Boolean(companyId) || customerName.trim().length >= 2) && Boolean(effectiveTeam);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -59,7 +66,7 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
     try {
       const { project } = await createProject({
         name: name.trim(),
-        customerName: customerName.trim(),
+        ...(companyId ? { companyId } : { customerName: customerName.trim() }),
         ...(isBoss ? { teamId } : {}),
         leadUserId: leadId || null,
         developerUserId: developerId || null,
@@ -90,10 +97,25 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
               <Label htmlFor="op-name">Nombre del proyecto</Label>
               <Input id="op-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Automatización de pedidos" />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="op-customer">Cliente</Label>
-              <Input id="op-customer" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Manpersa SAC" />
-            </div>
+            {isBoss && (
+              <div className="space-y-1.5">
+                <Label htmlFor="op-company">Empresa cliente</Label>
+                <select id="op-company" className={cn(selectClass, "w-full")} value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+                  <option value="">Otra (escribir el nombre)</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {!companyId && (
+              <div className="space-y-1.5">
+                <Label htmlFor="op-customer">Cliente</Label>
+                <Input id="op-customer" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Manpersa SAC" />
+              </div>
+            )}
             {isBoss && (
               <div className="space-y-1.5">
                 <Label htmlFor="op-team">Equipo</Label>
@@ -179,104 +201,98 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
 
 export default function OpsProjectsPage() {
   const session = useSession().data;
-  const [filters, setFilters] = useState<ProjectFilters>({});
+  const queryClient = useQueryClient();
+  const table = useTableState({ filterKeys: PROJECT_FILTERS });
+  const { data, isLoading, isFetching, error } = useOpsProjects(table.query);
   const [creating, setCreating] = useState(false);
-  const { data: projects, isLoading, error } = useOpsProjects(filters);
-  const canCreate = session?.role === "boss" || session?.role === "lead";
-  const set = <K extends keyof ProjectFilters>(key: K, value: string) => setFilters((f) => ({ ...f, [key]: value || undefined }));
+  const seesCompanies = session?.role === "boss" || session?.role === "commercial" || session?.role === "finance";
+  const save = async (p: OpsProjectRow, patch: Partial<ProjectInput>) => {
+    await updateProject(p.id, patch);
+    await Promise.all([queryClient.invalidateQueries({ queryKey: opsKeys.allProjects }), queryClient.invalidateQueries({ queryKey: opsKeys.project(p.id) })]);
+  };
+  const totals = data?.totals ?? {};
+
+  const columns: Column<OpsProjectRow>[] = [
+    {
+      id: "name",
+      header: "Proyecto",
+      sortKey: "name",
+      card: "title",
+      cell: (p) => (
+        <span className="flex min-w-0 flex-col">
+          <span className="font-medium">{p.name}</span>
+          <span className="text-xs text-muted-foreground">
+            {p.company && seesCompanies ? <RelationCell to={`/comercial/empresas/${p.company.id}`}>{p.customerName}</RelationCell> : p.customerName} · {p.team.name ?? "Sin equipo"}
+          </span>
+        </span>
+      ),
+    },
+    {
+      id: "stage",
+      header: "Etapa",
+      sortKey: "stage",
+      cell: (p) => <InlineSelect label={`Etapa de ${p.name}`} value={p.stage} options={STAGES} labels={STAGE_LABELS} disabled={!p.canManage} display={<StageBadge value={p.stage} />} onSave={(v) => save(p, { stage: v ?? p.stage })} />,
+    },
+    {
+      id: "health",
+      header: "Health",
+      sortKey: "health",
+      cell: (p) => <InlineSelect label={`Health de ${p.name}`} value={p.health} options={HEALTH} labels={HEALTH_LABELS} disabled={!p.canManage} display={<HealthBadge value={p.health} />} onSave={(v) => save(p, { health: v ?? p.health })} />,
+    },
+    { id: "sentiment", header: "Sentiment", cell: (p) => <SentimentBar value={p.sentimentScore} /> },
+    {
+      id: "priority",
+      header: "Prioridad",
+      sortKey: "priority",
+      cell: (p) => (
+        <InlineSelect label={`Prioridad de ${p.name}`} value={p.priority} options={PRIORITIES} labels={PRIORITY_LABELS} disabled={!p.canManage} display={<PriorityBadge value={p.priority} />} onSave={(v) => save(p, { priority: v ?? p.priority })} />
+      ),
+    },
+    { id: "soldHours", header: "Horas vendidas", align: "right", footer: <TotalCell hours={totals.soldHours ?? 0} strong />, cell: (p) => <TotalCell hours={p.summary.soldHours} /> },
+    { id: "billableHours", header: "Horas facturables", align: "right", footer: <TotalCell hours={totals.billableHours ?? 0} strong />, cell: (p) => <TotalCell hours={p.summary.billableHours} /> },
+    { id: "billableVsSold", header: "Facturable vs deals", align: "right", cell: (p) => <TotalCell hours={p.summary.billableVsSold} /> },
+    { id: "progress", header: "Avance", align: "right", cell: (p) => <span title={`${p.summary.tasksDone}/${p.summary.tasks} tareas`}>{p.summary.progress}%</span> },
+    { id: "amount", header: "Valor vendido", align: "right", footer: <TotalCell cents={totals.amountCents ?? 0} strong />, cell: (p) => <TotalCell cents={p.summary.amountCents} /> },
+    { id: "kickoff", header: "Kickoff", sortKey: "kickoffDate", card: false, cell: (p) => (p.kickoffDate ? formatDate(p.kickoffDate) : <span className="text-muted-foreground">—</span>) },
+    { id: "nextAction", header: "Siguiente acción", card: false, cell: (p) => (p.nextAction ? NEXT_ACTION_LABELS[p.nextAction] : <span className="text-muted-foreground">—</span>) },
+  ];
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Proyectos del cliente</h1>
-          <p className="mt-1 text-sm text-muted-foreground sm:text-base">Proyectos de los clientes: etapa, salud, deals y tareas.</p>
-        </div>
-        {canCreate && !creating && (
-          <Button onClick={() => setCreating(true)}>
-            <Plus />
-            Nuevo proyecto
-          </Button>
-        )}
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Proyectos del cliente</h1>
+        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Etapa, health, horas vendidas y facturables, y avance de cada proyecto.</p>
       </div>
 
       {creating && <NewProjectForm onClose={() => setCreating(false)} />}
 
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Filtros">
-        <select aria-label="Filtrar por etapa" className={selectClass} value={filters.stage ?? ""} onChange={(e) => set("stage", e.target.value)}>
-          <option value="">Todas las etapas</option>
-          {STAGES.map((s: Stage) => (
-            <option key={s} value={s}>
-              {STAGE_LABELS[s]}
-            </option>
-          ))}
-        </select>
-        <select aria-label="Filtrar por health" className={selectClass} value={filters.health ?? ""} onChange={(e) => set("health", e.target.value)}>
-          <option value="">Todo el health</option>
-          {HEALTH.map((h: Health) => (
-            <option key={h} value={h}>
-              {HEALTH_LABELS[h]}
-            </option>
-          ))}
-        </select>
-        <select aria-label="Filtrar por prioridad" className={selectClass} value={filters.priority ?? ""} onChange={(e) => set("priority", e.target.value)}>
-          <option value="">Todas las prioridades</option>
-          {PRIORITIES.map((p) => (
-            <option key={p} value={p}>
-              {PRIORITY_LABELS[p]}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error instanceof Error ? error.message : "No se pudieron cargar los proyectos."}
-        </p>
-      ) : isLoading ? (
-        <div className="space-y-2">
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
-        </div>
-      ) : !projects?.length ? (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            {Object.values(filters).some(Boolean) ? "Ningún proyecto coincide con los filtros." : "Aún no hay proyectos operativos."}
-          </CardContent>
-        </Card>
-      ) : (
-        <ul className="space-y-2">
-          {projects.map((p) => (
-            <li key={p.id}>
-              <Link
-                to={`/operativa/${p.id}`}
-                className="grid items-center gap-3 rounded-xl border border-foreground/10 bg-foreground/[0.02] p-4 transition-colors hover:bg-foreground/[0.05] md:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,1fr)]"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{p.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {p.customerName} · {p.team.name ?? "Sin equipo"}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <StageBadge value={p.stage} />
-                  <HealthBadge value={p.health} />
-                  <PriorityBadge value={p.priority} />
-                </div>
-                <SentimentBar value={p.sentimentScore} />
-                <div className="text-xs text-muted-foreground md:text-right">
-                  <p>
-                    {p.summary.deals} deal{p.summary.deals === 1 ? "" : "s"} · {hoursText(p.summary.hours)}
-                  </p>
-                  <p>
-                    {money(p.summary.amountCents)} · {p.summary.tasksDone}/{p.summary.tasks} tareas
-                  </p>
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
+      <DataTable
+        label="Proyectos"
+        columns={columns}
+        table={table}
+        data={data}
+        isLoading={isLoading}
+        isFetching={isFetching}
+        error={error}
+        rowKey={(p) => p.id}
+        rowHref={(p) => `/operativa/${p.id}`}
+        empty="Aún no hay proyectos operativos."
+        searchPlaceholder="Buscar por proyecto o cliente"
+        filters={[
+          { key: "stage", label: "Filtrar por etapa", all: "Todas las etapas", options: STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] })) },
+          { key: "health", label: "Filtrar por health", all: "Todo el health", options: HEALTH.map((h) => ({ value: h, label: HEALTH_LABELS[h] })) },
+          { key: "priority", label: "Filtrar por prioridad", all: "Todas las prioridades", options: PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABELS[p] })) },
+        ]}
+        grouping={{ label: "Agrupar por etapa", value: (p) => p.stage, order: STAGES, labels: STAGE_LABELS }}
+        actions={
+          data?.canCreate && !creating ? (
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus />
+              Nuevo proyecto
+            </Button>
+          ) : undefined
+        }
+      />
     </div>
   );
 }

@@ -7,16 +7,18 @@ import type { SessionUser } from "../auth/users.js";
 import { open, seal } from "../lib/server-cipher.js";
 import { registerSecret } from "../lib/redact.js";
 import { canManageProject, canWorkOnProject, forbidden, projectScope, readableProject } from "../ops/access.js";
+import { runTableQuery, tableQuerySchema } from "../lib/table-query.js";
 import {
   ACCOUNT_KINDS,
-  DEAL_STATUSES,
-  type DealDoc,
-  dealAmountCents,
   HEALTH_SCORES,
+  NEXT_ACTIONS,
   type OpsProjectDoc,
   type OpsTaskDoc,
+  PAYMENT_TYPES,
   PRIORITIES,
   PROJECT_STAGES,
+  sentimentOf,
+  SOLD_DEAL_STATUSES,
   TASK_STATUSES,
   type VaultAccountDoc
 } from "../ops/models.js";
@@ -40,53 +42,35 @@ const optionalUrl = z
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Usa el formato AAAA-MM-DD.");
 const userId = z.string().uuid().nullable();
 
+const projectFields = {
+  name: text(80).min(3),
+  customerName: text(80).min(2),
+  companyId: z.string().uuid().nullable(),
+  leadUserId: userId,
+  developerUserId: userId,
+  clientSlug: z.string().regex(/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/).nullable(),
+  proposalUrl: optionalUrl,
+  projectPlanUrl: optionalUrl,
+  sowUrl: optionalUrl,
+  kickoffDate: isoDate.nullable(),
+  contactIds: z.array(z.string().uuid()).max(50),
+  stage: z.enum(PROJECT_STAGES),
+  health: z.enum(HEALTH_SCORES),
+  priority: z.enum(PRIORITIES),
+  paymentType: z.enum(PAYMENT_TYPES).nullable(),
+  nextAction: z.enum(NEXT_ACTIONS).nullable()
+};
+
+// Sentiment no se acepta: se deriva del Health (docs/rework-plataforma.md §3).
 const createProjectSchema = z
-  .object({
-    name: text(80).min(3),
-    customerName: text(80).min(2),
-    teamId: z.string().uuid().optional(),
-    leadUserId: userId.optional(),
-    developerUserId: userId.optional(),
-    clientSlug: z.string().regex(/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/).nullable().optional(),
-    proposalUrl: optionalUrl.optional(),
-    stage: z.enum(PROJECT_STAGES).optional(),
-    health: z.enum(HEALTH_SCORES).optional(),
-    sentimentScore: z.number().int().min(0).max(100).optional(),
-    priority: z.enum(PRIORITIES).optional()
-  })
-  .strict();
+  .object({ ...projectFields, teamId: z.string().uuid() })
+  .partial()
+  .required({ name: true })
+  .strict()
+  .refine((v) => Boolean(v.customerName || v.companyId), "Indica la empresa cliente.");
 
 const updateProjectSchema = z
-  .object({
-    name: text(80).min(3),
-    customerName: text(80).min(2),
-    leadUserId: userId,
-    developerUserId: userId,
-    clientSlug: z.string().regex(/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/).nullable(),
-    proposalUrl: optionalUrl,
-    stage: z.enum(PROJECT_STAGES),
-    health: z.enum(HEALTH_SCORES),
-    sentimentScore: z.number().int().min(0).max(100),
-    priority: z.enum(PRIORITIES)
-  })
-  .partial()
-  .strict()
-  .refine((patch) => Object.keys(patch).length > 0, "No hay nada que cambiar.");
-
-const dealFields = {
-  title: text(120).min(3),
-  description: text(2000),
-  hours: z.number().positive().max(100_000),
-  rateCents: z.number().int().min(0).max(100_000_000),
-  currency: z.string().regex(/^[A-Z]{3}$/),
-  status: z.enum(DEAL_STATUSES),
-  proposalUrl: optionalUrl
-};
-const createDealSchema = z
-  .object({ title: dealFields.title, description: dealFields.description.optional(), hours: dealFields.hours, rateCents: dealFields.rateCents, currency: dealFields.currency.optional(), status: dealFields.status.optional(), proposalUrl: dealFields.proposalUrl.optional() })
-  .strict();
-const updateDealSchema = z
-  .object(dealFields)
+  .object(projectFields)
   .partial()
   .strict()
   .refine((patch) => Object.keys(patch).length > 0, "No hay nada que cambiar.");
@@ -127,11 +111,12 @@ const updateAccountSchema = z
 
 const updateNoteSchema = z.object({ body: text(4000).min(1) }).strict();
 
-const listQuery = z.object({
+const listQuery = tableQuerySchema.extend({
   stage: z.enum(PROJECT_STAGES).optional(),
   health: z.enum(HEALTH_SCORES).optional(),
   priority: z.enum(PRIORITIES).optional(),
-  teamId: z.string().uuid().optional()
+  teamId: z.string().uuid().optional(),
+  companyId: z.string().uuid().optional()
 });
 
 const LABELS = {
@@ -158,50 +143,90 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
     return Boolean(user && roles.includes(user.role));
   }
 
+  /**
+   * Vista de proyectos con sus nombres y los campos calculados en el servidor (§4.2): horas vendidas
+   * (deals aprobados en adelante), horas facturables (de las subtareas, que llegan en el paso 2: hoy
+   * 0), facturable vs deals y avance (tareas hechas / totales).
+   */
   async function people(projects: OpsProjectDoc[]) {
     const ids = [...new Set(projects.flatMap((p) => [p.leadUserId, p.developerUserId]).filter((v): v is string => Boolean(v)))];
     const teamIds = [...new Set(projects.map((p) => p.teamId))];
-    const [users, teams] = await Promise.all([
+    const projectIds = projects.map((p) => p._id);
+    const contactIds = [...new Set(projects.flatMap((p) => p.contactIds ?? []))];
+    const [users, teams, deals, tasks, contacts] = await Promise.all([
       ids.length ? store.users.find({ _id: { $in: ids } }, { projection: { name: 1 } }).toArray() : [],
-      teamIds.length ? store.teams.find({ _id: { $in: teamIds } }, { projection: { name: 1 } }).toArray() : []
+      teamIds.length ? store.teams.find({ _id: { $in: teamIds } }, { projection: { name: 1 } }).toArray() : [],
+      projectIds.length
+        ? store.deals
+            .aggregate<{ _id: string; deals: number; soldHours: number; amountCents: number }>([
+              { $match: { projectId: { $in: projectIds }, status: { $ne: "cancelled" } } },
+              {
+                $group: {
+                  _id: "$projectId",
+                  deals: { $sum: 1 },
+                  soldHours: { $sum: { $cond: [{ $in: ["$status", [...SOLD_DEAL_STATUSES]] }, "$hours", 0] } },
+                  amountCents: { $sum: { $cond: [{ $in: ["$status", [...SOLD_DEAL_STATUSES]] }, "$amountCents", 0] } }
+                }
+              }
+            ])
+            .toArray()
+        : [],
+      projectIds.length
+        ? store.opsTasks
+            .aggregate<{ _id: string; tasks: number; done: number }>([
+              { $match: { projectId: { $in: projectIds } } },
+              { $group: { _id: "$projectId", tasks: { $sum: 1 }, done: { $sum: { $cond: [{ $eq: ["$status", "done"] }, 1, 0] } } } }
+            ])
+            .toArray()
+        : [],
+      contactIds.length ? store.contacts.find({ _id: { $in: contactIds } }, { projection: { name: 1 } }).toArray() : []
     ]);
     const userName = new Map(users.map((u) => [u._id, u.name]));
     const teamName = new Map(teams.map((t) => [t._id, t.name]));
-    return (project: OpsProjectDoc) => ({
-      id: project._id,
-      name: project.name,
-      customerName: project.customerName,
-      team: { id: project.teamId, name: teamName.get(project.teamId) ?? null },
-      lead: project.leadUserId ? { id: project.leadUserId, name: userName.get(project.leadUserId) ?? null } : null,
-      developer: project.developerUserId ? { id: project.developerUserId, name: userName.get(project.developerUserId) ?? null } : null,
-      clientSlug: project.clientSlug,
-      proposalUrl: project.proposalUrl,
-      customerId: project.customerId ?? null,
-      leadId: project.leadId ?? null,
-      stage: project.stage,
-      health: project.health,
-      sentimentScore: project.sentimentScore,
-      priority: project.priority,
-      createdAt: project.createdAt,
-      updatedAt: project.updatedAt
-    });
+    const dealsOf = new Map(deals.map((d) => [d._id, d]));
+    const tasksOf = new Map(tasks.map((t) => [t._id, t]));
+    const contactName = new Map(contacts.map((c) => [c._id, c.name]));
+    return (project: OpsProjectDoc) => {
+      const d = dealsOf.get(project._id);
+      const t = tasksOf.get(project._id);
+      const soldHours = d?.soldHours ?? 0;
+      const billableHours = 0;
+      return {
+        id: project._id,
+        name: project.name,
+        customerName: project.customerName,
+        company: project.companyId ? { id: project.companyId, name: project.customerName } : null,
+        team: { id: project.teamId, name: teamName.get(project.teamId) ?? null },
+        lead: project.leadUserId ? { id: project.leadUserId, name: userName.get(project.leadUserId) ?? null } : null,
+        developer: project.developerUserId ? { id: project.developerUserId, name: userName.get(project.developerUserId) ?? null } : null,
+        contacts: (project.contactIds ?? []).map((id) => ({ id, name: contactName.get(id) ?? null })),
+        clientSlug: project.clientSlug,
+        proposalUrl: project.proposalUrl,
+        projectPlanUrl: project.projectPlanUrl ?? null,
+        sowUrl: project.sowUrl ?? null,
+        kickoffDate: project.kickoffDate ?? null,
+        leadId: project.leadId ?? null,
+        stage: project.stage,
+        health: project.health,
+        sentimentScore: sentimentOf(project.health),
+        priority: project.priority,
+        paymentType: project.paymentType ?? null,
+        nextAction: project.nextAction ?? null,
+        summary: {
+          deals: d?.deals ?? 0,
+          amountCents: d?.amountCents ?? 0,
+          soldHours,
+          billableHours,
+          billableVsSold: billableHours - soldHours,
+          tasks: t?.tasks ?? 0,
+          tasksDone: t?.done ?? 0,
+          progress: t?.tasks ? Math.round((t.done / t.tasks) * 100) : 0
+        },
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt
+      };
+    };
   }
-
-  const dealView = (deal: DealDoc) => ({
-    id: deal._id,
-    projectId: deal.projectId,
-    title: deal.title,
-    description: deal.description,
-    hours: deal.hours,
-    rateCents: deal.rateCents,
-    amountCents: deal.amountCents,
-    currency: deal.currency,
-    status: deal.status,
-    proposalUrl: deal.proposalUrl,
-    paidAt: deal.paidAt ?? null,
-    createdAt: deal.createdAt,
-    updatedAt: deal.updatedAt
-  });
 
   const taskView = (task: OpsTaskDoc) => ({
     id: task._id,
@@ -245,37 +270,64 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
 
   // ---- proyectos --------------------------------------------------------------
 
+  /** Empresa y contactos del proyecto: deben existir. Devuelve el nombre de la empresa (o undefined si no cambia). */
+  async function checkClient(companyId: string | null | undefined, contactIds: string[] | undefined, reply: FastifyReply) {
+    let companyName: string | undefined;
+    if (companyId) {
+      const company = await store.companies.findOne({ _id: companyId }, { projection: { name: 1 } });
+      if (!company) return void reply.code(400).send({ error: "La empresa no existe." });
+      companyName = company.name;
+    }
+    if (contactIds?.length && (await store.contacts.countDocuments({ _id: { $in: contactIds } })) !== new Set(contactIds).size) {
+      return void reply.code(400).send({ error: "Algún contacto no existe." });
+    }
+    return { companyName };
+  }
+
+  /** Tabla de proyectos: paginada, ordenada y filtrada en el servidor, con contadores por etapa y totales. */
   app.get("/api/ops/projects", { preHandler: requireAuth }, async (request, reply) => {
     const query = listQuery.safeParse(request.query);
     if (!query.success) return invalid(reply, query.error);
     const user = request.user!;
-    const filter = {
+    const match = {
       ...projectScope(user, query.data.teamId),
       ...(query.data.stage ? { stage: query.data.stage } : {}),
       ...(query.data.health ? { health: query.data.health } : {}),
-      ...(query.data.priority ? { priority: query.data.priority } : {})
+      ...(query.data.priority ? { priority: query.data.priority } : {}),
+      ...(query.data.companyId ? { companyId: query.data.companyId } : {})
     };
-    const projects = await store.opsProjects.find(filter).sort({ updatedAt: -1 }).limit(500).toArray();
-    const present = await people(projects);
-    const ids = projects.map((p) => p._id);
-    const [deals, tasks] = ids.length
-      ? await Promise.all([store.deals.find({ projectId: { $in: ids }, status: { $ne: "cancelled" } }).toArray(), store.opsTasks.find({ projectId: { $in: ids } }, { projection: { projectId: 1, status: 1 } }).toArray()])
-      : [[], []];
+    const result = await runTableQuery(store.opsProjects, {
+      match,
+      query: query.data,
+      sortable: {
+        name: "name",
+        customerName: "customerName",
+        stage: { field: "stage", order: PROJECT_STAGES },
+        health: { field: "health", order: HEALTH_SCORES },
+        priority: { field: "priority", order: PRIORITIES },
+        kickoffDate: "kickoffDate",
+        updatedAt: "updatedAt"
+      },
+      defaultSort: { key: "updatedAt", dir: "desc" },
+      search: ["name", "customerName"],
+      facetField: "stage"
+    });
+    const present = await people(result.rows);
+    // Totales del conjunto filtrado (no solo de la página): horas vendidas y valor de deals vendidos.
+    const ids = (await store.opsProjects.find(match, { projection: { _id: 1 } }).toArray()).map((p) => p._id);
+    const [sold] = ids.length
+      ? await store.deals
+          .aggregate<{ soldHours: number; amountCents: number }>([
+            { $match: { projectId: { $in: ids }, status: { $in: [...SOLD_DEAL_STATUSES] } } },
+            { $group: { _id: null, soldHours: { $sum: "$hours" }, amountCents: { $sum: "$amountCents" } } }
+          ])
+          .toArray()
+      : [];
     return {
-      projects: projects.map((p) => {
-        const mine = deals.filter((d) => d.projectId === p._id);
-        const myTasks = tasks.filter((t) => t.projectId === p._id);
-        return {
-          ...present(p),
-          summary: {
-            deals: mine.length,
-            hours: mine.reduce((sum, d) => sum + d.hours, 0),
-            amountCents: mine.reduce((sum, d) => sum + d.amountCents, 0),
-            tasks: myTasks.length,
-            tasksDone: myTasks.filter((t) => t.status === "done").length
-          }
-        };
-      })
+      ...result,
+      rows: result.rows.map((p) => ({ ...present(p), canManage: canManageProject(user, p) })),
+      totals: { soldHours: sold?.soldHours ?? 0, billableHours: 0, amountCents: sold?.amountCents ?? 0 },
+      canCreate: user.role === "boss" || user.role === "lead"
     };
   });
 
@@ -284,30 +336,39 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
     if (!body.success) return invalid(reply, body.error);
     const user = request.user!;
     if (user.role !== "boss" && user.role !== "lead") return forbidden(reply);
-    const teamId = user.role === "boss" ? body.data.teamId : user.teamId;
+    const input = body.data;
+    const teamId = user.role === "boss" ? input.teamId : user.teamId;
     if (!teamId) return reply.code(400).send({ error: user.role === "boss" ? "Elige el equipo del proyecto." : "Tu usuario no tiene equipo." });
     if (!(await store.teams.findOne({ _id: teamId }))) return reply.code(400).send({ error: "El equipo no existe." });
-    if (!(await teamMember(body.data.leadUserId, teamId, ["lead"]))) return reply.code(400).send({ error: "El Team Leader debe ser un team leader activo de ese equipo." });
-    if (!(await teamMember(body.data.developerUserId, teamId, ["developer"]))) return reply.code(400).send({ error: "El Developer debe ser un developer activo de ese equipo." });
-    if (body.data.clientSlug) {
-      const client = await store.getClient(body.data.clientSlug);
-      if (!client || !canSeeClient(user, client)) return reply.code(400).send({ error: "La app de Infraestructura no existe." });
-      if (await store.opsProjects.findOne({ clientSlug: body.data.clientSlug })) return reply.code(409).send({ error: "Esa app ya está enlazada a otro proyecto." });
+    if (!(await teamMember(input.leadUserId, teamId, ["lead"]))) return reply.code(400).send({ error: "El Team Leader debe ser un team leader activo de ese equipo." });
+    if (!(await teamMember(input.developerUserId, teamId, ["developer"]))) return reply.code(400).send({ error: "El Developer debe ser un developer activo de ese equipo." });
+    const client = await checkClient(input.companyId, input.contactIds, reply);
+    if (!client) return reply;
+    if (input.clientSlug) {
+      const app_ = await store.getClient(input.clientSlug);
+      if (!app_ || !canSeeClient(user, app_)) return reply.code(400).send({ error: "La app de Infraestructura no existe." });
+      if (await store.opsProjects.findOne({ clientSlug: input.clientSlug })) return reply.code(409).send({ error: "Esa app ya está enlazada a otro proyecto." });
     }
     const at = new Date();
     const project: OpsProjectDoc = {
       _id: randomUUID(),
-      name: body.data.name,
-      customerName: body.data.customerName,
+      name: input.name,
+      customerName: client.companyName ?? input.customerName!,
+      companyId: input.companyId ?? null,
+      contactIds: [...new Set(input.contactIds ?? [])],
       teamId,
-      leadUserId: body.data.leadUserId ?? (user.role === "lead" ? user.id : null),
-      developerUserId: body.data.developerUserId ?? null,
-      clientSlug: body.data.clientSlug ?? null,
-      proposalUrl: body.data.proposalUrl ?? null,
-      stage: body.data.stage ?? "kickoff",
-      health: body.data.health ?? "neutral",
-      sentimentScore: body.data.sentimentScore ?? 50,
-      priority: body.data.priority ?? "medium",
+      leadUserId: input.leadUserId ?? (user.role === "lead" ? user.id : null),
+      developerUserId: input.developerUserId ?? null,
+      clientSlug: input.clientSlug ?? null,
+      proposalUrl: input.proposalUrl ?? null,
+      projectPlanUrl: input.projectPlanUrl ?? null,
+      sowUrl: input.sowUrl ?? null,
+      kickoffDate: input.kickoffDate ?? null,
+      stage: input.stage ?? "kickoff",
+      health: input.health ?? "neutral",
+      priority: input.priority ?? "medium",
+      paymentType: input.paymentType ?? null,
+      nextAction: input.nextAction ?? null,
       createdBy: user.username,
       createdAt: at,
       updatedAt: at
@@ -341,23 +402,34 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
     const patch = body.data;
     if (patch.leadUserId !== undefined && !(await teamMember(patch.leadUserId, project.teamId, ["lead"]))) return reply.code(400).send({ error: "El Team Leader debe ser un team leader activo del equipo del proyecto." });
     if (patch.developerUserId !== undefined && !(await teamMember(patch.developerUserId, project.teamId, ["developer"]))) return reply.code(400).send({ error: "El Developer debe ser un developer activo del equipo del proyecto." });
+    const client = await checkClient(patch.companyId, patch.contactIds, reply);
+    if (!client) return reply;
     if (patch.clientSlug) {
-      const client = await store.getClient(patch.clientSlug);
-      if (!client || !canSeeClient(user, client)) return reply.code(400).send({ error: "La app de Infraestructura no existe." });
+      const app_ = await store.getClient(patch.clientSlug);
+      if (!app_ || !canSeeClient(user, app_)) return reply.code(400).send({ error: "La app de Infraestructura no existe." });
       const taken = await store.opsProjects.findOne({ clientSlug: patch.clientSlug, _id: { $ne: project._id } });
       if (taken) return reply.code(409).send({ error: "Esa app ya está enlazada a otro proyecto." });
     }
 
     const changes: string[] = [];
     if (patch.stage && patch.stage !== project.stage) changes.push(`Etapa: ${LABELS.stage[project.stage]} → ${LABELS.stage[patch.stage]}`);
-    if (patch.health && patch.health !== project.health) changes.push(`Health: ${LABELS.health[project.health]} → ${LABELS.health[patch.health]}`);
+    // Cambiar el Health recalcula el Sentiment (§5.5): la novedad deja ambos.
+    if (patch.health && patch.health !== project.health) {
+      changes.push(`Health: ${LABELS.health[project.health]} → ${LABELS.health[patch.health]} (Sentiment ${sentimentOf(project.health)} → ${sentimentOf(patch.health)})`);
+    }
     if (patch.priority && patch.priority !== project.priority) changes.push(`Prioridad: ${LABELS.priority[project.priority]} → ${LABELS.priority[patch.priority]}`);
-    if (patch.sentimentScore !== undefined && patch.sentimentScore !== project.sentimentScore) changes.push(`Sentiment: ${project.sentimentScore} → ${patch.sentimentScore}`);
     if (patch.leadUserId !== undefined && patch.leadUserId !== project.leadUserId) changes.push("Cambió el Team Leader.");
     if (patch.developerUserId !== undefined && patch.developerUserId !== project.developerUserId) changes.push("Cambió el Developer.");
+    if (patch.companyId !== undefined && patch.companyId !== (project.companyId ?? null)) changes.push("Cambió la empresa cliente.");
 
     const updatedAt = new Date();
-    await store.opsProjects.updateOne({ _id: project._id }, { $set: { ...patch, updatedAt } });
+    const set = {
+      ...patch,
+      ...(patch.contactIds ? { contactIds: [...new Set(patch.contactIds)] } : {}),
+      ...(client.companyName ? { customerName: client.companyName } : {}),
+      updatedAt
+    };
+    await store.opsProjects.updateOne({ _id: project._id }, { $set: set });
     if (changes.length) {
       await note(user, project._id, changes.join("\n"));
       await auditOps(user, project, "ops.project_updated", { changes: changes.length });
@@ -365,82 +437,6 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
     const fresh = (await store.opsProjects.findOne({ _id: project._id }))!;
     const present = await people([fresh]);
     return { project: present(fresh) };
-  });
-
-  // ---- deals ------------------------------------------------------------------
-
-  app.get("/api/ops/projects/:id/deals", { preHandler: requireAuth }, async (request, reply) => {
-    const params = idParams.safeParse(request.params);
-    if (!params.success) return reply.code(400).send({ error: "Id inválido." });
-    const project = await readableProject(store, request, reply, params.data.id);
-    if (!project) return reply;
-    const deals = await store.deals.find({ projectId: project._id }).sort({ createdAt: -1 }).toArray();
-    return { deals: deals.map(dealView) };
-  });
-
-  app.post("/api/ops/projects/:id/deals", { preHandler: requireAuth }, async (request, reply) => {
-    const params = idParams.safeParse(request.params);
-    const body = createDealSchema.safeParse(request.body);
-    if (!params.success) return reply.code(400).send({ error: "Id inválido." });
-    if (!body.success) return invalid(reply, body.error);
-    const project = await readableProject(store, request, reply, params.data.id);
-    if (!project) return reply;
-    const user = request.user!;
-    if (!canManageProject(user, project)) return forbidden(reply);
-    const at = new Date();
-    const deal: DealDoc = {
-      _id: randomUUID(),
-      projectId: project._id,
-      title: body.data.title,
-      description: body.data.description ?? "",
-      hours: body.data.hours,
-      rateCents: body.data.rateCents,
-      amountCents: dealAmountCents(body.data.hours, body.data.rateCents),
-      currency: body.data.currency ?? "USD",
-      status: body.data.status ?? "draft",
-      proposalUrl: body.data.proposalUrl ?? null,
-      createdBy: user.username,
-      createdAt: at,
-      updatedAt: at,
-      ...(body.data.status === "paid" ? { paidAt: at } : {})
-    };
-    await store.deals.insertOne(deal);
-    await auditOps(user, project, "ops.deal_created", { deal: deal.title, hours: deal.hours });
-    return reply.code(201).send({ deal: dealView(deal) });
-  });
-
-  app.patch("/api/ops/projects/:id/deals/:childId", { preHandler: requireAuth }, async (request, reply) => {
-    const params = idsParams.safeParse(request.params);
-    const body = updateDealSchema.safeParse(request.body);
-    if (!params.success) return reply.code(400).send({ error: "Id inválido." });
-    if (!body.success) return invalid(reply, body.error);
-    const project = await readableProject(store, request, reply, params.data.id);
-    if (!project) return reply;
-    const user = request.user!;
-    if (!canManageProject(user, project)) return forbidden(reply);
-    const deal = await store.deals.findOne({ _id: params.data.childId, projectId: project._id });
-    if (!deal) return reply.code(404).send({ error: "Deal no encontrado." });
-    const patch = body.data;
-    // Una vez facturado o cobrado, el dinero ya no se toca: el cobro y las comisiones dependen de él.
-    const locksMoney = deal.status === "invoiced" || deal.status === "paid";
-    if (locksMoney && (patch.hours !== undefined || patch.rateCents !== undefined || patch.currency !== undefined)) {
-      return reply.code(409).send({ error: "El deal ya está facturado o cobrado: no se pueden cambiar horas, tarifa ni moneda." });
-    }
-    const hours = patch.hours ?? deal.hours;
-    const rateCents = patch.rateCents ?? deal.rateCents;
-    const at = new Date();
-    const set: Partial<DealDoc> = { ...patch, amountCents: dealAmountCents(hours, rateCents), updatedAt: at };
-    const unset: Record<string, ""> = {};
-    if (patch.status === "paid" && deal.status !== "paid") set.paidAt = at;
-    if (patch.status && patch.status !== "paid" && deal.status === "paid") unset.paidAt = "";
-    await store.deals.updateOne({ _id: deal._id }, { $set: set, ...(Object.keys(unset).length ? { $unset: unset } : {}) });
-    if (patch.status && patch.status !== deal.status) {
-      await note(user, project._id, `Deal "${deal.title}": ${deal.status} → ${patch.status}`);
-      await auditOps(user, project, "ops.deal_status_changed", { deal: deal.title, from: deal.status, to: patch.status });
-    } else {
-      await auditOps(user, project, "ops.deal_updated", { deal: deal.title });
-    }
-    return { deal: dealView((await store.deals.findOne({ _id: deal._id }))!) };
   });
 
   // ---- tareas -----------------------------------------------------------------

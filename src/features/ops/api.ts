@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
 import { useSession } from "@/features/auth/auth";
+import { useTablePage } from "@/components/data-table/use-table-page";
 import { formatMoney } from "@/lib/format";
 
 // ---- catálogos (los mismos valores que valida la API) ---------------------------------
@@ -11,6 +12,8 @@ export const PRIORITIES = ["critical", "high", "medium", "low"] as const;
 export const DEAL_STATUSES = ["draft", "proposed", "approved", "in_progress", "delivered", "invoiced", "paid", "cancelled"] as const;
 export const TASK_STATUSES = ["todo", "in_progress", "review", "done"] as const;
 export const ACCOUNT_KINDS = ["web", "email", "api", "database", "server", "social", "other"] as const;
+export const PAYMENT_TYPES = ["upwork", "stripe", "direct_pe", "direct_us", "paypal", "revolut"] as const;
+export const NEXT_ACTIONS = ["contact", "follow_up", "prepare_proposal", "internal_review", "none"] as const;
 
 export type Stage = (typeof STAGES)[number];
 export type Health = (typeof HEALTH)[number];
@@ -18,6 +21,8 @@ export type Priority = (typeof PRIORITIES)[number];
 export type DealStatus = (typeof DEAL_STATUSES)[number];
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 export type AccountKind = (typeof ACCOUNT_KINDS)[number];
+export type PaymentType = (typeof PAYMENT_TYPES)[number];
+export type NextAction = (typeof NEXT_ACTIONS)[number];
 
 export const STAGE_LABELS: Record<Stage, string> = {
   kickoff: "Kick Off",
@@ -60,6 +65,34 @@ export const ACCOUNT_KIND_LABELS: Record<AccountKind, string> = {
   other: "Otra",
 };
 
+export const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
+  upwork: "Upwork",
+  stripe: "Stripe",
+  direct_pe: "Directo Perú",
+  direct_us: "Directo USA",
+  paypal: "PayPal",
+  revolut: "Revolut",
+};
+export const NEXT_ACTION_LABELS: Record<NextAction, string> = {
+  contact: "Contactar",
+  follow_up: "Follow-up",
+  prepare_proposal: "Preparar propuesta",
+  internal_review: "Revisión interna",
+  none: "Ninguna",
+};
+
+/** Sentiment derivado del Health (§3): el mismo cálculo que hace el servidor. */
+export const SENTIMENT_BY_HEALTH: Record<Health, number> = {
+  champion: 100,
+  very_happy: 90,
+  happy: 80,
+  mixed: 65,
+  neutral: 55,
+  concerned: 40,
+  at_risk: 20,
+  escalated: 10,
+};
+
 /** Clases de color por health: verdes los buenos, grises los neutros, ámbar y rojos los de riesgo. */
 export const HEALTH_TONE: Record<Health, string> = {
   champion: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
@@ -80,42 +113,38 @@ export const PRIORITY_TONE: Record<Priority, string> = {
 
 // ---- tipos de la API -------------------------------------------------------------
 
+type Ref = { id: string; name: string | null };
+
 export interface OpsProject {
   id: string;
   name: string;
   customerName: string;
-  team: { id: string; name: string | null };
-  lead: { id: string; name: string | null } | null;
-  developer: { id: string; name: string | null } | null;
+  company: { id: string; name: string } | null;
+  team: Ref;
+  lead: Ref | null;
+  developer: Ref | null;
+  contacts: Ref[];
   clientSlug: string | null;
   proposalUrl: string | null;
-  customerId: string | null;
+  projectPlanUrl: string | null;
+  sowUrl: string | null;
+  kickoffDate: string | null;
   leadId: string | null;
   stage: Stage;
   health: Health;
+  /** (calc) del Health. */
   sentimentScore: number;
   priority: Priority;
+  paymentType: PaymentType | null;
+  nextAction: NextAction | null;
+  /** Campos calculados en el servidor. */
+  summary: { deals: number; amountCents: number; soldHours: number; billableHours: number; billableVsSold: number; tasks: number; tasksDone: number; progress: number };
   createdAt: string;
   updatedAt: string;
 }
 
-export interface OpsProjectListItem extends OpsProject {
-  summary: { deals: number; hours: number; amountCents: number; tasks: number; tasksDone: number };
-}
-
-export interface Deal {
-  id: string;
-  projectId: string;
-  title: string;
-  description: string;
-  hours: number;
-  rateCents: number;
-  amountCents: number;
-  currency: string;
-  status: DealStatus;
-  proposalUrl: string | null;
-  paidAt: string | null;
-  createdAt: string;
+export interface OpsProjectRow extends OpsProject {
+  canManage: boolean;
 }
 
 export interface OpsTask {
@@ -167,32 +196,17 @@ export interface Proposal {
 // ---- consultas ---------------------------------------------------------------------
 
 export const opsKeys = {
-  projects: (filters: ProjectFilters = {}) => ["ops", "projects", filters] as const,
   allProjects: ["ops", "projects"] as const,
   project: (id: string) => ["ops", "project", id] as const,
-  part: (id: string, part: "deals" | "tasks" | "accounts" | "proposals") => ["ops", "project", id, part] as const,
+  part: (id: string, part: "tasks" | "accounts" | "proposals") => ["ops", "project", id, part] as const,
 };
 
-export interface ProjectFilters {
-  stage?: Stage;
-  health?: Health;
-  priority?: Priority;
-}
+export const PROJECT_FILTERS = ["stage", "health", "priority", "teamId", "companyId"] as const;
 
-function query(filters: ProjectFilters) {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
-  const text = params.toString();
-  return text ? `?${text}` : "";
-}
-
-export function useOpsProjects(filters: ProjectFilters = {}) {
+/** Tabla de proyectos (paginada en el servidor, con contador por etapa y totales del filtro). */
+export function useOpsProjects(query: string) {
   const enabled = Boolean(useSession().data);
-  return useQuery({
-    queryKey: opsKeys.projects(filters),
-    queryFn: async () => (await apiFetch<{ projects: OpsProjectListItem[] }>(`/api/ops/projects${query(filters)}`)).projects,
-    enabled,
-  });
+  return useTablePage<OpsProjectRow, { canCreate: boolean }>(opsKeys.allProjects, "/api/ops/projects", query, enabled);
 }
 
 export function useOpsProject(id: string) {
@@ -202,13 +216,12 @@ export function useOpsProject(id: string) {
   });
 }
 
-const list = <T,>(id: string, part: "deals" | "tasks" | "accounts" | "proposals", key: string, enabled = true) => ({
+const list = <T,>(id: string, part: "tasks" | "accounts" | "proposals", key: string, enabled = true) => ({
   queryKey: opsKeys.part(id, part),
   queryFn: async () => (await apiFetch<Record<string, T[]>>(`/api/ops/projects/${id}/${part}`))[key],
   enabled,
 });
 
-export const dealsQuery = (id: string) => list<Deal>(id, "deals", "deals");
 export const tasksQuery = (id: string) => list<OpsTask>(id, "tasks", "tasks");
 export const accountsQuery = (id: string, enabled: boolean) => ({ ...list<VaultAccount>(id, "accounts", "accounts", enabled), retry: false });
 export const proposalsQuery = (id: string) => list<Proposal>(id, "proposals", "proposals");
@@ -236,23 +249,29 @@ const base = (id: string) => `/api/ops/projects/${id}`;
 /** Ruta del proyecto para los paneles de reuniones y novedades. */
 export const opsBase = base;
 
-export const createProject = (input: {
+/** Campos editables del proyecto (el Sentiment no: se deriva del Health). */
+export interface ProjectInput {
   name: string;
   customerName: string;
-  teamId?: string;
-  leadUserId?: string | null;
-  developerUserId?: string | null;
-  proposalUrl?: string | null;
-  priority?: Priority;
-}) => apiFetch<{ project: OpsProject }>("/api/ops/projects", send("POST", input));
+  companyId: string | null;
+  contactIds: string[];
+  leadUserId: string | null;
+  developerUserId: string | null;
+  clientSlug: string | null;
+  proposalUrl: string | null;
+  projectPlanUrl: string | null;
+  sowUrl: string | null;
+  kickoffDate: string | null;
+  stage: Stage;
+  health: Health;
+  priority: Priority;
+  paymentType: PaymentType | null;
+  nextAction: NextAction | null;
+}
 
-export const updateProject = (id: string, patch: Partial<Pick<OpsProject, "name" | "customerName" | "proposalUrl" | "stage" | "health" | "priority" | "sentimentScore">> & { leadUserId?: string | null; developerUserId?: string | null }) =>
-  apiFetch<{ project: OpsProject }>(base(id), send("PATCH", patch));
+export const createProject = (input: Partial<ProjectInput> & { name: string; teamId?: string }) => apiFetch<{ project: OpsProject }>("/api/ops/projects", send("POST", input));
 
-export const createDeal = (id: string, input: { title: string; description?: string; hours: number; rateCents: number; currency?: string; status?: DealStatus; proposalUrl?: string | null }) =>
-  apiFetch<{ deal: Deal }>(`${base(id)}/deals`, send("POST", input));
-export const updateDeal = (id: string, dealId: string, patch: Partial<{ title: string; description: string; hours: number; rateCents: number; status: DealStatus; proposalUrl: string | null }>) =>
-  apiFetch<{ deal: Deal }>(`${base(id)}/deals/${dealId}`, send("PATCH", patch));
+export const updateProject = (id: string, patch: Partial<ProjectInput>) => apiFetch<{ project: OpsProject }>(base(id), send("PATCH", patch));
 
 export const createTask = (id: string, input: { title: string; dealId?: string | null; assigneeUserId?: string | null; estimatedHours?: number; dueDate?: string | null }) =>
   apiFetch<{ task: OpsTask }>(`${base(id)}/tasks`, send("POST", input));

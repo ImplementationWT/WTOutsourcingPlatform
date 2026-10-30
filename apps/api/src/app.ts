@@ -16,8 +16,10 @@ import { MeetingProcessing } from "./meetings/processing.js";
 import { registerAiRoutes } from "./routes/ai.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { registerClientRoutes } from "./routes/clients.js";
+import { registerCoreRoutes } from "./routes/core.js";
 import { registerCostRoutes } from "./routes/costs.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
+import { registerDealRoutes } from "./routes/deals.js";
 import { registerIngestRoutes } from "./routes/ingest.js";
 import { registerIntegrationRoutes } from "./routes/integrations.js";
 import { registerOpsRoutes } from "./routes/ops.js";
@@ -121,6 +123,8 @@ export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStrea
   const meetings = new MeetingProcessing(meetingAnalyzer, app.log.child({ component: "meetings" }));
   await registerOpsRoutes(app, { store, vaultKey, meetings });
   await registerSalesRoutes(app, { store, meetings });
+  await registerCoreRoutes(app, { store });
+  await registerDealRoutes(app, { store });
   await registerIngestRoutes(app, { store });
 
   app.addHook("onClose", async () => {

@@ -148,7 +148,10 @@ function LeadControls({ lead }: { lead: LeadDetail }) {
   );
 }
 
-/** Convertir en cliente: crea el cliente y el proyecto en Operativa (Kick Off) con la propuesta aceptada. */
+/**
+ * Convertir en cliente (§5.3): crea la empresa y el contacto (si no existen), el proyecto en Kick Off
+ * con la propuesta aceptada y su deal aprobado. Se pregunta antes de crear.
+ */
 function ConvertCard({ lead, proposals }: { lead: LeadDetail; proposals: Proposal[] }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -167,11 +170,25 @@ function ConvertCard({ lead, proposals }: { lead: LeadDetail; proposals: Proposa
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!valid) return;
+    const proposal = usable.find((p) => p.id === proposalId);
+    const question = [
+      `¿Convertir «${lead.title}» en cliente?`,
+      "",
+      `Se marcará el lead como ganado y la propuesta «${proposal?.title ?? ""}» como aceptada, y se creará:`,
+      `• la empresa «${lead.company || lead.contactName || lead.title}» y su contacto (si aún no existen),`,
+      `• el proyecto «${projectName.trim()}» en Kick Off,`,
+      "• un deal aprobado ligado al proyecto.",
+    ].join("\n");
+    if (!window.confirm(question)) return;
     setBusy(true);
     setError(null);
     try {
       const { project } = await convertLead(lead.id, { teamId, projectName: projectName.trim(), proposalId, leadUserId: leadUserId || null, developerUserId: developerUserId || null });
-      await Promise.all([queryClient.invalidateQueries({ queryKey: salesKeys.all }), queryClient.invalidateQueries({ queryKey: opsKeys.allProjects })]);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: salesKeys.all }),
+        queryClient.invalidateQueries({ queryKey: opsKeys.allProjects }),
+        queryClient.invalidateQueries({ queryKey: ["core"] }),
+      ]);
       navigate(`/operativa/${project.id}`);
     } catch (err) {
       setError(message(err, "No se pudo convertir el lead."));
@@ -184,7 +201,7 @@ function ConvertCard({ lead, proposals }: { lead: LeadDetail; proposals: Proposa
     <Card>
       <CardHeader>
         <CardTitle>Convertir en cliente</CardTitle>
-        <CardDescription>Crea el cliente y su proyecto en Operativa, en Kick Off, con la propuesta aceptada.</CardDescription>
+        <CardDescription>Crea la empresa, el contacto, el proyecto en Kick Off con la propuesta aceptada y su deal aprobado. Te pedirá confirmación.</CardDescription>
       </CardHeader>
       <CardContent>
         {!usable.length ? (
@@ -501,7 +518,7 @@ export default function LeadDetailPage() {
     );
   }
 
-  const { lead, demos, proposals, project, customer } = data;
+  const { lead, demos, proposals, project, company, deal } = data;
   const tabs: { id: TabId; label: string }[] = [
     { id: "demos", label: `Demos (${demos.length})` },
     { id: "proposals", label: `Propuestas (${proposals.length})` },
@@ -531,11 +548,28 @@ export default function LeadDetailPage() {
           <LeadControls key={lead.updatedAt} lead={lead} />
           {project && (
             <p className="text-sm">
-              Cliente <span className="font-medium">{customer?.name}</span> · proyecto{" "}
+              Cliente{" "}
+              {company ? (
+                <Link className="font-medium text-primary underline-offset-4 hover:underline" to={`/comercial/empresas/${company.id}`}>
+                  {company.name}
+                </Link>
+              ) : (
+                <span className="font-medium">—</span>
+              )}{" "}
+              · proyecto{" "}
               <Link className="text-primary underline-offset-4 hover:underline" to={`/operativa/${project.id}`}>
                 {project.name}
               </Link>{" "}
               <span className="text-muted-foreground">({STAGE_LABELS[project.stage]})</span>
+              {deal && (
+                <>
+                  {" "}
+                  · deal{" "}
+                  <Link className="text-primary underline-offset-4 hover:underline" to={`/deals/${deal.id}`}>
+                    {deal.dealCode}
+                  </Link>
+                </>
+              )}
             </p>
           )}
         </CardContent>

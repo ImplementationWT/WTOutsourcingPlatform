@@ -59,6 +59,9 @@ export interface Lead {
   owner: { id: string; name: string | null } | null;
   lostReason: string | null;
   customerId: string | null;
+  companyId: string | null;
+  contactId: string | null;
+  dealId: string | null;
   projectId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -92,17 +95,6 @@ export interface LeadSource {
   ingestPath: string;
 }
 
-export interface Customer {
-  id: string;
-  name: string;
-  contactName: string;
-  email: string | null;
-  phone: string | null;
-  leadId: string | null;
-  createdAt: string;
-  projects: { id: string; name: string; stage: Stage; health: Health }[];
-}
-
 export interface Owner {
   id: string;
   name: string;
@@ -122,7 +114,6 @@ export const salesKeys = {
   leads: (filters: LeadFilters = {}) => ["sales", "leads", filters] as const,
   lead: (id: string) => ["sales", "lead", id] as const,
   sources: ["sales", "sources"] as const,
-  customers: ["sales", "customers"] as const,
   owners: ["sales", "owners"] as const,
 };
 
@@ -140,11 +131,17 @@ export const useLead = (id: string) =>
   useQuery({
     queryKey: salesKeys.lead(id),
     queryFn: () =>
-      apiFetch<{ lead: LeadDetail; demos: Demo[]; proposals: Proposal[]; customer: { id: string; name: string } | null; project: { id: string; name: string; stage: Stage; health: Health } | null }>(`/api/sales/leads/${id}`),
+      apiFetch<{
+        lead: LeadDetail;
+        demos: Demo[];
+        proposals: Proposal[];
+        company: { id: string; name: string } | null;
+        project: { id: string; name: string; stage: Stage; health: Health } | null;
+        deal: { id: string; dealCode: string; title: string } | null;
+      }>(`/api/sales/leads/${id}`),
   });
 
 export const useSources = () => useQuery({ queryKey: salesKeys.sources, queryFn: async () => (await apiFetch<{ sources: LeadSource[] }>("/api/sales/sources")).sources });
-export const useCustomers = () => useQuery({ queryKey: salesKeys.customers, queryFn: async () => (await apiFetch<{ customers: Customer[] }>("/api/sales/customers")).customers });
 export const useOwners = () => useQuery({ queryKey: salesKeys.owners, queryFn: async () => (await apiFetch<{ owners: Owner[] }>("/api/sales/owners")).owners, staleTime: 60_000 });
 
 // ---- acciones ----------------------------------------------------------------------
@@ -171,7 +168,7 @@ export const updateLeadProposal = (id: string, proposalId: string, patch: Partia
   apiFetch<{ proposal: Proposal }>(`${base(id)}/proposals/${proposalId}`, send("PATCH", patch));
 
 export const convertLead = (id: string, input: { teamId: string; projectName: string; customerName?: string; leadUserId?: string | null; developerUserId?: string | null; proposalId?: string }) =>
-  apiFetch<{ customer: { id: string; name: string }; project: { id: string; name: string } }>(`${base(id)}/convert`, send("POST", input));
+  apiFetch<{ company: { id: string; name: string }; project: { id: string; name: string }; deal: { id: string; dealCode: string } }>(`${base(id)}/convert`, send("POST", input));
 
 /** La clave de ingesta solo llega aquí: se muestra una vez y no se guarda en la caché. */
 export const createSource = (input: { name: string; kind: SourceKind; mapping?: LeadSource["mapping"] }) =>

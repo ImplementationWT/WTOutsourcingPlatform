@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { Activity, BriefcaseBusiness, Building2, FolderKanban, Inbox, Landmark, Megaphone, Plug, type LucideIcon } from "lucide-react";
+import { Activity, BriefcaseBusiness, Building2, Contact, FolderKanban, Handshake, Inbox, Landmark, Megaphone, Plug, type LucideIcon } from "lucide-react";
 import { BrandLockup } from "@/components/brand/Brand";
 import { useSession, type UserRole } from "@/features/auth/auth";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,8 @@ interface Item {
   also?: RegExp;
   /** Solo activo en la ruta exacta (o en `also`), no en el resto de sus subrutas. */
   end?: boolean;
+  /** Si solo algunos roles del grupo la ven. */
+  roles?: UserRole[];
 }
 
 interface Group {
@@ -26,17 +28,22 @@ interface Group {
 const groups: Group[] = [
   {
     title: "Comercial",
-    roles: ["boss", "commercial"],
+    roles: ["boss", "commercial", "finance"],
     items: [
-      { to: "/comercial", label: "Leads y propuestas", icon: Megaphone, end: true, also: /^\/comercial\/leads\// },
-      { to: "/comercial/clientes", label: "Clientes", icon: Building2 },
-      { to: "/comercial/sources", label: "Sources de leads", icon: Inbox },
+      { to: "/comercial", label: "Leads y propuestas", icon: Megaphone, end: true, also: /^\/comercial\/leads\//, roles: ["boss", "commercial"] },
+      { to: "/comercial/contactos", label: "Contactos", icon: Contact },
+      { to: "/comercial/empresas", label: "Empresas", icon: Building2 },
+      { to: "/comercial/deals", label: "Deals", icon: Handshake },
+      { to: "/comercial/sources", label: "Sources de leads", icon: Inbox, roles: ["boss", "commercial"] },
     ],
   },
   {
     title: "Operativa",
     roles: ["boss", "commercial", "finance", "lead", "developer"],
-    items: [{ to: "/operativa", label: "Proyectos del cliente", icon: BriefcaseBusiness }],
+    items: [
+      { to: "/operativa", label: "Proyectos del cliente", icon: BriefcaseBusiness, end: true, also: /^\/operativa\/(?!deals$)[^/]+$/ },
+      { to: "/operativa/deals", label: "Deals", icon: Handshake },
+    ],
   },
   {
     title: "Financiera",
@@ -77,7 +84,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
             {/* Un área que aún no existe se avisa en su título: el nombre de la opción entra completo. */}
             {group.items.every((i) => i.soon) && <span className="rounded-full border border-foreground/15 px-1.5 py-px text-[9px] tracking-wide">Pronto</span>}
           </p>
-          {group.items.map(({ to, label, icon: Icon, soon, end, also }) =>
+          {group.items.filter((i) => !i.roles || (role && i.roles.includes(role))).map(({ to, label, icon: Icon, soon, end, also }) =>
             soon ? (
               <span key={to} aria-disabled="true" className="flex cursor-not-allowed items-center gap-3 rounded-md px-3 py-2 text-sm whitespace-nowrap text-muted-foreground/60">
                 <Icon className="size-4 shrink-0" />

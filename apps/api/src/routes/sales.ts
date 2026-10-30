@@ -7,7 +7,7 @@ import type { SessionUser } from "../auth/users.js";
 import { registerSecret } from "../lib/redact.js";
 import type { MeetingProcessing } from "../meetings/processing.js";
 import { registerMeetingRoutes } from "../meetings/routes.js";
-import type { OpsProjectDoc } from "../ops/models.js";
+import { type DealDoc, dealCodeOf, type OpsProjectDoc } from "../ops/models.js";
 import { hashIngestKey, leadTitle, newIngestKey } from "../sales/ingest.js";
 import {
   advanceTo,
@@ -173,6 +173,9 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
       owner: lead.ownerUserId ? { id: lead.ownerUserId, name: names.get(lead.ownerUserId) ?? null } : null,
       lostReason: lead.lostReason,
       customerId: lead.customerId,
+      companyId: lead.companyId ?? lead.customerId,
+      contactId: lead.contactId ?? null,
+      dealId: lead.dealId ?? null,
       projectId: lead.projectId,
       createdAt: lead.createdAt,
       updatedAt: lead.updatedAt,
@@ -251,19 +254,22 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
     if (!params.success) return reply.code(400).send({ error: "Id inválido." });
     const lead = await readableLead(reply, params.data.id);
     if (!lead) return reply;
-    const [demos, proposals, customer, project] = await Promise.all([
+    const companyId = lead.companyId ?? lead.customerId;
+    const [demos, proposals, company, project, deal] = await Promise.all([
       store.demos.find({ leadId: lead._id }).sort({ scheduledAt: -1 }).toArray(),
       store.proposals.find({ leadId: lead._id }).sort({ createdAt: -1 }).toArray(),
-      lead.customerId ? store.customers.findOne({ _id: lead.customerId }) : null,
-      lead.projectId ? store.opsProjects.findOne({ _id: lead.projectId }, { projection: { name: 1, stage: 1, health: 1 } }) : null
+      companyId ? store.companies.findOne({ _id: companyId }, { projection: { name: 1 } }) : null,
+      lead.projectId ? store.opsProjects.findOne({ _id: lead.projectId }, { projection: { name: 1, stage: 1, health: 1 } }) : null,
+      lead.dealId ? store.deals.findOne({ _id: lead.dealId }, { projection: { dealCode: 1, title: 1 } }) : null
     ]);
     const view = await leadViews([lead]);
     return {
       lead: view(lead, true),
       demos: demos.map(demoView),
       proposals: proposals.map(proposalView),
-      customer: customer ? { id: customer._id, name: customer.name } : null,
-      project: project ? { id: project._id, name: project.name, stage: project.stage, health: project.health } : null
+      company: company ? { id: company._id, name: company.name } : null,
+      project: project ? { id: project._id, name: project.name, stage: project.stage, health: project.health } : null,
+      deal: deal ? { id: deal._id, dealCode: deal.dealCode, title: deal.title } : null
     };
   });
 
@@ -429,27 +435,51 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
     // Se marca el lead primero (de forma atómica) para que dos conversiones simultáneas no creen dos proyectos.
     const at = new Date();
     const projectId = randomUUID();
-    const customerId = randomUUID();
-    const claimed = await store.leads.updateOne({ _id: lead._id, projectId: null, status: { $ne: "won" } }, { $set: { status: "won", projectId, customerId, lostReason: null, updatedAt: at } });
+    const dealId = randomUUID();
+    const customerName = input.customerName ?? (lead.company || lead.contactName || leadTitle(lead));
+    // Empresa y contacto del núcleo: se reutilizan si el lead ya los tiene (§4.1).
+    const companyId = lead.companyId ?? randomUUID();
+    const contactId = lead.contactId ?? (lead.contactName || lead.email ? randomUUID() : null);
+    const claimed = await store.leads.updateOne(
+      { _id: lead._id, projectId: null, status: { $ne: "won" } },
+      { $set: { status: "won", projectId, customerId: companyId, companyId, contactId, dealId, lostReason: null, updatedAt: at } }
+    );
     if (!claimed.modifiedCount) return reply.code(409).send({ error: "Este lead ya se convirtió en cliente." });
 
-    const customerName = input.customerName ?? (lead.company || lead.contactName || leadTitle(lead));
-    await store.customers.insertOne({
-      _id: customerId,
-      name: customerName,
-      contactName: lead.contactName,
-      email: lead.email,
-      phone: lead.phone,
-      leadId: lead._id,
-      createdBy: user.username,
-      createdAt: at,
-      updatedAt: at
-    });
+    if (!lead.companyId) {
+      await store.companies.insertOne({
+        _id: companyId,
+        name: customerName,
+        domain: lead.email?.split("@")[1] ?? null,
+        industry: null,
+        size: null,
+        location: null,
+        createdBy: user.username,
+        createdAt: at,
+        updatedAt: at
+      });
+    }
+    if (contactId && !lead.contactId) {
+      await store.contacts.insertOne({
+        _id: contactId,
+        name: lead.contactName || lead.email || customerName,
+        emails: lead.email ? [lead.email] : [],
+        phone: lead.phone,
+        title: null,
+        linkedinUrl: null,
+        companyId,
+        createdBy: user.username,
+        createdAt: at,
+        updatedAt: at
+      });
+    }
+    const contactIds = contactId ? [contactId] : [];
     const project: OpsProjectDoc = {
       _id: projectId,
       name: input.projectName,
       customerName,
-      customerId,
+      companyId,
+      contactIds,
       leadId: lead._id,
       teamId: input.teamId,
       leadUserId: input.leadUserId ?? null,
@@ -458,30 +488,65 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
       proposalUrl: chosen.url,
       stage: "kickoff",
       health: "neutral",
-      sentimentScore: 50,
       priority: "medium",
       createdBy: user.username,
       createdAt: at,
       updatedAt: at
     };
     await store.opsProjects.insertOne(project);
-    // Las propuestas del lead pasan a verse también en el proyecto.
+    // Regla 5.3: el deal de la propuesta aceptada queda «Aprobado» y ligado al proyecto. Horas y tarifa
+    // se cargan en Operativa (la propuesta solo trae el monto).
+    const deal: DealDoc = {
+      _id: dealId,
+      dealCode: dealCodeOf(await store.nextSequence("deal")),
+      projectId,
+      teamId: input.teamId,
+      leadId: lead._id,
+      partnerId: null,
+      contactIds,
+      ownerUserId: lead.ownerUserId,
+      title: chosen.title,
+      description: "",
+      salesStage: "won",
+      status: "approved",
+      hours: 0,
+      rateCents: 0,
+      amountCents: 0,
+      probability: 100,
+      projectedCents: 0,
+      currency: chosen.currency,
+      expectedCloseDate: null,
+      actualCloseDate: at.toISOString().slice(0, 10),
+      saleType: "new_project",
+      product: null,
+      channel: lead.sourceName,
+      lostReason: null,
+      partnerCommissionPct: null,
+      proposalUrl: chosen.url,
+      sowUrl: null,
+      changeOrders: [],
+      createdBy: user.username,
+      createdAt: at,
+      updatedAt: at
+    };
+    await store.deals.insertOne(deal);
+    // Las propuestas del lead pasan a verse también en el proyecto, ligadas al deal.
     await store.proposals.updateMany({ leadId: lead._id }, { $set: { projectId } });
-    if (chosen.status !== "accepted") await store.proposals.updateOne({ _id: chosen._id }, { $set: { status: "accepted", decidedAt: at, updatedAt: at } });
+    await store.proposals.updateOne({ _id: chosen._id }, { $set: { status: "accepted", dealId, decidedAt: chosen.decidedAt ?? at, updatedAt: at } });
 
-    await note(user, lead._id, `Convertido en cliente: ${customerName}. Proyecto «${project.name}» creado en Kick Off.`);
+    await note(user, lead._id, `Convertido en cliente: ${customerName}. Proyecto «${project.name}» creado en Kick Off con el deal ${deal.dealCode} aprobado.`);
     await store.projectUpdates.insertOne({
       _id: randomUUID(),
       projectId,
       kind: "system",
-      body: `Proyecto creado desde Comercial (lead «${leadTitle(lead)}») con la propuesta «${chosen.title}».`,
+      body: `Proyecto creado desde Comercial (lead «${leadTitle(lead)}») con la propuesta «${chosen.title}» y el deal ${deal.dealCode}.`,
       authorUsername: user.username,
       authorName: user.name,
       createdAt: at
     });
     await auditSales(user, lead, "sales.lead_converted", { project: project.name });
     await store.audit({ actor: user.username, action: "ops.project_created", clientId: `ops:${projectId}`, target: project.name, details: { fromLead: true } });
-    return reply.code(201).send({ customer: { id: customerId, name: customerName }, project: { id: projectId, name: project.name } });
+    return reply.code(201).send({ company: { id: companyId, name: customerName }, project: { id: projectId, name: project.name }, deal: { id: dealId, dealCode: deal.dealCode } });
   });
 
   // ---- novedades ---------------------------------------------------------------
@@ -604,23 +669,4 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
     return sendKeyOnce(reply, { source: sourceView((await store.leadSources.findOne({ _id: source._id }))!), ingestKey: key });
   });
 
-  // ---- clientes ----------------------------------------------------------------
-
-  app.get("/api/sales/customers", { preHandler: requireSales }, async () => {
-    const customers = await store.customers.find().sort({ createdAt: -1 }).limit(500).toArray();
-    const ids = customers.map((c) => c._id);
-    const projects = ids.length ? await store.opsProjects.find({ customerId: { $in: ids } }, { projection: { name: 1, stage: 1, health: 1, customerId: 1 } }).toArray() : [];
-    return {
-      customers: customers.map((c) => ({
-        id: c._id,
-        name: c.name,
-        contactName: c.contactName,
-        email: c.email,
-        phone: c.phone,
-        leadId: c.leadId,
-        createdAt: c.createdAt,
-        projects: projects.filter((p) => p.customerId === c._id).map((p) => ({ id: p._id, name: p.name, stage: p.stage, health: p.health }))
-      }))
-    };
-  });
 }

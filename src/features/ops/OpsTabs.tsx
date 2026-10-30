@@ -11,17 +11,15 @@ import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Empty, ErrorLine, Loading, MeetingsPanel, UpdatesPanel } from "@/features/activity/ActivityPanels";
 import { activityKeys, dateText } from "@/features/activity/api";
+import { useProjectDeals } from "@/features/core/api";
+import { DealsTable } from "@/features/core/DealsTable";
 import {
   ACCOUNT_KIND_LABELS,
   ACCOUNT_KINDS,
   accountsQuery,
   createAccount,
-  createDeal,
   createProposal,
   createTask,
-  DEAL_STATUS_LABELS,
-  DEAL_STATUSES,
-  dealsQuery,
   deleteAccount,
   hoursText,
   money,
@@ -35,14 +33,10 @@ import {
   TASK_STATUS_LABELS,
   TASK_STATUSES,
   tasksQuery,
-  updateDeal,
-  updateProject,
   updateProposal,
   updateTask,
   useTeamMembers,
   type AccountKind,
-  type Deal,
-  type DealStatus,
   type OpsTask,
   type Proposal,
   type ProposalStatus,
@@ -66,113 +60,12 @@ const message = (e: unknown, fallback: string) => (e instanceof Error ? e.messag
 
 // ---- Deals --------------------------------------------------------------------------
 
-export function DealsTab({ projectId, canManage }: { projectId: string; canManage: boolean }) {
-  const refresh = useRefresh(projectId);
-  const { data: deals, isLoading, error } = useQuery(dealsQuery(projectId));
-  const [title, setTitle] = useState("");
-  const [hours, setHours] = useState("");
-  const [rate, setRate] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const hoursValue = Number(hours);
-  const rateCents = Math.round(Number(rate) * 100);
-  const valid = title.trim().length >= 3 && hoursValue > 0 && Number.isFinite(rateCents) && rateCents >= 0 && rate !== "";
-
-  async function add(e: React.FormEvent) {
-    e.preventDefault();
-    if (!valid) return;
-    setBusy(true);
-    setFormError(null);
-    try {
-      await createDeal(projectId, { title: title.trim(), hours: hoursValue, rateCents });
-      setTitle("");
-      setHours("");
-      setRate("");
-      await refresh();
-    } catch (err) {
-      setFormError(message(err, "No se pudo crear el deal."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function setStatus(deal: Deal, status: DealStatus) {
-    setFormError(null);
-    try {
-      await updateDeal(projectId, deal.id, { status });
-      await refresh();
-    } catch (err) {
-      setFormError(message(err, "No se pudo cambiar el estado."));
-    }
-  }
-
-  const total = (deals ?? []).filter((d) => d.status !== "cancelled").reduce((sum, d) => sum + d.amountCents, 0);
-
+/** Deals del proyecto: la misma tabla de primer nivel, filtrada por el proyecto. */
+export function DealsTab({ projectId }: { projectId: string }) {
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">Cada deal es un trato por un módulo o funcionalidad, vendido por horas. Cada deal puede tener su propia propuesta.</p>
-      {canManage && (
-        <form onSubmit={add} className="grid items-end gap-3 rounded-lg border border-foreground/10 p-4 sm:grid-cols-[2fr_1fr_1fr_auto]">
-          <div className="space-y-1.5">
-            <Label htmlFor="deal-title">Deal</Label>
-            <Input id="deal-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Módulo de pedidos" />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="deal-hours">Horas</Label>
-            <Input id="deal-hours" inputMode="decimal" value={hours} onChange={(e) => setHours(e.target.value)} placeholder="40" />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="deal-rate">Tarifa por hora (USD)</Label>
-            <Input id="deal-rate" inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="25" />
-          </div>
-          <Button type="submit" disabled={!valid || busy}>
-            {busy ? <Loader2 className="animate-spin" /> : <Plus />}
-            Agregar
-          </Button>
-        </form>
-      )}
-      <ErrorLine error={formError ?? (error ? message(error, "No se pudieron cargar los deals.") : null)} />
-      {isLoading ? (
-        <Loading />
-      ) : !deals?.length ? (
-        <Empty>Este proyecto aún no tiene deals.</Empty>
-      ) : (
-        <>
-          <ul className="space-y-2">
-            {deals.map((deal) => (
-              <li key={deal.id} className="grid items-center gap-3 rounded-lg border border-foreground/10 p-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_10rem]">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{deal.title}</p>
-                  {deal.proposalUrl && (
-                    <a className="text-xs text-primary underline-offset-4 hover:underline" href={deal.proposalUrl} target="_blank" rel="noreferrer">
-                      Ver propuesta
-                    </a>
-                  )}
-                </div>
-                <p className="text-sm tabular-nums">
-                  {hoursText(deal.hours)} × {money(deal.rateCents, deal.currency)}
-                </p>
-                <p className="text-sm font-medium tabular-nums">{money(deal.amountCents, deal.currency)}</p>
-                {canManage ? (
-                  <select aria-label={`Estado de ${deal.title}`} className={cn(selectClass, "w-full")} value={deal.status} onChange={(e) => void setStatus(deal, e.target.value as DealStatus)}>
-                    {DEAL_STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {DEAL_STATUS_LABELS[s]}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <Badge variant="outline">{DEAL_STATUS_LABELS[deal.status]}</Badge>
-                )}
-              </li>
-            ))}
-          </ul>
-          <p className="text-right text-sm text-muted-foreground">
-            Total sin cancelados: <span className="font-medium text-foreground">{money(total)}</span>
-          </p>
-        </>
-      )}
+      <p className="text-sm text-muted-foreground">Cada deal es un trato por un módulo o funcionalidad, vendido por horas. Las horas vendidas del proyecto suman sus deals aprobados en adelante.</p>
+      <DealsTable projectId={projectId} prefix="d." />
     </div>
   );
 }
@@ -182,7 +75,7 @@ export function DealsTab({ projectId, canManage }: { projectId: string; canManag
 export function TasksTab({ projectId, teamId, canWork, canManage, currentUserId }: { projectId: string; teamId: string; canWork: boolean; canManage: boolean; currentUserId: string }) {
   const refresh = useRefresh(projectId);
   const { data: tasks, isLoading, error } = useQuery(tasksQuery(projectId));
-  const { data: deals } = useQuery(dealsQuery(projectId));
+  const { data: deals } = useProjectDeals(projectId);
   const members = useTeamMembers(teamId, canWork).data ?? [];
   const [title, setTitle] = useState("");
   const [dealId, setDealId] = useState("");
@@ -241,7 +134,7 @@ export function TasksTab({ projectId, teamId, canWork, canManage, currentUserId 
               <option value="">Sin deal</option>
               {(deals ?? []).map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.title}
+                  {d.dealCode} · {d.title}
                 </option>
               ))}
             </select>
@@ -545,7 +438,7 @@ export function AccountsTab({ projectId, canManage }: { projectId: string; canMa
 export function ProposalsTab({ projectId, canManage }: { projectId: string; canManage: boolean }) {
   const refresh = useRefresh(projectId);
   const { data: proposals, isLoading, error } = useQuery(proposalsQuery(projectId));
-  const { data: deals } = useQuery(dealsQuery(projectId));
+  const { data: deals } = useProjectDeals(projectId);
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const [dealId, setDealId] = useState("");
@@ -603,7 +496,7 @@ export function ProposalsTab({ projectId, canManage }: { projectId: string; canM
               <option value="">Sin deal</option>
               {(deals ?? []).map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.title}
+                  {d.dealCode} · {d.title}
                 </option>
               ))}
             </select>
@@ -659,21 +552,13 @@ export function ProposalsTab({ projectId, canManage }: { projectId: string; canM
 
 // ---- Reuniones y updates ---------------------------------------------------------------
 
-/** Reuniones del proyecto: el Team Leader puede aplicar el sentimiento sugerido y convertir action items en tareas. */
+/** Reuniones del proyecto: el Team Leader puede convertir action items en tareas (Claude propone, no cambia el Health). */
 export function MeetingsTab({ projectId, canWork, canManage }: { projectId: string; canWork: boolean; canManage: boolean }) {
   const refresh = useRefresh(projectId);
   return (
     <MeetingsPanel
       base={opsBase(projectId)}
       canWork={canWork}
-      onApplySentiment={
-        canManage
-          ? async (value) => {
-              await updateProject(projectId, { sentimentScore: value });
-              await refresh();
-            }
-          : undefined
-      }
       onCreateTask={
         canManage
           ? async (title) => {

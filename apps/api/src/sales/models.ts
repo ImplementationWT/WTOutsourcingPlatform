@@ -59,6 +59,10 @@ export interface LeadDoc {
   lostReason: string | null;
   customerId: string | null;
   projectId: string | null;
+  /** Contacto y Empresa del núcleo compartido (se llenan al convertir el lead). */
+  contactId?: string | null;
+  companyId?: string | null;
+  dealId?: string | null;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;

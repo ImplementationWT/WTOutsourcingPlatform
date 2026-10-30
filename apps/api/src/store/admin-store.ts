@@ -4,6 +4,8 @@ import { OwnershipError } from "../lib/errors.js";
 import { redact } from "../lib/redact.js";
 import type { AiAgentSettingsDoc } from "../ai/anthropic-adapter.js";
 import type { DealDoc, MeetingDoc, OpsProjectDoc, OpsTaskDoc, ProjectUpdateDoc, VaultAccountDoc } from "../ops/models.js";
+import type { CompanyDoc, ContactDoc } from "../core/models.js";
+import { migrateToV2 } from "../core/migrate.js";
 import type { CustomerDoc, DemoDoc, LeadDoc, LeadMeetingDoc, LeadSourceDoc, LeadUpdateDoc, ProposalDoc } from "../sales/models.js";
 import type { InitialPasswordDoc } from "./initial-password-vault.js";
 import type { ProvisioningSecretDoc } from "./provisioning-secrets.js";
@@ -68,6 +70,10 @@ export class AdminStore {
   readonly customers;
   readonly leadUpdates;
   readonly leadMeetings;
+  /** Núcleo compartido (v2): Empresas, Contactos y secuencias (DL-0001…). */
+  readonly companies;
+  readonly contacts;
+  readonly counters;
 
   constructor(db: Db, private readonly now: () => Date = () => new Date()) {
     this.clients = db.collection<ClientDoc>("clients");
@@ -95,6 +101,15 @@ export class AdminStore {
     this.customers = db.collection<CustomerDoc>("sales_customers");
     this.leadUpdates = db.collection<LeadUpdateDoc>("sales_lead_updates");
     this.leadMeetings = db.collection<LeadMeetingDoc>("sales_meetings");
+    this.companies = db.collection<CompanyDoc>("core_companies");
+    this.contacts = db.collection<ContactDoc>("core_contacts");
+    this.counters = db.collection<{ _id: string; seq: number }>("counters");
+  }
+
+  /** Siguiente número de una secuencia (atómico): dos altas simultáneas nunca repiten número. */
+  async nextSequence(name: string) {
+    const doc = await this.counters.findOneAndUpdate({ _id: name }, { $inc: { seq: 1 } }, { upsert: true, returnDocument: "after" });
+    return doc!.seq;
   }
 
   async init() {
@@ -136,8 +151,23 @@ export class AdminStore {
       this.customers.createIndex({ name: 1 }),
       this.leadUpdates.createIndex({ leadId: 1, createdAt: -1 }),
       this.leadMeetings.createIndex({ leadId: 1, heldAt: -1 }),
-      this.leadMeetings.createIndex({ leadId: 1, externalId: 1 }, { unique: true, partialFilterExpression: { externalId: { $type: "string" } }, name: "one_lead_meeting_per_external_id" })
+      this.leadMeetings.createIndex({ leadId: 1, externalId: 1 }, { unique: true, partialFilterExpression: { externalId: { $type: "string" } }, name: "one_lead_meeting_per_external_id" }),
+      this.deals.createIndex({ dealCode: 1 }, { unique: true, partialFilterExpression: { dealCode: { $type: "string" } }, name: "one_deal_per_code" }),
+      this.deals.createIndex({ teamId: 1, status: 1 }),
+      this.deals.createIndex({ leadId: 1 }),
+      this.deals.createIndex({ contactIds: 1 }),
+      this.deals.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_deal_per_monday_id" }),
+      this.opsProjects.createIndex({ companyId: 1 }),
+      this.opsProjects.createIndex({ contactIds: 1 }),
+      this.opsProjects.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_project_per_monday_id" }),
+      this.companies.createIndex({ name: 1 }),
+      this.companies.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_company_per_monday_id" }),
+      this.contacts.createIndex({ name: 1 }),
+      this.contacts.createIndex({ companyId: 1 }),
+      this.contacts.createIndex({ emails: 1 }),
+      this.contacts.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_contact_per_monday_id" })
     ]);
+    await migrateToV2(this);
   }
 
   // ---- clientes y trabajos -------------------------------------------------

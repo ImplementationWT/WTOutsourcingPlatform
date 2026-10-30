@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import AppSidebar from "@/components/layout/AppSidebar";
 import OpsProjectDetailPage from "@/features/ops/OpsProjectDetailPage";
 import OpsProjectsPage from "@/features/ops/OpsProjectsPage";
-import type { OpsProject, OpsProjectListItem } from "@/features/ops/api";
+import type { OpsProject, OpsProjectRow } from "@/features/ops/api";
 import type { SessionUser } from "@/features/auth/auth";
 import { BOSS, LEAD, withSession } from "./session";
 
@@ -22,18 +22,37 @@ const project: OpsProject = {
   team: { id: "t-1", name: "Equipo A" },
   lead: { id: "u-lead", name: "Ana" },
   developer: { id: "u-dev", name: "Diego" },
+  company: null,
+  contacts: [],
   clientSlug: null,
   proposalUrl: "https://demo.example.com/manpersa",
-  customerId: null,
+  projectPlanUrl: null,
+  sowUrl: null,
+  kickoffDate: null,
   leadId: null,
   stage: "structure",
   health: "at_risk",
-  sentimentScore: 35,
+  sentimentScore: 20,
   priority: "critical",
+  paymentType: null,
+  nextAction: null,
+  summary: { deals: 2, amountCents: 150_000, soldHours: 60, billableHours: 0, billableVsSold: -60, tasks: 4, tasksDone: 1, progress: 25 },
   createdAt: "2026-10-01T10:00:00Z",
   updatedAt: "2026-10-28T10:00:00Z",
 };
-const listItem: OpsProjectListItem = { ...project, summary: { deals: 2, hours: 60, amountCents: 150_000, tasks: 4, tasksDone: 1 } };
+const listItem: OpsProjectRow = { ...project, canManage: false };
+
+/** Respuesta de una tabla paginada en el servidor. */
+const page = <T,>(rows: T[], extra: Record<string, unknown> = {}) => ({
+  rows,
+  total: rows.length,
+  page: 1,
+  pageSize: 25,
+  facets: {},
+  totals: { soldHours: 60, billableHours: 0, amountCents: 150_000 },
+  canCreate: false,
+  ...extra,
+});
 
 function renderAt(path: string, user: SessionUser, fetchImpl?: typeof fetch) {
   if (fetchImpl) globalThis.fetch = fetchImpl;
@@ -60,63 +79,118 @@ describe("menú por áreas", () => {
       .map((n) => n.textContent);
 
   it("CEO/CCO ve las cuatro áreas", () => {
-    renderAt("/operativa", BOSS, (async () => json({ projects: [] })) as typeof fetch);
+    renderAt("/operativa", BOSS, (async () => json(page([]))) as typeof fetch);
     expect(sections()).toEqual(["Comercial", "Operativa", "Financiera", "Infraestructura"]);
   });
 
   it("Comercial: Comercial y Operativa, sin Infraestructura", () => {
-    renderAt("/operativa", COMMERCIAL, (async () => json({ projects: [] })) as typeof fetch);
+    renderAt("/operativa", COMMERCIAL, (async () => json(page([]))) as typeof fetch);
     expect(sections()).toEqual(["Comercial", "Operativa"]);
   });
 
-  it("Financiera: Operativa y Financiera", () => {
-    renderAt("/operativa", FINANCE, (async () => json({ projects: [] })) as typeof fetch);
-    expect(sections()).toEqual(["Operativa", "Financiera"]);
+  it("Financiera: Comercial (Contactos, Empresas y Deals, en lectura), Operativa y Financiera", () => {
+    renderAt("/operativa", FINANCE, (async () => json(page([]))) as typeof fetch);
+    expect(sections()).toEqual(["Comercial", "Operativa", "Financiera"]);
+    expect(screen.queryByRole("link", { name: /Leads y propuestas/ })).toBeNull();
+    expect(screen.getByRole("link", { name: /Empresas/ })).toBeTruthy();
   });
 
   it("developer: Operativa e Infraestructura", () => {
-    renderAt("/operativa", DEV, (async () => json({ projects: [] })) as typeof fetch);
+    renderAt("/operativa", DEV, (async () => json(page([]))) as typeof fetch);
     expect(sections()).toEqual(["Operativa", "Infraestructura"]);
   });
 
   it("Comercial ya es un enlace; Financiera, que aún no existe, no", () => {
-    renderAt("/operativa", BOSS, (async () => json({ projects: [] })) as typeof fetch);
+    renderAt("/operativa", BOSS, (async () => json(page([]))) as typeof fetch);
     expect(screen.getByRole("link", { name: /Leads y propuestas/ })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /Cobros y comisiones/ })).toBeNull();
     expect(screen.getByRole("link", { name: /Proyectos del cliente/ })).toBeTruthy();
   });
+
+  it("el menú tiene las tablas del núcleo: Contactos, Empresas y Deals", () => {
+    renderAt("/operativa", BOSS, (async () => json(page([]))) as typeof fetch);
+    expect(screen.getByRole("link", { name: /Contactos/ }).getAttribute("href")).toBe("/comercial/contactos");
+    expect(screen.getByRole("link", { name: /Empresas/ }).getAttribute("href")).toBe("/comercial/empresas");
+    expect(screen.getAllByRole("link", { name: /^Deals$/ }).map((a) => a.getAttribute("href"))).toEqual(["/comercial/deals", "/operativa/deals"]);
+    expect(screen.queryByRole("link", { name: /^Clientes$/ })).toBeNull();
+  });
 });
 
-describe("lista de proyectos operativos", () => {
-  it("muestra etapa, health, prioridad, sentimiento y el resumen de deals", async () => {
-    renderAt("/operativa", LEAD, (async () => json({ projects: [listItem] })) as typeof fetch);
-    const row = within(await screen.findByRole("link", { name: /Automatización Manpersa/ }));
+describe("tabla de proyectos (DataTable)", () => {
+  it("muestra etapa, health, prioridad, sentiment derivado y los campos calculados", async () => {
+    renderAt("/operativa", LEAD, (async () => json(page([listItem]))) as typeof fetch);
+    const table = await screen.findByRole("table", { name: "Proyectos" });
+    const row = within(within(table).getByText("Automatización Manpersa").closest("tr")!);
     expect(row.getByText("Estructura")).toBeTruthy();
     expect(row.getByText("At Risk")).toBeTruthy();
     expect(row.getByText("Critical")).toBeTruthy();
-    expect(row.getByText("2 deals · 60 h")).toBeTruthy();
-    expect(row.getByText(/1\/4 tareas/)).toBeTruthy();
+    expect(row.getByTitle("Sentiment score: 20/100")).toBeTruthy();
+    expect(row.getByText("60 h")).toBeTruthy();
+    expect(row.getByText("-60 h")).toBeTruthy();
+    expect(row.getByText("25%")).toBeTruthy();
+    // Totales al pie, del conjunto filtrado.
+    const foot = within(table.querySelector("tfoot")!);
+    expect(foot.getByText("60 h")).toBeTruthy();
   });
 
-  it("los filtros se envían a la API", async () => {
+  it("filtros, búsqueda y orden van a la API y a la URL; cambiar un filtro vuelve a la página 1", async () => {
+    const urls: string[] = [];
+    renderAt("/operativa?page=3", LEAD, (async (input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return json(page([], { total: 80 }));
+    }) as typeof fetch);
+    await waitFor(() => expect(urls.some((u) => u.includes("page=3"))).toBe(true));
+    fireEvent.change(screen.getByLabelText("Filtrar por health"), { target: { value: "at_risk" } });
+    await waitFor(() => expect(urls.some((u) => u.includes("health=at_risk") && u.includes("page=1"))).toBe(true));
+    fireEvent.change(screen.getByLabelText("Buscar"), { target: { value: "manpersa" } });
+    await waitFor(() => expect(urls.some((u) => u.includes("q=manpersa"))).toBe(true));
+  });
+
+  it("ordenar por una columna pide el orden al servidor", async () => {
     const urls: string[] = [];
     renderAt("/operativa", LEAD, (async (input: RequestInfo | URL) => {
       urls.push(String(input));
-      return json({ projects: [] });
+      return json(page([listItem]));
     }) as typeof fetch);
-    await screen.findByText("Aún no hay proyectos operativos.");
-    fireEvent.change(screen.getByLabelText("Filtrar por health"), { target: { value: "at_risk" } });
-    await waitFor(() => expect(urls.some((u) => u.includes("health=at_risk"))).toBe(true));
+    fireEvent.click(await screen.findByRole("button", { name: /Etapa/ }));
+    await waitFor(() => expect(urls.some((u) => u.includes("sort=stage") && u.includes("dir=asc"))).toBe(true));
   });
 
-  it("solo el CEO/CCO y el Team Leader crean proyectos", async () => {
-    const empty = (async () => json({ projects: [] })) as typeof fetch;
-    renderAt("/operativa", LEAD, empty);
+  it("agrupar por etapa muestra el contador del servidor", async () => {
+    renderAt("/operativa?group=1", LEAD, (async () => json(page([listItem], { facets: { structure: 7 } }))) as typeof fetch);
+    const header = await screen.findByRole("columnheader", { name: /Estructura/ });
+    expect(within(header).getByText("7")).toBeTruthy();
+  });
+
+  it("edición en la celda: el Team Leader cambia el health sin abrir el detalle", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    renderAt("/operativa", LEAD, (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      if (init?.method === "PATCH") return json({ project: { ...project, health: "happy" } });
+      return json(page([{ ...listItem, canManage: true }]));
+    }) as typeof fetch);
+    fireEvent.change(await screen.findByLabelText("Health de Automatización Manpersa"), { target: { value: "happy" } });
+    await waitFor(() => expect(calls.some((c) => c.init?.method === "PATCH")).toBe(true));
+    const patch = calls.find((c) => c.init?.method === "PATCH")!;
+    expect(patch.url).toBe(`/api/ops/projects/${project.id}`);
+    expect(JSON.parse(String(patch.init?.body))).toEqual({ health: "happy" });
+    expect(screen.getByRole("table", { name: "Proyectos" })).toBeTruthy();
+  });
+
+  it("clic en la fila abre el detalle", async () => {
+    renderAt("/operativa", LEAD, (async (input: RequestInfo | URL) =>
+      String(input).endsWith(`/api/ops/projects/${project.id}`) ? json({ project, permissions: { manage: false, work: true } }) : json(page([listItem]))) as typeof fetch);
+    fireEvent.click(await screen.findByText("Automatización Manpersa"));
+    expect(await screen.findByRole("heading", { name: "Automatización Manpersa" })).toBeTruthy();
+  });
+
+  it("solo quien puede crear ve el botón (lo indica la API)", async () => {
+    renderAt("/operativa", LEAD, (async () => json(page([], { canCreate: true }))) as typeof fetch);
     expect(await screen.findByRole("button", { name: /Nuevo proyecto/ })).toBeTruthy();
   });
 
   it("comercial, finance y developer no ven el botón de crear", async () => {
-    renderAt("/operativa", COMMERCIAL, (async () => json({ projects: [listItem] })) as typeof fetch);
+    renderAt("/operativa", COMMERCIAL, (async () => json(page([listItem]))) as typeof fetch);
     await screen.findByText("Automatización Manpersa");
     expect(screen.queryByRole("button", { name: /Nuevo proyecto/ })).toBeNull();
   });
@@ -127,16 +201,30 @@ describe("detalle del proyecto", () => {
     (async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith(`/api/ops/projects/${project.id}`)) return json({ project, permissions });
-      if (url.endsWith("/deals")) return json({ deals: [] });
-      return json({ members: [], tasks: [], updates: [], meetings: [], accounts: [] });
+      if (url.startsWith("/api/deals")) return json(page([]));
+      return json({ members: [], tasks: [], updates: [], meetings: [], accounts: [], rows: [] });
     }) as typeof fetch;
 
-  it("Team Leader: puede editar etapa, health, prioridad y sentimiento, y ve las cuentas", async () => {
+  it("Team Leader: edita etapa, health y los campos nuevos; el Sentiment se deriva y no se edita", async () => {
     renderAt(`/operativa/${project.id}`, LEAD, route({ manage: true, work: true }));
     expect(await screen.findByRole("button", { name: "Maintenance" })).toBeTruthy();
     expect(screen.getByLabelText("Health")).toBeTruthy();
-    expect(screen.getByLabelText("Sentiment score")).toBeTruthy();
+    expect(screen.queryByLabelText("Sentiment score")).toBeNull();
+    expect(screen.getByText("Sentiment (del Health)")).toBeTruthy();
+    for (const label of ["Kickoff", "Tipo de pago", "Siguiente acción", "Project Plan", "SOW"]) expect(screen.getByLabelText(label)).toBeTruthy();
+    expect(screen.getByText("Horas vendidas")).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Cuentas" })).toBeTruthy();
+  });
+
+  it("la pestaña Deals es la tabla de Deals filtrada por el proyecto", async () => {
+    const urls: string[] = [];
+    const base = route({ manage: true, work: true });
+    renderAt(`/operativa/${project.id}`, LEAD, (async (input: RequestInfo | URL, init?: RequestInit) => {
+      urls.push(String(input));
+      return base(input, init);
+    }) as typeof fetch);
+    expect(await screen.findByText("Este proyecto aún no tiene deals.")).toBeTruthy();
+    expect(urls.some((u) => u.startsWith("/api/deals?") && u.includes(`projectId=${project.id}`))).toBe(true);
   });
 
   it("Comercial: solo lectura, sin controles ni pestaña de cuentas", async () => {

@@ -4,13 +4,18 @@ import AppLayout from "@/components/layout/AppLayout";
 import UsersPage from "@/features/admin/UsersPage";
 import LoginPage from "@/features/auth/LoginPage";
 import RequireAuth from "@/features/auth/RequireAuth";
+import CompaniesPage from "@/features/core/CompaniesPage";
+import CompanyDetailPage from "@/features/core/CompanyDetailPage";
+import ContactDetailPage from "@/features/core/ContactDetailPage";
+import ContactsPage from "@/features/core/ContactsPage";
+import DealDetailPage from "@/features/core/DealDetailPage";
+import DealsPage from "@/features/core/DealsPage";
 import DashboardPage from "@/features/dashboard/DashboardPage";
 import OpsProjectDetailPage from "@/features/ops/OpsProjectDetailPage";
 import OpsProjectsPage from "@/features/ops/OpsProjectsPage";
 import NewProjectPage from "@/features/projects/NewProjectPage";
 import ProjectDetailPage from "@/features/projects/ProjectDetailPage";
 import ProjectsPage from "@/features/projects/ProjectsPage";
-import CustomersPage from "@/features/sales/CustomersPage";
 import LeadDetailPage from "@/features/sales/LeadDetailPage";
 import LeadsPage from "@/features/sales/LeadsPage";
 import SourcesPage from "@/features/sales/SourcesPage";
@@ -31,7 +36,16 @@ export const router = createBrowserRouter([
         children: [
           { path: "/comercial", element: <LeadsPage /> },
           { path: "/comercial/leads/:id", element: <LeadDetailPage /> },
-          { path: "/comercial/clientes", element: <CustomersPage /> },
+          // Clientes pasó a Empresas (núcleo compartido).
+          { path: "/comercial/clientes", element: <Navigate to="/comercial/empresas" replace /> },
+          { path: "/comercial/empresas", element: <CompaniesPage /> },
+          { path: "/comercial/empresas/:id", element: <CompanyDetailPage /> },
+          { path: "/comercial/contactos", element: <ContactsPage /> },
+          { path: "/comercial/contactos/:id", element: <ContactDetailPage /> },
+          // Deals es una sola tabla; aparece en Comercial y en Operativa.
+          { path: "/comercial/deals", element: <DealsPage /> },
+          { path: "/operativa/deals", element: <DealsPage /> },
+          { path: "/deals/:id", element: <DealDetailPage /> },
           { path: "/comercial/sources", element: <SourcesPage /> },
           { path: "/operativa", element: <OpsProjectsPage /> },
           { path: "/operativa/:id", element: <OpsProjectDetailPage /> },

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -29,6 +29,9 @@ const lead: LeadDetail = {
   owner: { id: "u-com", name: "Marta" },
   lostReason: null,
   customerId: null,
+  companyId: null,
+  contactId: null,
+  dealId: null,
   projectId: null,
   createdAt: "2026-10-20T10:00:00Z",
   updatedAt: "2026-10-28T10:00:00Z",
@@ -69,6 +72,7 @@ describe("menú de Comercial", () => {
     const nav = within(screen.getByRole("navigation", { name: "Áreas" }));
     expect(nav.getByRole("link", { name: /Leads y propuestas/ })).toBeTruthy();
     expect(nav.getByRole("link", { name: /Sources de leads/ })).toBeTruthy();
+    for (const name of [/Contactos/, /Empresas/]) expect(nav.getByRole("link", { name })).toBeTruthy();
     expect(nav.queryByText("Infraestructura")).toBeNull();
   });
 });
@@ -88,7 +92,7 @@ describe("leads", () => {
 
   it("detalle: datos del source tal cual, y sin propuestas no se puede convertir", async () => {
     renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, (url) => {
-      if (url === `/api/sales/leads/${lead.id}`) return json({ lead, demos: [], proposals: [], customer: null, project: null });
+      if (url === `/api/sales/leads/${lead.id}`) return json({ lead, demos: [], proposals: [], company: null, project: null, deal: null });
       if (url.startsWith("/api/teams")) return json({ teams: [] });
       return json({ owners: [], meetings: [], updates: [], processingAvailable: true });
     });
@@ -101,11 +105,29 @@ describe("leads", () => {
     expect(screen.getByText("octubre")).toBeTruthy();
   });
 
+  it("convertir pregunta antes de crear; si se cancela no envía nada", async () => {
+    const proposal = { id: "22222222-2222-4222-8222-222222222222", leadId: lead.id, projectId: null, dealId: null, title: "Propuesta Manpersa", url: "https://p.example.com/", amountCents: null, currency: "USD", status: "accepted", area: "commercial", sentAt: null, decidedAt: null, createdAt: "2026-10-27T10:00:00Z" };
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { calls } = renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, (url) => {
+      if (url === `/api/sales/leads/${lead.id}`) return json({ lead, demos: [], proposals: [proposal], company: null, project: null, deal: null });
+      if (url.startsWith("/api/teams")) return json({ teams: [{ id: "t-1", name: "Equipo A" }] });
+      return json({ owners: [], members: [], meetings: [], updates: [], processingAvailable: true });
+    });
+    await screen.findByRole("option", { name: "Equipo A" });
+    fireEvent.change(screen.getByLabelText("Equipo"), { target: { value: "t-1" } });
+    fireEvent.click(screen.getByRole("button", { name: /Convertir en cliente/ }));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(String(confirm.mock.calls[0][0])).toMatch(/empresa «Manpersa SAC».*\n.*proyecto «Proyecto Manpersa SAC» en Kick Off[\s\S]*deal aprobado/);
+    expect(calls.some((c) => c.url.endsWith("/convert"))).toBe(false);
+    confirm.mockRestore();
+  });
+
   it("convertir envía equipo, proyecto y propuesta, y abre el proyecto en Operativa", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const proposal = { id: "22222222-2222-4222-8222-222222222222", leadId: lead.id, projectId: null, dealId: null, title: "Propuesta Manpersa", url: "https://p.example.com/", amountCents: null, currency: "USD", status: "accepted", area: "commercial", sentAt: null, decidedAt: null, createdAt: "2026-10-27T10:00:00Z" };
     const { calls } = renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, (url, init) => {
-      if (url.endsWith("/convert") && init?.method === "POST") return json({ customer: { id: "c1", name: "Manpersa SAC" }, project: { id: "p1", name: "Proyecto Manpersa SAC" } }, 201);
-      if (url === `/api/sales/leads/${lead.id}`) return json({ lead, demos: [], proposals: [proposal], customer: null, project: null });
+      if (url.endsWith("/convert") && init?.method === "POST") return json({ company: { id: "c1", name: "Manpersa SAC" }, project: { id: "p1", name: "Proyecto Manpersa SAC" }, deal: { id: "d1", dealCode: "DL-0001" } }, 201);
+      if (url === `/api/sales/leads/${lead.id}`) return json({ lead, demos: [], proposals: [proposal], company: null, project: null, deal: null });
       if (url.startsWith("/api/teams")) return json({ teams: [{ id: "t-1", name: "Equipo A" }] });
       if (url.startsWith("/api/ops/members")) return json({ members: [{ id: "u-lead", name: "Ana", role: "lead" }] });
       if (url.startsWith("/api/ops/projects/p1")) return json({ error: "x" }, 404);
@@ -117,6 +139,7 @@ describe("leads", () => {
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/convert"))).toBe(true));
     const body = JSON.parse(String(calls.find((c) => c.url.endsWith("/convert"))!.init?.body));
     expect(body).toMatchObject({ teamId: "t-1", projectName: "Proyecto Manpersa SAC", proposalId: proposal.id });
+    confirm.mockRestore();
   });
 });
 
@@ -147,14 +170,21 @@ describe("reuniones procesadas en Operativa", () => {
     team: { id: "t-1", name: "Equipo A" },
     lead: null,
     developer: null,
+    company: null,
+    contacts: [],
     clientSlug: null,
     proposalUrl: null,
-    customerId: null,
+    projectPlanUrl: null,
+    sowUrl: null,
+    kickoffDate: null,
     leadId: null,
     stage: "kickoff",
     health: "neutral",
-    sentimentScore: 50,
+    sentimentScore: 55,
     priority: "medium",
+    paymentType: null,
+    nextAction: null,
+    summary: { deals: 0, amountCents: 0, soldHours: 0, billableHours: 0, billableVsSold: 0, tasks: 0, tasksDone: 0, progress: 0 },
     createdAt: "2026-10-01T10:00:00Z",
     updatedAt: "2026-10-28T10:00:00Z",
   };
@@ -173,22 +203,20 @@ describe("reuniones procesadas en Operativa", () => {
     transcriptLength: 120,
   };
 
-  it("el Team Leader aplica el sentimiento sugerido y crea tareas desde los action items", async () => {
+  it("el sentimiento sugerido solo se muestra (no cambia el Health) y el Team Leader crea tareas desde los action items", async () => {
     const { calls } = renderAt(`/operativa/${project.id}`, LEAD, (url, init) => {
-      if (init?.method === "PATCH") return json({ project: { ...project, sentimentScore: 72 } });
       if (init?.method === "POST" && url.endsWith("/tasks")) return json({ task: {} }, 201);
       if (url === `/api/ops/projects/${project.id}`) return json({ project, permissions: { manage: true, work: true } });
       if (url.endsWith("/meetings")) return json({ meetings: [meeting], processingAvailable: true });
-      return json({ members: [], deals: [], tasks: [], updates: [] });
+      return json({ members: [], rows: [], tasks: [], updates: [] });
     });
     fireEvent.click(await screen.findByRole("tab", { name: "Reuniones" }));
     expect(await screen.findByText("Quieren reportes semanales.")).toBeTruthy();
     expect(screen.getByText("72/100")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar al proyecto" }));
-    await waitFor(() => expect(calls.some((c) => c.init?.method === "PATCH")).toBe(true));
-    expect(JSON.parse(String(calls.find((c) => c.init?.method === "PATCH")!.init?.body))).toEqual({ sentimentScore: 72 });
+    expect(screen.queryByRole("button", { name: "Aplicar al proyecto" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Crear tarea/ }));
     await waitFor(() => expect(calls.some((c) => c.init?.method === "POST" && c.url.endsWith("/tasks"))).toBe(true));
     expect(JSON.parse(String(calls.find((c) => c.url.endsWith("/tasks") && c.init?.method === "POST")!.init?.body))).toMatchObject({ title: "Enviar el plan del proyecto" });
+    expect(calls.some((c) => c.init?.method === "PATCH")).toBe(false);
   });
 });

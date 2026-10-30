@@ -46,14 +46,12 @@ function MeetingItem({
   meeting,
   canWork,
   processingAvailable,
-  onApplySentiment,
   onCreateTask,
 }: {
   base: string;
   meeting: Meeting;
   canWork: boolean;
   processingAvailable: boolean;
-  onApplySentiment?: (value: number) => Promise<void>;
   onCreateTask?: (title: string) => Promise<void>;
 }) {
   const queryClient = useQueryClient();
@@ -142,14 +140,6 @@ function MeetingItem({
           <span>
             Sentimiento sugerido: <span className="font-medium tabular-nums">{meeting.sentimentSignal}/100</span>
           </span>
-          {onApplySentiment &&
-            (done.includes("sentiment") ? (
-              <span className="text-xs text-muted-foreground">Aplicado al proyecto</span>
-            ) : (
-              <Button size="xs" variant="outline" disabled={busy !== null} onClick={() => run("sentiment", () => onApplySentiment(meeting.sentimentSignal!))}>
-                Aplicar al proyecto
-              </Button>
-            ))}
         </div>
       )}
       <ErrorLine error={error} />
@@ -161,12 +151,10 @@ function MeetingItem({
 export function MeetingsPanel({
   base,
   canWork,
-  onApplySentiment,
   onCreateTask,
 }: {
   base: string;
   canWork: boolean;
-  onApplySentiment?: (value: number) => Promise<void>;
   onCreateTask?: (title: string) => Promise<void>;
 }) {
   const queryClient = useQueryClient();
@@ -255,7 +243,7 @@ export function MeetingsPanel({
       ) : (
         <ul className="space-y-2">
           {data.meetings.map((m) => (
-            <MeetingItem key={m.id} base={base} meeting={m} canWork={canWork} processingAvailable={processingAvailable} onApplySentiment={onApplySentiment} onCreateTask={onCreateTask} />
+            <MeetingItem key={m.id} base={base} meeting={m} canWork={canWork} processingAvailable={processingAvailable} onCreateTask={onCreateTask} />
           ))}
         </ul>
       )}

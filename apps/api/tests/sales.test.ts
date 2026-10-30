@@ -235,7 +235,10 @@ describe("embudo comercial", () => {
     expect(done.status).toBe(201);
     const project = await store.opsProjects.findOne({ _id: done.body.project.id });
     expect(project).toMatchObject({ stage: "kickoff", customerName: "Manpersa SAC", proposalUrl: "https://propuesta.example.com/", leadId: id, teamId: TEST_TEAM_ID, leadUserId: ana._id });
-    expect(await store.customers.findOne({ _id: done.body.customer.id })).toMatchObject({ name: "Manpersa SAC", leadId: id });
+    // Regla 5.3: empresa y contacto en el núcleo, y el deal de la propuesta aprobado y ligado al proyecto.
+    expect(await store.companies.findOne({ _id: done.body.company.id })).toMatchObject({ name: "Manpersa SAC" });
+    expect(await store.contacts.findOne({ companyId: done.body.company.id })).toMatchObject({ name: "Francisco Wong" });
+    expect(await store.deals.findOne({ _id: done.body.deal.id })).toMatchObject({ status: "approved", salesStage: "won", projectId: project!._id, leadId: id, dealCode: done.body.deal.dealCode });
     expect(await store.proposals.findOne({ _id: proposal.id })).toMatchObject({ status: "accepted", projectId: project!._id });
     expect((await marta("GET", `/api/sales/leads/${id}`)).body).toMatchObject({ lead: { status: "won" }, project: { id: project!._id } });
     expect((await marta("POST", `/api/sales/leads/${id}/convert`, convert)).status).toBe(409);
@@ -243,9 +246,9 @@ describe("embudo comercial", () => {
 
     // El equipo lo ve en Operativa con la propuesta; Comercial lo ve en clientes.
     const team = await as("ana");
-    expect((await team("GET", `/api/ops/projects/${project!._id}`)).body.project).toMatchObject({ leadId: id, customerId: done.body.customer.id });
+    expect((await team("GET", `/api/ops/projects/${project!._id}`)).body.project).toMatchObject({ leadId: id, company: { id: done.body.company.id, name: "Manpersa SAC" } });
     expect((await team("GET", `/api/ops/projects/${project!._id}/proposals`)).body.proposals).toHaveLength(1);
-    expect((await marta("GET", "/api/sales/customers")).body.customers[0]).toMatchObject({ name: "Manpersa SAC", projects: [{ name: "Automatización Manpersa", stage: "kickoff" }] });
+    expect((await marta("GET", `/api/companies/${done.body.company.id}`)).body).toMatchObject({ company: { name: "Manpersa SAC" }, projects: [{ name: "Automatización Manpersa", stage: "kickoff" }] });
   });
 });
 
@@ -254,11 +257,11 @@ describe("propuestas desde Operativa", () => {
     const { as } = await world();
     const ana = await as("ana");
     const project = (await ana("POST", "/api/ops/projects", { name: "Proyecto Acme", customerName: "Acme" })).body.project;
-    const deal = (await ana("POST", `/api/ops/projects/${project.id}/deals`, { title: "Módulo de pagos", hours: 30, rateCents: 3000 })).body.deal;
+    const deal = (await ana("POST", "/api/deals", { projectId: project.id, title: "Módulo de pagos", hours: 30, rateCents: 3000 })).body.deal;
     const created = await ana("POST", `/api/ops/projects/${project.id}/proposals`, { title: "Ampliación: pagos", url: "https://pagos.example.com/", dealId: deal.id, status: "sent" });
     expect(created.status).toBe(201);
     expect(created.body.proposal).toMatchObject({ area: "operations", dealId: deal.id });
-    expect((await ana("GET", `/api/ops/projects/${project.id}/deals`)).body.deals[0].proposalUrl).toBe("https://pagos.example.com/");
+    expect((await ana("GET", `/api/deals/${deal.id}`)).body.deal.proposalUrl).toBe("https://pagos.example.com/");
     expect((await ana("PATCH", `/api/ops/projects/${project.id}/proposals/${created.body.proposal.id}`, { status: "accepted" })).body.proposal.decidedAt).toBeTruthy();
     expect((await (await as("dev"))("POST", `/api/ops/projects/${project.id}/proposals`, { title: "No debería", url: "https://x.example.com/" })).status).toBe(403);
     expect((await (await as("marta"))("GET", `/api/ops/projects/${project.id}/proposals`)).status).toBe(200);
@@ -278,7 +281,7 @@ describe("procesamiento de reuniones", () => {
     expect(meeting).toMatchObject({ status: "processed", summary: "Se revisó el avance.", feedback: ["Quieren reportes semanales."], actionItems: ["Enviar el plan del proyecto"], sentimentSignal: 72 });
     expect(calls[0].context).toContain("Proyecto Acme");
     // El sentimiento del proyecto no cambia solo: queda como sugerencia y como novedad.
-    expect((await ana("GET", `/api/ops/projects/${project.id}`)).body.project.sentimentScore).toBe(50);
+    expect((await ana("GET", `/api/ops/projects/${project.id}`)).body.project.sentimentScore).toBe(55);
     expect((await ana("GET", `/api/ops/projects/${project.id}/updates`)).body.updates.some((u: { body: string }) => u.body.includes("Sentimiento sugerido: 72/100"))).toBe(true);
     // Procesada: no se vuelve a procesar.
     expect((await ana("POST", `/api/ops/projects/${project.id}/meetings/${meeting.id}/process`)).status).toBe(409);
