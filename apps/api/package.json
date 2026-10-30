@@ -15,6 +15,7 @@
     "test": "vitest run",
     "hash-password": "tsx src/scripts/hash-password.ts",
     "backfill:ai-costs": "tsx src/scripts/backfill-ai-costs.ts",
+    "import-roster": "tsx src/scripts/import-roster.ts",
     "check:dist": "node scripts/check-dist.mjs"
   },
   "keywords": [],
