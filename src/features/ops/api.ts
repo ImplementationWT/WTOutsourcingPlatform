@@ -115,7 +115,6 @@ export interface OpsProject {
   id: string;
   name: string;
   customerName: string;
-  company: { id: string; name: string } | null;
   team: Ref;
   lead: Ref | null;
   developer: Ref | null;
@@ -197,7 +196,7 @@ export const opsKeys = {
   part: (id: string, part: "tasks" | "accounts" | "proposals") => ["ops", "project", id, part] as const,
 };
 
-export const PROJECT_FILTERS = ["stage", "health", "priority", "teamId", "companyId"] as const;
+export const PROJECT_FILTERS = ["stage", "health", "priority", "teamId"] as const;
 
 /** Tabla de proyectos (paginada en el servidor, con contador por etapa y totales del filtro). */
 export function useOpsProjects(query: string) {
@@ -249,7 +248,6 @@ export const opsBase = base;
 export interface ProjectInput {
   name: string;
   customerName: string;
-  companyId: string | null;
   contactIds: string[];
   leadUserId: string | null;
   developerUserId: string | null;

@@ -1,14 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { type Filter, MongoServerError } from "mongodb";
+import type { Filter } from "mongodb";
 import { z } from "zod";
 import { requireRole } from "../auth/session.js";
 import type { SessionUser } from "../auth/users.js";
-import { registerSecret } from "../lib/redact.js";
 import type { MeetingProcessing } from "../meetings/processing.js";
 import { registerMeetingRoutes } from "../meetings/routes.js";
-import { type DealDoc, dealCodeOf, type OpsProjectDoc } from "../ops/models.js";
-import { hashIngestKey, leadTitle, newIngestKey } from "../sales/ingest.js";
 import {
   ACTIVE_LEAD_STATUSES,
   type ActivityDoc,
@@ -16,21 +13,18 @@ import {
   COLD_LEAD_STATUSES,
   DEMO_STATUSES,
   type DemoDoc,
-  LEAD_FIELDS,
   LEAD_FUNNELS,
   LEAD_STATUSES,
   LEAD_TEMPERATURES,
   type LeadDoc,
-  type LeadSourceDoc,
   type LeadStatus,
+  leadTitle,
   type ProposalDoc,
-  responseDays,
-  SOURCE_KINDS
+  responseDays
 } from "../sales/models.js";
 import { runTableQuery, tableQuerySchema } from "../lib/table-query.js";
 import { createProposalSchema, PROPOSAL_LABELS, proposalView, statusDates, updateProposalSchema } from "../sales/proposals.js";
 import type { AdminStore } from "../store/admin-store.js";
-import type { UserDoc } from "../store/models.js";
 
 /** Contexto de una reunión comercial para el modelo. */
 export const leadMeetingContext = (lead: Pick<LeadDoc, "company" | "contactName" | "status">) =>
@@ -81,12 +75,13 @@ const leadFields = {
   submittedAt: isoDate,
   meetingAt: isoDate,
   proposalUrl: optionalUrl,
-  /** Enlace a un Contacto y una Empresa que ya existen. */
-  contactId: uuidOrNull,
-  companyId: uuidOrNull
+  /** De dónde vino (texto: "Referido", "Formulario web"…). */
+  source: text(80).min(2),
+  /** Enlace a un Contacto que ya existe. */
+  contactId: uuidOrNull
 };
 const createLeadSchema = z
-  .object({ ...leadFields, sourceId: z.string().uuid() })
+  .object(leadFields)
   .partial()
   .strict()
   .refine((v) => Boolean(v.company || v.contactName || v.email), "Indica al menos la empresa, el contacto o el correo.");
@@ -106,33 +101,13 @@ const updateDemoSchema = z
   .strict()
   .refine((patch) => Object.keys(patch).length > 0, "No hay nada que cambiar.");
 
-const convertSchema = z
-  .object({
-    teamId: z.string().uuid(),
-    projectName: text(80).min(3),
-    customerName: text(80).min(2).optional(),
-    leadUserId: z.string().uuid().nullable().optional(),
-    developerUserId: z.string().uuid().nullable().optional(),
-    /** Propuesta del lead que se acepta al convertir (si aún no hay una aceptada). */
-    proposalId: z.string().uuid().optional()
-  })
-  .strict();
-
 const updateNoteSchema = z.object({ body: text(4000).min(1) }).strict();
-
-const mappingSchema = z.array(z.object({ from: text(200).min(1), to: z.enum(LEAD_FIELDS) }).strict()).max(50);
-const createSourceSchema = z.object({ name: text(80).min(2), kind: z.enum(SOURCE_KINDS), mapping: mappingSchema.optional() }).strict();
-const updateSourceSchema = z
-  .object({ name: text(80).min(2), kind: z.enum(SOURCE_KINDS), mapping: mappingSchema, active: z.boolean() })
-  .partial()
-  .strict()
-  .refine((patch) => Object.keys(patch).length > 0, "No hay nada que cambiar.");
 
 /** Tabla de leads: vista activos / fríos / ganados y filtros; paginada en el servidor. */
 const listQuery = tableQuerySchema.extend({
   view: z.enum(["active", "cold", "won"]).optional(),
   status: z.enum(LEAD_STATUSES).optional(),
-  sourceId: z.string().uuid().optional(),
+  source: text(80).optional(),
   funnel: z.enum(LEAD_FUNNELS).optional(),
   temperature: z.enum(LEAD_TEMPERATURES).optional(),
   setterUserId: z.string().uuid().optional(),
@@ -146,24 +121,6 @@ const learningSchema = z.object({ text: text(2000).min(3) }).strict();
 const invalid = (reply: FastifyReply, error: z.ZodError) =>
   reply.code(400).send({ error: "Datos inválidos.", issues: error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
 
-/** La clave se muestra una sola vez: va serializada aquí (la redacción global la ocultaría) y sin caché. */
-const sendKeyOnce = (reply: FastifyReply, body: Record<string, unknown>) => reply.header("Cache-Control", "no-store").type("application/json; charset=utf-8").send(JSON.stringify(body));
-
-const sourceView = (source: LeadSourceDoc) => ({
-  id: source._id,
-  name: source.name,
-  kind: source.kind,
-  keyHint: source.keyHint,
-  hasKey: Boolean(source.ingestKeyHash),
-  mapping: source.mapping,
-  active: source.active,
-  received: source.received,
-  lastReceivedAt: source.lastReceivedAt,
-  sampleKeys: source.sampleKeys,
-  ingestPath: `/api/ingest/leads/${source._id}`,
-  createdAt: source.createdAt
-});
-
 const demoView = (demo: DemoDoc) => ({
   id: demo._id,
   leadId: demo.leadId,
@@ -176,12 +133,10 @@ const demoView = (demo: DemoDoc) => ({
   updatedAt: demo.updatedAt
 });
 
-const companyIdOf = (lead: LeadDoc) => lead.companyId ?? lead.customerId ?? null;
-
 /** Responsable del lead (Closer) de la v1. */
 const closerOf = (lead: LeadDoc) => lead.closerUserId ?? lead.ownerUserId ?? null;
 
-/** Comercial: leads de varios sources, demos, propuestas, conversión en cliente, novedades y reuniones. */
+/** Comercial: leads, demos, propuestas, novedades y reuniones. */
 export async function registerSalesRoutes(app: FastifyInstance, { store, meetings }: { store: AdminStore; meetings: MeetingProcessing }) {
   const auditSales = (user: SessionUser, lead: LeadDoc, action: string, details?: Record<string, string | number | boolean>) =>
     store.audit({ actor: user.username, action, clientId: `sales:${lead._id}`, target: leadTitle(lead), ...(details ? { details } : {}) });
@@ -206,39 +161,27 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
     return Boolean(await store.users.findOne({ _id: id, active: true, role: { $in: [...SALES_ROLES] } }));
   }
 
-  /** Contacto y Empresa enlazados a mano deben existir. */
-  async function checkCoreLinks(input: { contactId?: string | null; companyId?: string | null }, reply: FastifyReply) {
+  /** El contacto enlazado a mano debe existir. */
+  async function checkCoreLinks(input: { contactId?: string | null }, reply: FastifyReply) {
     if (input.contactId && !(await store.contacts.findOne({ _id: input.contactId }, { projection: { _id: 1 } }))) {
       void reply.code(400).send({ error: "El contacto no existe." });
       return false;
     }
-    if (input.companyId && !(await store.companies.findOne({ _id: input.companyId }, { projection: { _id: 1 } }))) {
-      void reply.code(400).send({ error: "La empresa no existe." });
-      return false;
-    }
     return true;
-  }
-
-  async function teamMember(id: string | null | undefined, teamId: string, role: UserDoc["role"]) {
-    if (!id) return true;
-    return Boolean(await store.users.findOne({ _id: id, active: true, teamId, role }));
   }
 
   async function leadViews(leads: LeadDoc[]) {
     const ids = (pick: (l: LeadDoc) => (string | null | undefined)[]) => [...new Set(leads.flatMap(pick).filter((v): v is string => Boolean(v)))];
     const userIds = ids((l) => [l.setterUserId, closerOf(l)]);
     const contactIds = ids((l) => [l.contactId]);
-    const companyIds = ids((l) => [companyIdOf(l)]);
     const dealIds = ids((l) => [l.dealId]);
-    const [owners, contacts, companies, deals] = await Promise.all([
+    const [owners, contacts, deals] = await Promise.all([
       userIds.length ? store.users.find({ _id: { $in: userIds } }, { projection: { name: 1 } }).toArray() : [],
       contactIds.length ? store.contacts.find({ _id: { $in: contactIds } }, { projection: { name: 1 } }).toArray() : [],
-      companyIds.length ? store.companies.find({ _id: { $in: companyIds } }, { projection: { name: 1 } }).toArray() : [],
       dealIds.length ? store.deals.find({ _id: { $in: dealIds } }, { projection: { dealCode: 1, title: 1 } }).toArray() : []
     ]);
     const names = new Map(owners.map((u) => [u._id, u.name]));
     const contactName = new Map(contacts.map((c) => [c._id, c.name]));
-    const companyName = new Map(companies.map((c) => [c._id, c.name]));
     const deal = new Map(deals.map((d) => [d._id, { id: d._id, dealCode: d.dealCode, title: d.title }]));
     const person = (id: string | null | undefined) => (id ? { id, name: names.get(id) ?? null } : null);
     return (lead: LeadDoc, full = false) => ({
@@ -250,7 +193,7 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
       phone: lead.phone,
       notes: lead.notes,
       status: lead.status,
-      source: { id: lead.sourceId, name: lead.sourceName },
+      source: lead.sourceName,
       setter: person(lead.setterUserId),
       closer: person(closerOf(lead)),
       funnel: lead.funnel ?? null,
@@ -261,13 +204,10 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
       responseDays: responseDays(lead.submittedAt, lead.meetingAt),
       proposalUrl: lead.proposalUrl ?? null,
       lostReason: lead.lostReason,
-      customerId: lead.customerId,
-      companyId: lead.companyId ?? lead.customerId,
       contactId: lead.contactId ?? null,
       dealId: lead.dealId ?? null,
-      /** Enlaces al Contacto y la Empresa del núcleo (los textos `company`/`contactName` vienen del source). */
+      /** Enlace al Contacto (los textos `company` y `contactName` son del lead). */
       contactRef: lead.contactId ? { id: lead.contactId, name: contactName.get(lead.contactId) ?? null } : null,
-      companyRef: companyIdOf(lead) ? { id: companyIdOf(lead)!, name: companyName.get(companyIdOf(lead)!) ?? null } : null,
       deal: lead.dealId ? (deal.get(lead.dealId) ?? null) : null,
       projectId: lead.projectId,
       createdAt: lead.createdAt,
@@ -288,11 +228,11 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
   app.get("/api/sales/leads", { preHandler: requireSalesRead }, async (request, reply) => {
     const query = listQuery.safeParse(request.query);
     if (!query.success) return invalid(reply, query.error);
-    const { view, status, sourceId, funnel, temperature, setterUserId, closerUserId } = query.data;
+    const { view, status, source, funnel, temperature, setterUserId, closerUserId } = query.data;
     // Sin el estado: así el embudo muestra cuántos hay en cada etapa con los demás filtros.
     const base = {
       ...(view ? { status: { $in: [...VIEW_STATUSES[view]] } } : {}),
-      ...(sourceId ? { sourceId } : {}),
+      ...(source ? { sourceName: source } : {}),
       ...(funnel ? { funnel } : {}),
       ...(temperature ? { temperature } : {}),
       ...(setterUserId ? { setterUserId } : {}),
@@ -334,15 +274,12 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
     const body = createLeadSchema.safeParse(request.body);
     if (!body.success) return invalid(reply, body.error);
     const user = request.user!;
-    const source = body.data.sourceId ? await store.leadSources.findOne({ _id: body.data.sourceId }) : null;
-    if (body.data.sourceId && !source) return reply.code(400).send({ error: "El source no existe." });
     if (!(await validOwner(body.data.setterUserId)) || !(await validOwner(body.data.closerUserId))) return reply.code(400).send({ error: "El Setter y el Closer deben ser personas activas de Comercial." });
     if (!(await checkCoreLinks(body.data, reply))) return reply;
     const at = new Date();
     const lead: LeadDoc = {
       _id: randomUUID(),
-      sourceId: source?._id ?? null,
-      sourceName: source?.name ?? "Manual",
+      sourceName: body.data.source ?? "Manual",
       externalId: null,
       status: "new",
       company: body.data.company ?? "",
@@ -360,9 +297,7 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
       meetingAt: body.data.meetingAt ?? null,
       proposalUrl: body.data.proposalUrl ?? null,
       contactId: body.data.contactId ?? null,
-      companyId: body.data.companyId ?? null,
       lostReason: null,
-      customerId: null,
       projectId: null,
       createdBy: user.username,
       createdAt: at,
@@ -380,22 +315,22 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
     if (!params.success) return reply.code(400).send({ error: "Id inválido." });
     const lead = await readableLead(reply, params.data.id);
     if (!lead) return reply;
-    const companyId = lead.companyId ?? lead.customerId;
-    const [demos, proposals, company, project, deal] = await Promise.all([
+    const [demos, proposals, project, deals, activities] = await Promise.all([
       store.demos.find({ leadId: lead._id }).sort({ scheduledAt: -1 }).toArray(),
       store.proposals.find({ leadId: lead._id }).sort({ createdAt: -1 }).toArray(),
-      companyId ? store.companies.findOne({ _id: companyId }, { projection: { name: 1 } }) : null,
       lead.projectId ? store.opsProjects.findOne({ _id: lead.projectId }, { projection: { name: 1, stage: 1, health: 1 } }) : null,
-      lead.dealId ? store.deals.findOne({ _id: lead.dealId }, { projection: { dealCode: 1, title: 1 } }) : null
+      store.deals.find({ $or: [{ leadId: lead._id }, ...(lead.dealId ? [{ _id: lead.dealId }] : [])] }, { projection: { dealCode: 1, title: 1, status: 1, amountCents: 1, currency: 1 } }).sort({ createdAt: -1 }).limit(50).toArray(),
+      store.activities.countDocuments({ leadId: lead._id, status: "pending" })
     ]);
     const view = await leadViews([lead]);
     return {
       lead: view(lead, true),
       demos: demos.map(demoView),
       proposals: proposals.map(proposalView),
-      company: company ? { id: company._id, name: company.name } : null,
       project: project ? { id: project._id, name: project.name, stage: project.stage, health: project.health } : null,
-      deal: deal ? { id: deal._id, dealCode: deal.dealCode, title: deal.title } : null,
+      /** Deals del lead (los que lo tienen como origen). */
+      deals: deals.map((d) => ({ id: d._id, dealCode: d.dealCode, title: d.title, status: d.status, amountCents: d.amountCents, currency: d.currency })),
+      pendingActivities: activities,
       canWrite: isSales(request.user!)
     };
   });
@@ -409,8 +344,6 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
     if (!lead) return reply;
     const user = request.user!;
     const patch = body.data;
-    if (patch.status === "won" && lead.status !== "won") return reply.code(409).send({ error: "Un lead se gana al convertirlo en cliente." });
-    if (patch.status && patch.status !== "won" && lead.status === "won") return reply.code(409).send({ error: "El lead ya es cliente: su estado no cambia." });
     if (!(await validOwner(patch.setterUserId)) || !(await validOwner(patch.closerUserId))) return reply.code(400).send({ error: "El Setter y el Closer deben ser personas activas de Comercial." });
     if (!(await checkCoreLinks(patch, reply))) return reply;
 
@@ -420,7 +353,8 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
     if (patch.setterUserId !== undefined && patch.setterUserId !== (lead.setterUserId ?? null)) changes.push("Cambió el Setter.");
     if (patch.closerUserId !== undefined && patch.closerUserId !== closerOf(lead)) changes.push("Cambió el Closer.");
     if (patch.temperature !== undefined && patch.temperature !== (lead.temperature ?? null)) changes.push(`Temperatura: ${patch.temperature ?? "sin definir"}`);
-    await touch(lead._id, { ...patch, ...(patch.status && patch.status !== "lost" ? { lostReason: null } : {}) });
+    const { source, ...rest } = patch;
+    await touch(lead._id, { ...rest, ...(source ? { sourceName: source } : {}), ...(patch.status && patch.status !== "lost" ? { lostReason: null } : {}) });
     if (changes.length) {
       await note(user, lead._id, changes.join("\n"));
       await auditSales(user, lead, patch.status && patch.status !== lead.status ? "sales.lead_status_changed" : "sales.lead_updated", patch.status ? { from: lead.status, to: patch.status } : undefined);
@@ -570,150 +504,6 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
     return { proposal: proposalView((await store.proposals.findOne({ _id: proposal._id }))!) };
   });
 
-  // ---- conversión en cliente -----------------------------------------------------
-
-  /**
-   * Lead ganado → cliente + proyecto operativo en Kick Off con la propuesta aceptada. Exige una
-   * propuesta aceptada (o la que se indique, que se acepta aquí). Los responsables se validan como
-   * en Operativa: deben ser del equipo elegido.
-   */
-  app.post("/api/sales/leads/:id/convert", { preHandler: requireSales }, async (request, reply) => {
-    const params = idParams.safeParse(request.params);
-    const body = convertSchema.safeParse(request.body);
-    if (!params.success) return reply.code(400).send({ error: "Id inválido." });
-    if (!body.success) return invalid(reply, body.error);
-    const lead = await readableLead(reply, params.data.id);
-    if (!lead) return reply;
-    const user = request.user!;
-    if (lead.projectId || lead.status === "won") return reply.code(409).send({ error: "Este lead ya se convirtió en cliente." });
-    const input = body.data;
-    if (!(await store.teams.findOne({ _id: input.teamId }))) return reply.code(400).send({ error: "El equipo no existe." });
-    if (!(await teamMember(input.leadUserId, input.teamId, "lead"))) return reply.code(400).send({ error: "El Team Leader debe ser un team leader activo de ese equipo." });
-    if (!(await teamMember(input.developerUserId, input.teamId, "developer"))) return reply.code(400).send({ error: "El Developer debe ser un developer activo de ese equipo." });
-
-    const proposals = await store.proposals.find({ leadId: lead._id }).sort({ createdAt: -1 }).toArray();
-    const chosen = input.proposalId ? proposals.find((p) => p._id === input.proposalId) : proposals.find((p) => p.status === "accepted");
-    if (input.proposalId && !chosen) return reply.code(400).send({ error: "La propuesta no es de este lead." });
-    if (!chosen) return reply.code(409).send({ error: "Para convertir el lead necesitas una propuesta aceptada." });
-    if (chosen.status === "rejected") return reply.code(409).send({ error: "Esa propuesta fue rechazada." });
-
-    // Se marca el lead primero (de forma atómica) para que dos conversiones simultáneas no creen dos proyectos.
-    const at = new Date();
-    const projectId = randomUUID();
-    const dealId = randomUUID();
-    const customerName = input.customerName ?? (lead.company || lead.contactName || leadTitle(lead));
-    // Empresa y contacto del núcleo: se reutilizan si el lead ya los tiene (§4.1).
-    const companyId = lead.companyId ?? randomUUID();
-    const contactId = lead.contactId ?? (lead.contactName || lead.email ? randomUUID() : null);
-    const claimed = await store.leads.updateOne(
-      { _id: lead._id, projectId: null, status: { $ne: "won" } },
-      { $set: { status: "won", projectId, customerId: companyId, companyId, contactId, dealId, proposalUrl: chosen.url, lostReason: null, updatedAt: at } }
-    );
-    if (!claimed.modifiedCount) return reply.code(409).send({ error: "Este lead ya se convirtió en cliente." });
-
-    if (!lead.companyId) {
-      await store.companies.insertOne({
-        _id: companyId,
-        name: customerName,
-        domain: lead.email?.split("@")[1] ?? null,
-        industry: null,
-        size: null,
-        location: null,
-        createdBy: user.username,
-        createdAt: at,
-        updatedAt: at
-      });
-    }
-    if (contactId && !lead.contactId) {
-      await store.contacts.insertOne({
-        _id: contactId,
-        name: lead.contactName || lead.email || customerName,
-        emails: lead.email ? [lead.email] : [],
-        phone: lead.phone,
-        title: null,
-        linkedinUrl: null,
-        companyId,
-        createdBy: user.username,
-        createdAt: at,
-        updatedAt: at
-      });
-    }
-    const contactIds = contactId ? [contactId] : [];
-    const project: OpsProjectDoc = {
-      _id: projectId,
-      name: input.projectName,
-      customerName,
-      companyId,
-      contactIds,
-      leadId: lead._id,
-      teamId: input.teamId,
-      leadUserId: input.leadUserId ?? null,
-      developerUserId: input.developerUserId ?? null,
-      clientSlug: null,
-      proposalUrl: chosen.url,
-      stage: "kickoff",
-      health: "neutral",
-      priority: "medium",
-      createdBy: user.username,
-      createdAt: at,
-      updatedAt: at
-    };
-    await store.opsProjects.insertOne(project);
-    // Regla 5.3: el deal de la propuesta aceptada queda «Aprobado» y ligado al proyecto. Horas y tarifa
-    // se cargan en Operativa (la propuesta solo trae el monto).
-    const deal: DealDoc = {
-      _id: dealId,
-      dealCode: dealCodeOf(await store.nextSequence("deal")),
-      projectId,
-      teamId: input.teamId,
-      leadId: lead._id,
-      partnerId: null,
-      contactIds,
-      ownerUserId: closerOf(lead) ?? lead.setterUserId ?? null,
-      title: chosen.title,
-      description: "",
-      salesStage: "won",
-      status: "approved",
-      hours: 0,
-      rateCents: 0,
-      amountCents: 0,
-      probability: 100,
-      projectedCents: 0,
-      currency: chosen.currency,
-      expectedCloseDate: null,
-      actualCloseDate: at.toISOString().slice(0, 10),
-      saleType: "new_project",
-      product: null,
-      channel: lead.sourceName,
-      lostReason: null,
-      partnerCommissionPct: null,
-      proposalUrl: chosen.url,
-      sowUrl: null,
-      changeOrders: [],
-      createdBy: user.username,
-      createdAt: at,
-      updatedAt: at
-    };
-    await store.deals.insertOne(deal);
-    // Las propuestas del lead pasan a verse también en el proyecto, ligadas al deal.
-    await store.proposals.updateMany({ leadId: lead._id }, { $set: { projectId } });
-    await store.proposals.updateOne({ _id: chosen._id }, { $set: { status: "accepted", dealId, decidedAt: chosen.decidedAt ?? at, updatedAt: at } });
-
-    await note(user, lead._id, `Convertido en cliente: ${customerName}. Proyecto «${project.name}» creado en Kick Off con el deal ${deal.dealCode} aprobado.`);
-    await store.projectUpdates.insertOne({
-      _id: randomUUID(),
-      projectId,
-      kind: "system",
-      body: `Proyecto creado desde Comercial (lead «${leadTitle(lead)}») con la propuesta «${chosen.title}» y el deal ${deal.dealCode}.`,
-      authorUsername: user.username,
-      authorName: user.name,
-      createdAt: at
-    });
-    await auditSales(user, lead, "sales.lead_converted", { project: project.name });
-    await store.audit({ actor: user.username, action: "ops.project_created", clientId: `ops:${projectId}`, target: project.name, details: { fromLead: true } });
-    return reply.code(201).send({ company: { id: companyId, name: customerName }, project: { id: projectId, name: project.name }, deal: { id: dealId, dealCode: deal.dealCode } });
-  });
-
   // ---- novedades ---------------------------------------------------------------
 
   app.get("/api/sales/leads/:id/updates", { preHandler: requireSalesRead }, async (request, reply) => {
@@ -745,7 +535,7 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
   registerMeetingRoutes(app, {
     base: "/api/sales/leads/:id",
     store,
-    collection: store.leadMeetings,
+    collection: store.meetings,
     ownerKey: "leadId",
     processing: meetings,
     resolve: async (request, reply, id) => {
@@ -758,6 +548,7 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
       if (!lead) return null;
       return {
         id: lead._id,
+        teamId: null,
         canWork: isSales(request.user!),
         context: leadMeetingContext(lead),
         conversions: ["activity"],
@@ -787,75 +578,4 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
       };
     }
   });
-
-  // ---- sources -----------------------------------------------------------------
-
-  app.get("/api/sales/sources", { preHandler: requireSales }, async () => {
-    const sources = await store.leadSources.find().sort({ name: 1 }).toArray();
-    return { sources: sources.map(sourceView) };
-  });
-
-  app.post("/api/sales/sources", { preHandler: requireSales }, async (request, reply) => {
-    const body = createSourceSchema.safeParse(request.body);
-    if (!body.success) return invalid(reply, body.error);
-    const user = request.user!;
-    const at = new Date();
-    // Los manuales e importaciones no reciben por el endpoint: no llevan clave.
-    const key = body.data.kind === "webhook" || body.data.kind === "form" ? newIngestKey() : null;
-    registerSecret(key);
-    const source: LeadSourceDoc = {
-      _id: randomUUID(),
-      name: body.data.name,
-      kind: body.data.kind,
-      ingestKeyHash: key ? hashIngestKey(key) : null,
-      keyHint: key ? key.slice(-4) : null,
-      mapping: body.data.mapping ?? [],
-      active: true,
-      received: 0,
-      lastReceivedAt: null,
-      sampleKeys: [],
-      createdBy: user.username,
-      createdAt: at,
-      updatedAt: at
-    };
-    try {
-      await store.leadSources.insertOne(source);
-    } catch (error) {
-      if (error instanceof MongoServerError && error.code === 11000) return reply.code(409).send({ error: "Ya existe un source con ese nombre." });
-      throw error;
-    }
-    await store.audit({ actor: user.username, action: "sales.source_created", clientId: "sales:sources", target: source.name });
-    return sendKeyOnce(reply.code(201), { source: sourceView(source), ingestKey: key });
-  });
-
-  app.patch("/api/sales/sources/:id", { preHandler: requireSales }, async (request, reply) => {
-    const params = idParams.safeParse(request.params);
-    const body = updateSourceSchema.safeParse(request.body);
-    if (!params.success) return reply.code(400).send({ error: "Id inválido." });
-    if (!body.success) return invalid(reply, body.error);
-    const source = await store.leadSources.findOne({ _id: params.data.id });
-    if (!source) return reply.code(404).send({ error: "Source no encontrado." });
-    try {
-      await store.leadSources.updateOne({ _id: source._id }, { $set: { ...body.data, updatedAt: new Date() } });
-    } catch (error) {
-      if (error instanceof MongoServerError && error.code === 11000) return reply.code(409).send({ error: "Ya existe un source con ese nombre." });
-      throw error;
-    }
-    await store.audit({ actor: request.user!.username, action: "sales.source_updated", clientId: "sales:sources", target: source.name });
-    return { source: sourceView((await store.leadSources.findOne({ _id: source._id }))!) };
-  });
-
-  /** Nueva clave de ingesta: la anterior deja de funcionar en el acto. */
-  app.post("/api/sales/sources/:id/rotate-key", { preHandler: requireSales }, async (request, reply) => {
-    const params = idParams.safeParse(request.params);
-    if (!params.success) return reply.code(400).send({ error: "Id inválido." });
-    const source = await store.leadSources.findOne({ _id: params.data.id });
-    if (!source) return reply.code(404).send({ error: "Source no encontrado." });
-    const key = newIngestKey();
-    registerSecret(key);
-    await store.leadSources.updateOne({ _id: source._id }, { $set: { ingestKeyHash: hashIngestKey(key), keyHint: key.slice(-4), updatedAt: new Date() } });
-    await store.audit({ actor: request.user!.username, action: "sales.source_key_rotated", clientId: "sales:sources", target: source.name });
-    return sendKeyOnce(reply, { source: sourceView((await store.leadSources.findOne({ _id: source._id }))!), ingestKey: key });
-  });
-
 }

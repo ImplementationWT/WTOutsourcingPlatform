@@ -1,6 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { ACTION_ITEM_KINDS, type ActionItemKind, CLIENT_SENTIMENTS, type ClientSentiment, MEETING_KINDS, type MeetingKind } from "../ops/models.js";
+import {
+  ACTION_ITEM_KINDS,
+  type ActionItemKind,
+  CLIENT_SENTIMENTS,
+  type ClientSentiment,
+  MEETING_ENGAGEMENTS,
+  MEETING_KINDS,
+  type MeetingEngagement,
+  type MeetingKind
+} from "../ops/models.js";
 
 export interface ProposedActionItem {
   text: string;
@@ -15,6 +24,8 @@ export interface MeetingAnalysis {
   feedback: string[];
   actionItems: ProposedActionItem[];
   clientSentiment: ClientSentiment;
+  /** Engagement: participación, interés y compromisos de los asistentes. */
+  engagement: MeetingEngagement;
   /** Tipo de reunión que sugiere el modelo (null si no lo sabe). */
   kind: MeetingKind | null;
   inputTokens: number;
@@ -41,6 +52,7 @@ const SYSTEM = [
   "- feedback: opiniones, quejas, pedidos o elogios del cliente, cada uno en una frase. Vacío si no hubo.",
   "- actionItems: tareas acordadas, cada una empezando por un verbo. kind: quick_admin (admin rápido), internal_work (trabajo interno), client_dependency (lo debe hacer o entregar el cliente), build_candidate (algo nuevo que se podría construir) o scope_risk (pedido fuera del alcance acordado). owner: el responsable si se mencionó. projectedHours: horas estimadas solo si se dijeron o son evidentes. phase: la fase o sprint si se mencionó.",
   "- clientSentiment: cómo se mostró el cliente: excellent, good, neutral o friction.",
+  "- engagement: qué tan comprometida fue la reunión (participación de todos, interés, preguntas, acuerdos y próximos pasos concretos): low, neutral, good o excellent.",
   "- kind: tipo de reunión: discovery, kickoff, sprint_review, alignment, issue_resolution, change_discussion, ad_hoc o training."
 ].join("\n");
 
@@ -59,12 +71,13 @@ const analysisSchema = z.object({
     )
     .max(50),
   clientSentiment: z.enum(CLIENT_SENTIMENTS),
+  engagement: z.enum(MEETING_ENGAGEMENTS),
   kind: z.enum(MEETING_KINDS).nullish()
 });
 
 const tool: Anthropic.Messages.Tool = {
   name: TOOL_NAME,
-  description: "Registra el resumen, el feedback del cliente, los action items propuestos, el sentimiento del cliente y el tipo de reunión.",
+  description: "Registra el resumen, el feedback del cliente, los action items propuestos, el sentimiento del cliente, el engagement y el tipo de reunión.",
   input_schema: {
     type: "object",
     properties: {
@@ -85,9 +98,10 @@ const tool: Anthropic.Messages.Tool = {
         }
       },
       clientSentiment: { type: "string", enum: [...CLIENT_SENTIMENTS] },
+      engagement: { type: "string", enum: [...MEETING_ENGAGEMENTS] },
       kind: { type: "string", enum: [...MEETING_KINDS] }
     },
-    required: ["summary", "feedback", "actionItems", "clientSentiment"]
+    required: ["summary", "feedback", "actionItems", "clientSentiment", "engagement"]
   }
 };
 
@@ -117,6 +131,7 @@ export function createClaudeMeetingAnalyzer(apiKey: string, workspace = "default
         feedback: parsed.data.feedback,
         actionItems: parsed.data.actionItems.map((a) => ({ text: a.text, kind: a.kind ?? null, owner: a.owner || null, projectedHours: a.projectedHours ?? null, phase: a.phase || null })),
         clientSentiment: parsed.data.clientSentiment,
+        engagement: parsed.data.engagement,
         kind: parsed.data.kind ?? null,
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens

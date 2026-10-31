@@ -236,6 +236,11 @@ export interface UserDoc {
   /** Único, en minúsculas. */
   username: string;
   name: string;
+  /**
+   * Correo de trabajo (en minúsculas, único). Identifica a la persona en las reuniones de Read.ai:
+   * el correo del Team Leader dice de qué equipo es la reunión.
+   */
+  email?: string | null;
   role: UserRole;
   /** Equipo (null para los jefes). */
   teamId: string | null;

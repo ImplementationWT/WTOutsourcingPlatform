@@ -22,6 +22,7 @@ export function fakeAnalyzer() {
           { text: "Agregar exportación a Excel", kind: "scope_risk", owner: null, projectedHours: 10, phase: null }
         ],
         clientSentiment: "excellent",
+        engagement: "good",
         kind: "sprint_review",
         inputTokens: 1000,
         outputTokens: 100

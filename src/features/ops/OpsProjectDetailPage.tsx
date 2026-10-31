@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/features/auth/auth";
 import { TotalCell } from "@/components/data-table/cells";
-import { useCompanyOptions, useContactOptions } from "@/features/core/api";
+import { useContactOptions } from "@/features/core/api";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
@@ -65,10 +65,10 @@ function ProjectControls({ project }: { project: OpsProject }) {
   const queryClient = useQueryClient();
   const role = useSession().data?.role;
   const members = useTeamMembers(project.team.id).data ?? [];
-  // Empresas y Contactos los lee el CEO/CCO (el Team Leader los ve, pero no los lista).
-  const seesCompanies = role === "boss";
-  const companies = useCompanyOptions(seesCompanies).data ?? [];
-  const contacts = useContactOptions(project.company?.id ?? null, seesCompanies && Boolean(project.company)).data ?? [];
+  // Los contactos los lista el CEO/CCO (el Team Leader los ve en el proyecto, pero no la lista completa).
+  const picksContacts = role === "boss";
+  const contacts = useContactOptions(picksContacts).data ?? [];
+  const [customer, setCustomer] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function save(patch: Parameters<typeof updateProject>[1]) {
@@ -125,44 +125,34 @@ function ProjectControls({ project }: { project: OpsProject }) {
         </Field>
         {select("Tipo de pago", project.paymentType, PAYMENT_TYPES, PAYMENT_TYPE_LABELS, (v) => void save({ paymentType: v }), "Sin definir")}
         {select("Siguiente acción", project.nextAction, NEXT_ACTIONS, NEXT_ACTION_LABELS, (v) => void save({ nextAction: v }), "Sin definir")}
-        {seesCompanies ? (
-          <Field label="Empresa">
-            <Select
-              label="Empresa"
-              value={project.company?.id ?? null}
-              placeholder={`${project.customerName} (sin empresa)`}
-              options={companies.map((c) => ({ value: c.id, label: c.name }))}
-              onValueChange={(v) => v && void save({ companyId: v, contactIds: [] })}
-            />
-          </Field>
-        ) : (
-          <Field label="Cliente">{project.customerName}</Field>
-        )}
+        <Field label="Cliente">
+          <Input
+            aria-label="Cliente"
+            value={customer ?? project.customerName}
+            onChange={(e) => setCustomer(e.target.value)}
+            onBlur={() => {
+              const next = customer?.trim();
+              setCustomer(null);
+              if (next && next.length >= 2 && next !== project.customerName) void save({ customerName: next });
+            }}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+          />
+        </Field>
         <Field label="Contactos">
-          {seesCompanies && project.company ? (
-            contacts.length ? (
-              <div className="flex flex-wrap gap-x-3 gap-y-1">
-                {contacts.map((c) => {
-                  const ids = project.contacts.map((x) => x.id);
-                  return (
-                    <label key={c.id} className="inline-flex items-center gap-1.5">
-                      <input
-                        type="checkbox"
-                        className="accent-primary"
-                        checked={ids.includes(c.id)}
-                        onChange={(e) => void save({ contactIds: e.target.checked ? [...ids, c.id] : ids.filter((id) => id !== c.id) })}
-                      />
-                      {c.name}
-                    </label>
-                  );
-                })}
-              </div>
-            ) : (
-              <span className="text-muted-foreground">La empresa no tiene contactos.</span>
-            )
-          ) : (
+          <div className="space-y-1.5">
             <ContactLinks project={project} />
-          )}
+            {picksContacts && (
+              <Select
+                label="Agregar contacto"
+                value={null}
+                placeholder="Agregar contacto…"
+                searchable
+                size="sm"
+                options={contacts.filter((c) => !project.contacts.some((x) => x.id === c.id)).map((c) => ({ value: c.id, label: c.name, description: c.company ?? undefined }))}
+                onValueChange={(v) => v && void save({ contactIds: [...project.contacts.map((x) => x.id), v] })}
+              />
+            )}
+          </div>
         </Field>
         <UrlField label="Propuesta" value={project.proposalUrl} onSave={(v) => void save({ proposalUrl: v })} />
         <UrlField label="Project Plan" value={project.projectPlanUrl} onSave={(v) => void save({ projectPlanUrl: v })} />
@@ -254,7 +244,6 @@ export default function OpsProjectDetailPage() {
       ["SOW", project.sowUrl],
     ] as [string, string | null][]
   ).filter((l): l is [string, string] => Boolean(l[1]));
-  const seesCompanies = session?.role === "boss" || session?.role === "commercial" || session?.role === "finance";
   const tabs: { id: TabId; label: string; visible: boolean }[] = [
     { id: "deals", label: "Deals", visible: true },
     { id: "tasks", label: "Tasks", visible: true },
@@ -277,14 +266,7 @@ export default function OpsProjectDetailPage() {
           <PriorityBadge value={project.priority} />
         </div>
         <p className="text-sm text-muted-foreground">
-          {project.company && seesCompanies ? (
-            <Link className="text-primary underline-offset-4 hover:underline" to={`/comercial/empresas/${project.company.id}`}>
-              {project.customerName}
-            </Link>
-          ) : (
-            project.customerName
-          )}{" "}
-          · {project.team.name ?? "Sin equipo"}
+          {project.customerName} · {project.team.name ?? "Sin equipo"}
         </p>
       </div>
 

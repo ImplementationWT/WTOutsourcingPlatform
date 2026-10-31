@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConfirmProvider } from "@/components/ui/confirm-provider";
+import { Toaster } from "@/components/ui/toaster";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import AppSidebar from "@/components/layout/AppSidebar";
 import type { SessionUser } from "@/features/auth/auth";
@@ -9,8 +10,7 @@ import OpsProjectDetailPage from "@/features/ops/OpsProjectDetailPage";
 import type { OpsProject } from "@/features/ops/api";
 import LeadDetailPage from "@/features/sales/LeadDetailPage";
 import LeadsPage from "@/features/sales/LeadsPage";
-import SourcesPage from "@/features/sales/SourcesPage";
-import type { Lead, LeadDetail, LeadSource } from "@/features/sales/api";
+import type { Lead, LeadDetail } from "@/features/sales/api";
 import { optionLabels, pick } from "./pick";
 import { LEAD } from "./session";
 
@@ -27,7 +27,7 @@ const lead: LeadDetail = {
   phone: null,
   notes: "",
   status: "demo",
-  source: { id: "s1", name: "Meta Ads" },
+  source: "Meta Ads",
   setter: { id: "u-com", name: "Marta" },
   closer: null,
   funnel: "upwork",
@@ -37,11 +37,8 @@ const lead: LeadDetail = {
   responseDays: 3,
   proposalUrl: null,
   contactRef: null,
-  companyRef: null,
   deal: null,
   lostReason: null,
-  customerId: null,
-  companyId: null,
   contactId: null,
   dealId: null,
   projectId: null,
@@ -64,17 +61,19 @@ function renderAt(path: string, user: SessionUser, fetchImpl: (url: string, init
   queryClient.setQueryData(["session"], user);
   render(
     <QueryClientProvider client={queryClient}>
+      <Toaster>
       <ConfirmProvider>
         <MemoryRouter initialEntries={[path]}>
         <AppSidebar />
         <Routes>
           <Route path="/comercial" element={<LeadsPage />} />
           <Route path="/comercial/leads/:id" element={<LeadDetailPage />} />
-          <Route path="/comercial/sources" element={<SourcesPage />} />
           <Route path="/operativa/:id" element={<OpsProjectDetailPage />} />
+          <Route path="/deals/:id" element={<p>Deal abierto</p>} />
         </Routes>
       </MemoryRouter>
       </ConfirmProvider>
+      </Toaster>
     </QueryClientProvider>,
   );
   return { calls, queryClient };
@@ -85,9 +84,8 @@ describe("menú de Comercial", () => {
     renderAt("/comercial", COMMERCIAL, () => json({ rows: [], total: 0, page: 1, pageSize: 25, facets: {}, totals: {}, counts: {}, canWrite: true, sources: [] }));
     const nav = within(screen.getByRole("navigation", { name: "Áreas" }));
     expect(nav.getByRole("link", { name: /^Leads$/ })).toBeTruthy();
-    for (const name of [/Actividades/, /Demos/, /Propuestas/, /Partners/, /Catálogo/, /Reuniones por asignar/]) expect(nav.getByRole("link", { name })).toBeTruthy();
-    expect(nav.getByRole("link", { name: /Sources de leads/ })).toBeTruthy();
-    for (const name of [/Contactos/, /Empresas/]) expect(nav.getByRole("link", { name })).toBeTruthy();
+    for (const name of [/Actividades/, /Demos/, /Propuestas/, /Contactos/, /^Deals$/, /^Meetings$/]) expect(nav.getByRole("link", { name })).toBeTruthy();
+    for (const name of [/Partners/, /Catálogo/, /Reuniones por asignar/, /Sources de leads/, /Empresas/]) expect(nav.queryByRole("link", { name })).toBeNull();
     expect(nav.queryByText("Infraestructura")).toBeNull();
   });
 });
@@ -96,7 +94,7 @@ describe("leads", () => {
   const listed: Lead = { ...lead };
   const counts = { new: 3, contacted: 1, demo: 1, proposal_sent: 0, won: 2, lost: 0, nurturing: 4, unqualified: 0 };
   const page = (extra: Record<string, unknown> = {}) => ({ rows: [listed], total: 1, page: 1, pageSize: 25, facets: { demo: 1 }, totals: {}, counts, canWrite: true, ...extra });
-  const route = (url: string) => (url.startsWith("/api/sales/sources") ? json({ sources: [] }) : url.startsWith("/api/sales/owners") ? json({ owners: [{ id: "u-com", name: "Marta", role: "commercial" }] }) : json(page()));
+  const route = (url: string) => (url.startsWith("/api/sales/owners") ? json({ owners: [{ id: "u-com", name: "Marta", role: "commercial" }] }) : json(page()));
 
   it("tabla de leads: funnel, temperatura, Setter, días de respuesta; el embudo filtra por estado", async () => {
     const { calls } = renderAt("/comercial", COMMERCIAL, route);
@@ -129,78 +127,66 @@ describe("leads", () => {
 
   it("Financiera ve los leads en lectura: sin crear ni editar", async () => {
     const FINANCE: SessionUser = { id: "u-fin", username: "fede", name: "Fede", role: "finance", teamId: null, mustChangeCredentials: false };
-    renderAt("/comercial", FINANCE, (url) => (url.startsWith("/api/sales/sources") ? json({ error: "No" }, 403) : json(page({ canWrite: false }))));
+    renderAt("/comercial", FINANCE, () => json(page({ canWrite: false })));
     await screen.findByRole("table", { name: "Leads" });
     expect(screen.queryByRole("button", { name: /Nuevo lead/ })).toBeNull();
     expect(screen.queryByLabelText("Estado de Manpersa SAC")).toBeNull();
   });
 
-  it("detalle: datos del source tal cual, y sin propuestas no se puede convertir", async () => {
-    renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, (url) => {
-      if (url === `/api/sales/leads/${lead.id}`) return json({ lead, demos: [], proposals: [], company: null, project: null, deal: null, canWrite: true });
-      if (url.startsWith("/api/teams")) return json({ teams: [] });
-      return json({ owners: [], meetings: [], updates: [], processingAvailable: true });
-    });
+  const detailRoute = (extra: Record<string, unknown> = {}) => (url: string, init?: RequestInit) => {
+    if (init?.method === "PATCH") return json({ lead });
+    if (init?.method === "POST" && url === "/api/deals") return json({ deal: { id: "d1", dealCode: "DL-0001" } }, 201);
+    if (url === `/api/sales/leads/${lead.id}`) return json({ lead, demos: [], proposals: [], project: null, deals: [], pendingActivities: 2, canWrite: true, ...extra });
+    if (url.startsWith("/api/sales/owners")) return json({ owners: [{ id: "u-com", name: "Marta", role: "commercial" }] });
+    if (url.startsWith("/api/contacts")) return json(page({ rows: [] }));
+    return json({ meetings: [], updates: [], processingAvailable: true, rows: [], total: 0, page: 1, pageSize: 25, facets: {}, totals: {} });
+  };
+  const patches = (calls: Call[]) => calls.filter((c) => c.init?.method === "PATCH").map((c) => JSON.parse(String(c.init?.body)));
+
+  it("detalle: indicadores, «Ganado» se elige a mano, sin «Convertir en cliente», y los datos del source tal cual", async () => {
+    renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, detailRoute());
     expect(await screen.findByRole("heading", { name: "Manpersa SAC" })).toBeTruthy();
-    expect(screen.getByText(/Primero registra la propuesta/)).toBeTruthy();
-    // "Ganado" no se puede elegir a mano.
-    expect(await optionLabels("Estado del lead")).not.toContain("Ganado");
-    fireEvent.click(screen.getByRole("tab", { name: "Datos del source" }));
+    expect(screen.getByText("3 d")).toBeTruthy();
+    expect(within(screen.getByRole("button", { name: /Actividades pendientes/ })).getByText("2")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Convertir en cliente/ })).toBeNull();
+    expect(await optionLabels("Estado del lead")).toContain("Ganado");
+    fireEvent.click(screen.getByRole("tab", { name: "Datos de origen" }));
     expect(screen.getByText("form.campaign")).toBeTruthy();
     expect(screen.getByText("octubre")).toBeTruthy();
   });
 
-  it("convertir pregunta antes de crear; si se cancela no envía nada", async () => {
-    const proposal = { id: "22222222-2222-4222-8222-222222222222", leadId: lead.id, projectId: null, dealId: null, title: "Propuesta Manpersa", url: "https://p.example.com/", amountCents: null, currency: "USD", status: "accepted", area: "commercial", sentAt: null, decidedAt: null, createdAt: "2026-10-27T10:00:00Z" };
-    const { calls } = renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, (url) => {
-      if (url === `/api/sales/leads/${lead.id}`) return json({ lead, demos: [], proposals: [proposal], company: null, project: null, deal: null, canWrite: true });
-      if (url.startsWith("/api/teams")) return json({ teams: [{ id: "t-1", name: "Equipo A" }] });
-      return json({ owners: [], members: [], meetings: [], updates: [], processingAvailable: true });
-    });
-    await pick("Equipo", "Equipo A");
-    fireEvent.click(screen.getByRole("button", { name: /Convertir en cliente/ }));
-    const dialog = await screen.findByRole("alertdialog", { name: "¿Convertir «Manpersa SAC» en cliente?" });
-    expect(dialog.textContent).toMatch(/empresa «Manpersa SAC»[\s\S]*proyecto «Proyecto Manpersa SAC» en Kick Off[\s\S]*deal aprobado/);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
-    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
-    expect(calls.some((c) => c.url.endsWith("/convert"))).toBe(false);
+  it("se edita en el lugar: guarda al salir del campo y «Deshacer» vuelve al valor anterior", async () => {
+    const { calls } = renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, detailRoute());
+    const company = await screen.findByLabelText("Empresa");
+    fireEvent.change(company, { target: { value: "Manpersa Perú SAC" } });
+    fireEvent.blur(company);
+    await waitFor(() => expect(patches(calls)).toEqual([{ company: "Manpersa Perú SAC" }]));
+    fireEvent.click(await screen.findByRole("button", { name: "Deshacer" }));
+    await waitFor(() => expect(patches(calls)).toEqual([{ company: "Manpersa Perú SAC" }, { company: "Manpersa SAC" }]));
   });
 
-  it("convertir envía equipo, proyecto y propuesta, y abre el proyecto en Operativa", async () => {
-    const proposal = { id: "22222222-2222-4222-8222-222222222222", leadId: lead.id, projectId: null, dealId: null, title: "Propuesta Manpersa", url: "https://p.example.com/", amountCents: null, currency: "USD", status: "accepted", area: "commercial", sentAt: null, decidedAt: null, createdAt: "2026-10-27T10:00:00Z" };
-    const { calls } = renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, (url, init) => {
-      if (url.endsWith("/convert") && init?.method === "POST") return json({ company: { id: "c1", name: "Manpersa SAC" }, project: { id: "p1", name: "Proyecto Manpersa SAC" }, deal: { id: "d1", dealCode: "DL-0001" } }, 201);
-      if (url === `/api/sales/leads/${lead.id}`) return json({ lead, demos: [], proposals: [proposal], company: null, project: null, deal: null, canWrite: true });
-      if (url.startsWith("/api/teams")) return json({ teams: [{ id: "t-1", name: "Equipo A" }] });
-      if (url.startsWith("/api/ops/members")) return json({ members: [{ id: "u-lead", name: "Ana", role: "lead" }] });
-      if (url.startsWith("/api/ops/projects/p1")) return json({ error: "x" }, 404);
-      return json({ owners: [], meetings: [], updates: [], processingAvailable: true });
-    });
-    await pick("Equipo", "Equipo A");
-    fireEvent.click(screen.getByRole("button", { name: /Convertir en cliente/ }));
-    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Convertir en cliente" }));
-    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/convert"))).toBe(true));
-    const body = JSON.parse(String(calls.find((c) => c.url.endsWith("/convert"))!.init?.body));
-    expect(body).toMatchObject({ teamId: "t-1", projectName: "Proyecto Manpersa SAC", proposalId: proposal.id });
+  it("el correo es un enlace mailto con botón de copiar", async () => {
+    renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, detailRoute());
+    const mail = await screen.findByRole("link", { name: "francisco@manpersa.pe" });
+    expect(mail.getAttribute("href")).toBe("mailto:francisco@manpersa.pe");
+    expect(screen.getByRole("button", { name: "Copiar Correo" })).toBeTruthy();
   });
-});
 
-describe("sources", () => {
-  const source: LeadSource = { id: "s1", name: "Meta Ads", kind: "webhook", keyHint: "a1b2", hasKey: true, mapping: [], active: true, received: 4, lastReceivedAt: null, sampleKeys: ["form.email"], ingestPath: "/api/ingest/leads/s1" };
+  it("«Deal» lleva a la pestaña de deals y crear uno lo liga al lead y lo abre", async () => {
+    const { calls } = renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, detailRoute());
+    fireEvent.click(await screen.findByRole("button", { name: /^Deal$/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Crear deal/ }));
+    expect(await screen.findByText("Deal abierto")).toBeTruthy();
+    const post = calls.find((c) => c.init?.method === "POST" && c.url === "/api/deals")!;
+    expect(JSON.parse(String(post.init?.body))).toMatchObject({ leadId: lead.id, title: "Manpersa SAC" });
+  });
 
-  it("la clave se muestra una vez al crear y no queda en la caché de consultas", async () => {
-    const ingestKey = "lpk_SECRETO-de-prueba-123456";
-    const { queryClient } = renderAt("/comercial/sources", COMMERCIAL, (url, init) => {
-      if (url === "/api/sales/sources" && init?.method === "POST") return json({ source, ingestKey }, 201);
-      return json({ sources: [source] });
-    });
-    expect(await screen.findByText(/terminada en …a1b2/)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Meta Ads" } });
-    fireEvent.click(screen.getByRole("button", { name: /Crear source/ }));
-    expect(await screen.findByText(ingestKey)).toBeTruthy();
-    expect(JSON.stringify(queryClient.getQueryCache().getAll().map((q) => q.state.data))).not.toContain(ingestKey);
-    fireEvent.click(screen.getByRole("button", { name: "Ya la guardé" }));
-    await waitFor(() => expect(screen.queryByText(ingestKey)).toBeNull());
+  it("Financiera lee el detalle sin controles", async () => {
+    const FINANCE: SessionUser = { id: "u-fin", username: "fede", name: "Fede", role: "finance", teamId: null, mustChangeCredentials: false };
+    renderAt(`/comercial/leads/${lead.id}`, FINANCE, detailRoute({ canWrite: false }));
+    await screen.findByRole("heading", { name: "Manpersa SAC" });
+    expect(screen.queryByRole("button", { name: /^Nota$/ })).toBeNull();
+    expect((screen.getByLabelText("Empresa") as HTMLInputElement).disabled).toBe(true);
   });
 });
 
@@ -212,7 +198,6 @@ describe("reuniones procesadas en Operativa", () => {
     team: { id: "t-1", name: "Equipo A" },
     lead: null,
     developer: null,
-    company: null,
     contacts: [],
     clientSlug: null,
     proposalUrl: null,

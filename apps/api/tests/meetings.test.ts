@@ -4,6 +4,7 @@ import { hashPassword } from "../src/auth/password.js";
 import { sentimentCategory } from "../src/core/migrate.js";
 import { meetingFromReadAi, readAiPayloadSchema } from "../src/meetings/read-ai.js";
 import { startDb, stopDb } from "./helpers/db.js";
+import { OTHER_TEAM_ID, TEST_TEAM_ID } from "./helpers/users.js";
 import { type App, fakeAnalyzer, PASSWORD, world as makeWorld } from "./helpers/world.js";
 
 let passwordHash: string;
@@ -71,10 +72,9 @@ async function setup({ withKey = true } = {}) {
   const w = await makeWorld(apps, passwordHash, { analyzer, readAiSigningKey: withKey ? SIGNING_KEY : undefined });
   const jefe = await w.as("jefe");
   const ana = await w.as("ana");
-  const company = (await jefe("POST", "/api/companies", { name: "Acme SAC" })).body.company;
-  const contact = (await jefe("POST", "/api/contacts", { name: "Lucía Pérez", emails: ["lucia@acme.pe"], companyId: company.id })).body.contact;
+  const contact = (await jefe("POST", "/api/contacts", { name: "Lucía Pérez", emails: ["lucia@acme.pe"], company: "Acme SAC" })).body.contact;
   const project = (await ana("POST", "/api/ops/projects", { name: "Proyecto Acme", customerName: "Acme", contactIds: [contact.id] })).body.project;
-  return { ...w, calls, jefe, ana, company, contact, project };
+  return { ...w, calls, jefe, ana, contact, project };
 }
 
 describe("payload de Read.ai", () => {
@@ -134,7 +134,7 @@ describe("webhook de Read.ai", () => {
     expect((await ana("GET", `/api/ops/projects/${project.id}/tasks`)).body.tasks).toHaveLength(0);
   });
 
-  it("asigna al lead por su correo; meeting_start se ignora; sin coincidencia va a la bandeja", async () => {
+  it("asigna al lead por su correo; meeting_start se ignora; sin coincidencia queda sin ligar", async () => {
     const { app, store, as } = await setup();
     const marta = await as("marta");
     const lead = (await marta("POST", "/api/sales/leads", { company: "Prospecto SA", email: "jefe@prospecto.pe" })).body.lead;
@@ -144,7 +144,7 @@ describe("webhook de Read.ai", () => {
 
     expect((await send(app, payload({ session: "S-START", trigger: "meeting_start" }))).statusCode).toBe(202);
     expect((await send(app, payload({ session: "S-NONE", emails: ["nadie@desconocido.pe"] }))).json()).toMatchObject({ assigned: null });
-    expect(await store.meetingInbox.countDocuments()).toBe(1);
+    expect(await store.meetings.countDocuments({ projectId: null, leadId: null })).toBe(1);
   });
 
   it("sin transcripción queda con el resumen y los action items de Read.ai, sin llamar a Claude", async () => {
@@ -157,31 +157,76 @@ describe("webhook de Read.ai", () => {
   });
 });
 
-describe("bandeja «Por asignar»", () => {
-  it("CEO/CCO y Comercial la ven; el CEO/CCO asigna a un proyecto (y se procesa), Comercial solo a leads; se puede descartar", async () => {
+describe("tabla de Meetings", () => {
+  it("el equipo sale del correo del Team Leader (también para las que llegaron antes de cargarlo); engagement de Claude", async () => {
+    const { app, jefe, users } = await setup();
+    // Reunión sin contactos conocidos ni Team Leader con correo: sin equipo y sin proyecto.
+    await send(app, payload({ session: "S-ANTES", emails: ["cliente@nuevo.pe"] }));
+    await app.meetings.idle();
+    let table = (await jefe("GET", "/api/meetings")).body;
+    expect(table.rows[0]).toMatchObject({ title: "Sprint review Acme", team: null, engagement: "good", project: null, lead: null });
+    expect((await jefe("GET", "/api/meetings?teamId=none")).body.total).toBe(1);
+
+    // El CEO/CCO carga el correo de la Team Leader: la reunión anterior pasa a su equipo.
+    expect((await jefe("PATCH", `/api/admin/users/${users.ana._id}`, { email: "ANA@whatever.tech" })).body.user).toMatchObject({ email: "ana@whatever.tech" });
+    table = (await jefe("GET", "/api/meetings")).body;
+    expect(table.rows[0].team).toMatchObject({ id: TEST_TEAM_ID, name: "Equipo A" });
+    expect(table.facets).toEqual({ [TEST_TEAM_ID]: 1 });
+    // Las nuevas toman el equipo al llegar.
+    expect((await send(app, payload({ session: "S-DESPUES", emails: ["otro@cliente.pe"] }))).json()).toMatchObject({ teamId: TEST_TEAM_ID });
+    expect((await jefe("PATCH", `/api/admin/users/${users.dev._id}`, { email: "ana@whatever.tech" })).status).toBe(409);
+    expect((await jefe("GET", "/api/meetings?engagement=good&sort=heldAt&dir=desc")).body.total).toBe(2);
+  });
+
+  it("cada rol ve lo suyo: el equipo sus reuniones, Comercial las que no son de un proyecto", async () => {
+    const { app, as, jefe, users, project } = await setup();
+    await jefe("PATCH", `/api/admin/users/${users.ana._id}`, { email: "ana@whatever.tech" });
+    await send(app, payload());
+    await send(app, payload({ session: "S-SUELTA", emails: [] }));
+    await app.meetings.idle();
+    const titles = async (username: string) => (await (await as(username))("GET", "/api/meetings")).body.total;
+    expect(await titles("jefe")).toBe(2);
+    expect(await titles("fede")).toBe(2);
+    expect(await titles("ana")).toBe(2);
+    expect(await titles("dev")).toBe(2);
+    expect(await titles("otto")).toBe(0);
+    expect(await titles("marta")).toBe(1);
+    const projectMeeting = (await jefe("GET", "/api/meetings")).body.rows.find((m: { project: { id: string } | null }) => m.project?.id === project.id);
+    expect((await (await as("otto"))("GET", `/api/meetings/${projectMeeting.id}`)).status).toBe(404);
+  });
+
+  it("el pop-up trae el resumen y lo de Read.ai; el CEO/CCO liga y fija el equipo, Comercial liga a leads y descarta", async () => {
     const { app, as, jefe, ana, project, calls } = await setup();
-    // Dos proyectos con el mismo contacto: ambiguo → bandeja con los candidatos.
+    // Dos proyectos con el mismo contacto: ambiguo, queda sin ligar con sus candidatos.
     const second = (await ana("POST", "/api/ops/projects", { name: "Proyecto Acme 2", customerName: "Acme", contactIds: [project.contacts[0].id] })).body.project;
     expect((await send(app, payload({ session: "S-AMBIG" }))).json()).toMatchObject({ assigned: null });
-    const inbox = (await jefe("GET", "/api/meetings/inbox")).body.meetings;
-    expect(inbox).toHaveLength(1);
-    expect(inbox[0].candidates.map((c: { name: string }) => c.name).sort()).toEqual(["Proyecto Acme", "Proyecto Acme 2"]);
-    expect(inbox[0]).not.toHaveProperty("transcript");
-    expect(inbox[0].transcriptLength).toBeGreaterThan(0);
-    expect((await ana("GET", "/api/meetings/inbox")).status).toBe(403);
+    await app.meetings.idle();
+    const [row] = (await jefe("GET", "/api/meetings")).body.rows;
+    const detail = (await jefe("GET", `/api/meetings/${row.id}`)).body;
+    expect(detail.meeting).toMatchObject({
+      summary: "Se acordó el alcance del reporte.",
+      engagement: "good",
+      readAi: { summary: "Resumen de Read.ai.", topics: ["Reportes"], keyQuestions: ["¿Cuándo sale?"] },
+      url: "https://app.read.ai/analytics/meetings/SESSION-1"
+    });
+    expect(detail.meeting.candidates.map((c: { name: string }) => c.name).sort()).toEqual(["Proyecto Acme", "Proyecto Acme 2"]);
+    expect(detail.meeting).not.toHaveProperty("transcript");
+    expect(detail.permissions).toEqual({ assign: true, team: true, discard: true });
+    // Claude la procesó aunque no tenga dueño (contexto de los participantes).
+    expect(calls[0].context).toContain("aún sin proyecto ni lead");
 
     const marta = await as("marta");
-    expect((await marta("POST", `/api/meetings/inbox/${inbox[0].id}/assign`, { projectId: second.id })).status).toBe(403);
-    expect((await jefe("POST", `/api/meetings/inbox/${inbox[0].id}/assign`, { projectId: second.id })).status).toBe(200);
-    await app.meetings.idle();
-    expect((await ana("GET", `/api/ops/projects/${second.id}/meetings`)).body.meetings[0]).toMatchObject({ status: "processed" });
-    expect(calls).toHaveLength(1);
-    expect((await jefe("GET", "/api/meetings/inbox")).body.meetings).toHaveLength(0);
+    expect((await marta("POST", `/api/meetings/${row.id}/assign`, { projectId: second.id })).status).toBe(403);
+    expect((await marta("PATCH", `/api/meetings/${row.id}`, { teamId: null })).status).toBe(403);
+    expect((await jefe("POST", `/api/meetings/${row.id}/assign`, { projectId: second.id })).status).toBe(200);
+    expect((await ana("GET", `/api/ops/projects/${second.id}/meetings`)).body.meetings).toHaveLength(1);
+    expect((await jefe("GET", `/api/meetings/${row.id}`)).body.meeting).toMatchObject({ project: { id: second.id }, team: { id: TEST_TEAM_ID } });
+    expect((await jefe("PATCH", `/api/meetings/${row.id}`, { teamId: OTHER_TEAM_ID })).status).toBe(200);
 
     await send(app, payload({ session: "S-INTERNA", emails: [] }));
-    const internal = (await marta("GET", "/api/meetings/inbox")).body.meetings[0];
-    expect((await marta("DELETE", `/api/meetings/inbox/${internal.id}`)).status).toBe(200);
-    expect((await marta("GET", "/api/meetings/inbox")).body.meetings).toHaveLength(0);
+    const internal = (await marta("GET", "/api/meetings")).body.rows[0];
+    expect((await marta("DELETE", `/api/meetings/${internal.id}`)).status).toBe(200);
+    expect((await marta("GET", "/api/meetings")).body.total).toBe(0);
   });
 });
 

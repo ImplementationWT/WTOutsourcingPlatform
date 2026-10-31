@@ -10,23 +10,21 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { dateText } from "@/features/activity/api";
 import { PROPOSAL_STATUS_LABELS, PROPOSAL_STATUSES, type ProposalStatus } from "@/features/ops/api";
-import { commercialKeys, updateProposal, useProducts, useProposal, useUseCases, type ProposalDetail } from "./api";
+import { updateProposal, useProposal, type ProposalDetail } from "./api";
 
-type Draft = { key: string; productId: string; description: string; hours: string; rate: string };
-const toDraft = (p: ProposalDetail): Draft[] =>
-  p.lines.map((l) => ({ key: l.id, productId: l.productId ?? "", description: l.description, hours: String(l.hours), rate: String(l.rateCents / 100) }));
+type Draft = { key: string; description: string; hours: string; rate: string };
+const toDraft = (p: ProposalDetail): Draft[] => p.lines.map((l) => ({ key: l.id, description: l.description, hours: String(l.hours), rate: String(l.rateCents / 100) }));
 const num = (v: string) => Number(v.replace(",", "."));
 
-/** Líneas de la cotización: producto × horas × tarifa; el subtotal y el monto los calcula el servidor. */
+/** Líneas de la cotización: concepto × horas × tarifa; el subtotal y el monto los calcula el servidor. */
 function LinesEditor({ proposal, canWrite }: { proposal: ProposalDetail; canWrite: boolean }) {
   const queryClient = useQueryClient();
-  const products = useProducts().data?.products.filter((p) => p.active) ?? [];
   const [lines, setLines] = useState<Draft[]>(() => toDraft(proposal));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const content = (ls: Draft[]) => JSON.stringify(ls.map((l) => [l.productId, l.description, l.hours, l.rate]));
+  const content = (ls: Draft[]) => JSON.stringify(ls.map((l) => [l.description, l.hours, l.rate]));
   const dirty = content(lines) !== content(toDraft(proposal));
-  const valid = lines.every((l) => (l.description.trim() || l.productId) && num(l.hours) >= 0 && num(l.rate) >= 0 && l.hours !== "" && l.rate !== "");
+  const valid = lines.every((l) => l.description.trim() && num(l.hours) >= 0 && num(l.rate) >= 0 && l.hours !== "" && l.rate !== "");
   // Vista previa local; el monto que vale es el que devuelve el servidor al guardar.
   const preview = lines.reduce((sum, l) => sum + Math.round(num(l.hours || "0") * Math.round(num(l.rate || "0") * 100)), 0);
   const set = (key: string, patch: Partial<Draft>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -36,7 +34,7 @@ function LinesEditor({ proposal, canWrite }: { proposal: ProposalDetail; canWrit
     setError(null);
     try {
       await updateProposal(proposal.id, {
-        lines: lines.map((l) => ({ productId: l.productId || null, description: l.description.trim(), hours: num(l.hours), rateCents: Math.round(num(l.rate) * 100) })),
+        lines: lines.map((l) => ({ description: l.description.trim(), hours: num(l.hours), rateCents: Math.round(num(l.rate) * 100) })),
       });
       await queryClient.invalidateQueries({ queryKey: ["commercial"] });
     } catch (err) {
@@ -53,7 +51,7 @@ function LinesEditor({ proposal, canWrite }: { proposal: ProposalDetail; canWrit
       <ul className="divide-y divide-foreground/10 text-sm">
         {proposal.lines.map((l) => (
           <li key={l.id} className="grid gap-2 py-2 sm:grid-cols-[minmax(0,2fr)_auto_auto]">
-            <span>{l.description || l.product}</span>
+            <span>{l.description}</span>
             <span className="tabular-nums text-muted-foreground">
               <TotalCell hours={l.hours} /> × <TotalCell cents={l.rateCents} currency={proposal.currency} />
             </span>
@@ -67,17 +65,7 @@ function LinesEditor({ proposal, canWrite }: { proposal: ProposalDetail; canWrit
   return (
     <div className="space-y-3">
       {lines.map((l, i) => (
-        <div key={l.key} className="grid items-end gap-2 rounded-lg border border-foreground/10 p-2 sm:grid-cols-[1.2fr_2fr_0.7fr_0.8fr_auto_auto]">
-          <Select
-            label={`Producto de la línea ${i + 1}`}
-            value={l.productId || null}
-            emptyLabel="Sin producto"
-            options={products.map((p) => ({ value: p.id, label: p.name }))}
-            onValueChange={(v) => {
-              const product = products.find((p) => p.id === (v ?? ""));
-              set(l.key, { productId: (v ?? ""), ...(product && !l.rate ? { rate: String(product.defaultRateCents / 100) } : {}) });
-            }}
-          />
+        <div key={l.key} className="grid items-end gap-2 rounded-lg border border-foreground/10 p-2 sm:grid-cols-[2fr_0.7fr_0.8fr_auto_auto]">
           <Input aria-label={`Descripción de la línea ${i + 1}`} value={l.description} onChange={(e) => set(l.key, { description: e.target.value })} placeholder="Descripción" />
           <Input aria-label={`Horas de la línea ${i + 1}`} inputMode="decimal" value={l.hours} onChange={(e) => set(l.key, { hours: e.target.value })} placeholder="Horas" />
           <Input aria-label={`Tarifa de la línea ${i + 1}`} inputMode="decimal" value={l.rate} onChange={(e) => set(l.key, { rate: e.target.value })} placeholder="Tarifa" />
@@ -90,7 +78,7 @@ function LinesEditor({ proposal, canWrite }: { proposal: ProposalDetail; canWrit
         </div>
       ))}
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" onClick={() => setLines((ls) => [...ls, { key: crypto.randomUUID(), productId: "", description: "", hours: "", rate: "" }])}>
+        <Button size="sm" variant="outline" onClick={() => setLines((ls) => [...ls, { key: crypto.randomUUID(), description: "", hours: "", rate: "" }])}>
           <Plus />
           Agregar línea
         </Button>
@@ -107,41 +95,6 @@ function LinesEditor({ proposal, canWrite }: { proposal: ProposalDetail; canWrit
           {error}
         </p>
       )}
-    </div>
-  );
-}
-
-function UseCases({ proposal, canWrite }: { proposal: ProposalDetail; canWrite: boolean }) {
-  const queryClient = useQueryClient();
-  const all = useUseCases().data?.useCases ?? [];
-  const [error, setError] = useState<string | null>(null);
-  const ids = proposal.useCases.map((u) => u.id);
-  if (!canWrite) return <p className="text-sm">{proposal.useCases.map((u) => u.title).join(", ") || "Sin casos de uso."}</p>;
-  if (!all.length) return <p className="text-sm text-muted-foreground">Aún no hay casos de uso en el catálogo.</p>;
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
-        {all.map((u) => (
-          <label key={u.id} className="inline-flex items-center gap-1.5">
-            <input
-              type="checkbox"
-              className="accent-primary"
-              checked={ids.includes(u.id)}
-              onChange={async (e) => {
-                setError(null);
-                try {
-                  await updateProposal(proposal.id, { useCaseIds: e.target.checked ? [...ids, u.id] : ids.filter((x) => x !== u.id) });
-                  await queryClient.invalidateQueries({ queryKey: commercialKeys.proposal(proposal.id) });
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : "No se pudo guardar.");
-                }
-              }}
-            />
-            {u.title}
-          </label>
-        ))}
-      </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
     </div>
   );
 }
@@ -238,14 +191,6 @@ export default function ProposalDetailPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Casos de uso</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <UseCases proposal={proposal} canWrite={canWrite} />
-        </CardContent>
-      </Card>
     </div>
   );
 }

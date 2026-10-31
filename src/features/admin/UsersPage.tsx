@@ -4,6 +4,7 @@ import { Check, Copy, KeyRound, Loader2, Lock, Plus, Power, UserPlus, Users } fr
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { EditableText } from "@/components/ui/editable";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -134,12 +135,14 @@ function NewUserForm({ teams, onCreated }: { teams: AdminTeam[]; onCreated: (use
   const queryClient = useQueryClient();
   const [username, setUsername] = useState("");
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [role, setRole] = useState<UserRole>("developer");
   const [teamId, setTeamId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const needsTeam = !TEAMLESS_ROLES.includes(role);
-  const valid = /^[a-z0-9][a-z0-9._-]{1,38}[a-z0-9]$/.test(username) && name.trim().length >= 2 && (!needsTeam || teamId);
+  const emailOk = !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const valid = /^[a-z0-9][a-z0-9._-]{1,38}[a-z0-9]$/.test(username) && name.trim().length >= 2 && emailOk && (!needsTeam || teamId);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -147,10 +150,11 @@ function NewUserForm({ teams, onCreated }: { teams: AdminTeam[]; onCreated: (use
     setBusy(true);
     setError(null);
     try {
-      const result = await createUser({ username, name: name.trim(), role, teamId: needsTeam ? teamId : null });
+      const result = await createUser({ username, name: name.trim(), email: email.trim().toLowerCase() || null, role, teamId: needsTeam ? teamId : null });
       onCreated(result.user.username, result.temporaryPassword);
       setUsername("");
       setName("");
+      setEmail("");
       await queryClient.invalidateQueries({ queryKey: ADMIN_USERS_KEY });
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo crear el usuario.");
@@ -198,6 +202,11 @@ function NewUserForm({ teams, onCreated }: { teams: AdminTeam[]; onCreated: (use
         <div className="space-y-1.5">
           <Label htmlFor="new-name">Nombre</Label>
           <Input id="new-name" placeholder="Ana López" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor="new-email">Correo{role === "lead" ? "" : " (opcional)"}</Label>
+          <Input id="new-email" type="email" placeholder="ana@empresa.com" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" aria-invalid={!emailOk || undefined} />
+          {role === "lead" && <p className="text-xs text-muted-foreground">Con el correo del Team Leader, sus reuniones de Read.ai se asignan solas a su equipo.</p>}
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3">
@@ -289,6 +298,17 @@ function UserRow({ user, teams, self, onPassword }: { user: AdminUser; teams: Ad
             {user.active ? "Desactivar" : "Activar"}
           </Button>
         )}
+      </div>
+      <div className="-ml-2 max-w-sm">
+        <EditableText
+          label={`Correo de ${user.username}`}
+          type="email"
+          value={user.email}
+          placeholder={user.role === "lead" ? "Agregar correo (clasifica sus reuniones)" : "Agregar correo"}
+          className="text-xs"
+          disabled={busy !== null}
+          onSave={(v) => run("email", () => updateUser(user.id, { email: v?.toLowerCase() ?? null }))}
+        />
       </div>
       {error && <p className="text-xs text-danger-fg">{error}</p>}
     </li>

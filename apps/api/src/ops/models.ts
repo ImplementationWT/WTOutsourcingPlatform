@@ -19,6 +19,8 @@ export const MEETING_KINDS = ["discovery", "kickoff", "sprint_review", "alignmen
 export const MEETING_REVIEW_STATUSES = ["new", "reviewed", "actioned", "not_needed"] as const;
 /** Sentimiento del cliente que propone el procesamiento: Excelente / Bien / Neutral / Fricción. */
 export const CLIENT_SENTIMENTS = ["excellent", "good", "neutral", "friction"] as const;
+/** Engagement de la reunión que evalúa Claude: participación, interés y compromisos (Bajo → Excelente). */
+export const MEETING_ENGAGEMENTS = ["low", "neutral", "good", "excellent"] as const;
 /** Tipo de action item: admin rápido, trabajo interno, dependencia del cliente, candidato a construir, riesgo de alcance. */
 export const ACTION_ITEM_KINDS = ["quick_admin", "internal_work", "client_dependency", "build_candidate", "scope_risk"] as const;
 /** Claude propone; una persona lo acepta o descarta, o lo convierte en Task, Change Order o actividad. */
@@ -44,6 +46,7 @@ export type MeetingKind = (typeof MEETING_KINDS)[number];
 export type MeetingReviewStatus = (typeof MEETING_REVIEW_STATUSES)[number];
 export type ClientSentiment = (typeof CLIENT_SENTIMENTS)[number];
 export type ActionItemKind = (typeof ACTION_ITEM_KINDS)[number];
+export type MeetingEngagement = (typeof MEETING_ENGAGEMENTS)[number];
 export type ActionItemStatus = (typeof ACTION_ITEM_STATUSES)[number];
 export type NextAction = (typeof NEXT_ACTIONS)[number];
 
@@ -78,10 +81,6 @@ export interface OpsProjectDoc {
   clientSlug: string | null;
   /** Propuesta (web) con la que arrancó el proyecto. */
   proposalUrl: string | null;
-  /** Empresa cliente (Empresas); `customerName` guarda su nombre para mostrarlo sin consultarla. */
-  companyId?: string | null;
-  /** Clientes de la Fase 1 (migrados a Empresas con el mismo id). */
-  customerId?: string | null;
   leadId?: string | null;
   contactIds?: string[];
   stage: ProjectStage;
@@ -129,8 +128,6 @@ export interface DealDoc {
   projectId: string | null;
   teamId: string | null;
   leadId: string | null;
-  /** Partners llega en el paso 3: el campo ya existe para la migración. */
-  partnerId: string | null;
   contactIds: string[];
   ownerUserId: string | null;
   title: string;
@@ -154,7 +151,6 @@ export interface DealDoc {
   product: string | null;
   channel: string | null;
   lostReason: string | null;
-  partnerCommissionPct: number | null;
   proposalUrl: string | null;
   /** SOW: enlace al archivo. */
   sowUrl: string | null;
@@ -260,6 +256,8 @@ export interface MeetingCore {
   reviewedAt?: Date | null;
   /** Sentimiento del cliente que propone el procesamiento; no cambia el Health solo. */
   clientSentiment?: ClientSentiment | null;
+  /** Engagement de la reunión (lo evalúa Claude al procesarla). */
+  engagement?: MeetingEngagement | null;
   /** Lo que mandó Read.ai (resumen y action items propios), como referencia. */
   readAi?: { summary: string; actionItems: string[]; topics: string[]; keyQuestions: string[] } | null;
   /** Sentimiento numérico de la v1; la migración lo pasa a `clientSentiment`. */
@@ -273,14 +271,16 @@ export interface MeetingCore {
   updatedAt: Date;
 }
 
+/**
+ * Reunión (tabla única de Meetings). Su equipo sale del correo del Team Leader entre los
+ * participantes (o del proyecto); además se liga a un proyecto o a un lead cuando corresponde.
+ */
 export interface MeetingDoc extends MeetingCore {
-  projectId: string;
-}
-
-/** Reunión de Read.ai sin proyecto ni lead: espera que alguien la asigne. */
-export interface InboxMeetingDoc extends MeetingCore {
-  /** Proyectos y leads candidatos (por los correos de los participantes). */
-  candidates: { kind: "project" | "lead"; id: string; name: string }[];
+  projectId: string | null;
+  leadId: string | null;
+  teamId: string | null;
+  /** Sin proyecto ni lead: proyectos y leads candidatos (por los correos de los participantes). */
+  candidates?: { kind: "project" | "lead"; id: string; name: string }[];
 }
 
 // ---- reglas de negocio ---------------------------------------------------------

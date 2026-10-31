@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/features/auth/auth";
 import { ActivitiesTable } from "@/features/commercial/ActivitiesTable";
-import { createProposal, usePartnerOptions, useProposals } from "@/features/commercial/api";
+import { createProposal, useProposals } from "@/features/commercial/api";
 import { UpdatesPanel } from "@/features/activity/ActivityPanels";
 import { dateText, MEETING_KIND_LABELS, REVIEW_STATUS_LABELS, type MeetingKind, type MeetingReviewStatus } from "@/features/activity/api";
 import { DEAL_STATUS_LABELS, PROPOSAL_STATUS_LABELS, type DealStatus } from "@/features/ops/api";
@@ -65,8 +65,7 @@ function DealForm({ deal }: { deal: Deal }) {
   const role = useSession().data?.role;
   const locked = dealLocked(deal);
   const pickContacts = role === "boss" || role === "commercial";
-  const contacts = useContactOptions(null, pickContacts).data ?? [];
-  const partners = usePartnerOptions(pickContacts).data ?? [];
+  const contacts = useContactOptions(pickContacts).data ?? [];
   const initial = {
     title: deal.title,
     description: deal.description,
@@ -82,11 +81,9 @@ function DealForm({ deal }: { deal: Deal }) {
     product: deal.product ?? "",
     channel: deal.channel ?? "",
     lostReason: deal.lostReason ?? "",
-    partnerCommissionPct: deal.partnerCommissionPct === null ? "" : String(deal.partnerCommissionPct),
     proposalUrl: deal.proposalUrl ?? "",
     sowUrl: deal.sowUrl ?? "",
     contactIds: deal.contacts.map((c) => c.id),
-    partnerId: deal.partner?.id ?? "",
   };
   const [form, setForm] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -114,11 +111,9 @@ function DealForm({ deal }: { deal: Deal }) {
     if (changed("product")) out.product = orNull(form.product);
     if (changed("channel")) out.channel = orNull(form.channel);
     if (changed("lostReason")) out.lostReason = orNull(form.lostReason);
-    if (changed("partnerCommissionPct")) out.partnerCommissionPct = num(form.partnerCommissionPct);
     if (changed("proposalUrl")) out.proposalUrl = orNull(form.proposalUrl);
     if (changed("sowUrl")) out.sowUrl = orNull(form.sowUrl);
     if (changed("contactIds")) out.contactIds = form.contactIds;
-    if (changed("partnerId")) out.partnerId = form.partnerId || null;
     return out;
   }
 
@@ -192,20 +187,6 @@ function DealForm({ deal }: { deal: Deal }) {
             onValueChange={(v) => set("saleType", (v ?? ""))}
           />
         </Field>
-        {pickContacts && (
-          <Field label="Partner" htmlFor="deal-partner-id">
-            <Select
-              id="deal-partner-id"
-              value={form.partnerId || null}
-              emptyLabel="Sin partner"
-              options={partners.map((p) => ({ value: p.id, label: `${p.name} (${p.commissionPct}%)` }))}
-              onValueChange={(v) => set("partnerId", (v ?? ""))}
-            />
-          </Field>
-        )}
-        <Field label="Comisión del partner (%)" htmlFor="deal-partner">
-          <Input id="deal-partner" inputMode="decimal" value={form.partnerCommissionPct} onChange={(e) => set("partnerCommissionPct", e.target.value)} />
-        </Field>
         {text("product", "Producto")}
         {text("channel", "Canal")}
         {text("proposalUrl", "Propuesta (enlace)", "https://…", "sm:col-span-2")}
@@ -232,7 +213,7 @@ function DealForm({ deal }: { deal: Deal }) {
                       onChange={(e) => set("contactIds", e.target.checked ? [...form.contactIds, c.id] : form.contactIds.filter((id) => id !== c.id))}
                     />
                     {c.name}
-                    {c.company && <span className="text-xs text-muted-foreground">· {c.company.name}</span>}
+                    {c.company && <span className="text-xs text-muted-foreground">· {c.company}</span>}
                   </label>
                 ))}
               </div>
@@ -454,8 +435,6 @@ export default function DealDetailPage() {
                 ["Producto", deal.product ?? "—"],
                 ["Canal", deal.channel ?? "—"],
                 ["Responsable", deal.owner?.name ?? "—"],
-                ["Partner", deal.partner?.name ?? "—"],
-                ["Comisión del partner", deal.partnerCommissionPct === null ? "—" : `${deal.partnerCommissionPct}%`],
                 ...(deal.lostReason ? [["Razón de pérdida", deal.lostReason]] : []),
               ].map(([label, value]) => (
                 <div key={String(label)}>

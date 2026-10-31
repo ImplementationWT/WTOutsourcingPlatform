@@ -1,6 +1,7 @@
 import { dealCodeOf, projectedCents, SOLD_DEAL_STATUSES, type DealDoc, type DealStatus, type SalesStage } from "../ops/models.js";
 import { actionItemsOf } from "../meetings/routes.js";
-import type { ClientSentiment, MeetingCore } from "../ops/models.js";
+import { teamFromParticipants } from "../meetings/teams.js";
+import type { ClientSentiment, MeetingCore, MeetingDoc } from "../ops/models.js";
 import type { AdminStore } from "../store/admin-store.js";
 import type { Collection, Filter } from "mongodb";
 
@@ -11,30 +12,9 @@ const probabilityOf = (status: DealStatus) => (status === "cancelled" ? 0 : SOLD
 /**
  * Lleva los datos de la Fase 1 a la estructura v2 (docs/rework-plataforma.md §9). Corre en cada
  * arranque y es idempotente: solo toca lo que aún no está migrado.
- * - Clientes de la Fase 1 → Empresas (mismo id), y el proyecto apunta a su Empresa.
  * - Deals sin código → DL-0001… en orden de creación, con los campos nuevos y el equipo del proyecto.
  */
 export async function migrateToV2(store: AdminStore) {
-  for (const customer of await store.customers.find({}).toArray()) {
-    await store.companies.updateOne(
-      { _id: customer._id },
-      {
-        $setOnInsert: {
-          name: customer.name,
-          domain: customer.email?.split("@")[1] ?? null,
-          industry: null,
-          size: null,
-          location: null,
-          createdBy: customer.createdBy,
-          createdAt: customer.createdAt,
-          updatedAt: customer.updatedAt
-        }
-      },
-      { upsert: true }
-    );
-  }
-  await store.opsProjects.updateMany({ customerId: { $type: "string" }, companyId: { $exists: false } }, [{ $set: { companyId: "$customerId" } }]);
-
   const legacy = await store.deals.find({ dealCode: { $exists: false } }).sort({ createdAt: 1, _id: 1 }).toArray();
   if (!legacy.length) return;
   const projects = await store.opsProjects.find({ _id: { $in: legacy.map((d) => d.projectId).filter((v): v is string => Boolean(v)) } }, { projection: { teamId: 1 } }).toArray();
@@ -45,7 +25,6 @@ export async function migrateToV2(store: AdminStore) {
       dealCode: dealCodeOf(await store.nextSequence("deal")),
       teamId: deal.projectId ? (teamOf.get(deal.projectId) ?? null) : null,
       leadId: null,
-      partnerId: null,
       contactIds: [],
       ownerUserId: null,
       salesStage: stageOf(deal.status),
@@ -57,7 +36,6 @@ export async function migrateToV2(store: AdminStore) {
       product: null,
       channel: null,
       lostReason: null,
-      partnerCommissionPct: null,
       sowUrl: null,
       changeOrders: []
     };
@@ -82,7 +60,7 @@ export async function migrateToV3(store: AdminStore) {
   for (const lead of await store.leads.find({ submittedAt: { $exists: false } }, { projection: { createdAt: 1 } }).toArray()) {
     await store.leads.updateOne({ _id: lead._id }, { $set: { submittedAt: lead.createdAt.toISOString().slice(0, 10) } });
   }
-  for (const collection of [store.meetings, store.leadMeetings] as unknown as Collection<MeetingCore>[]) {
+  for (const collection of [store.meetings] as unknown as Collection<MeetingCore>[]) {
     const stale = await collection.find({ $or: [{ reviewStatus: { $exists: false } }, { "actionItems.0": { $type: "string" } }, { sentimentSignal: { $type: "number" } }] } as Filter<MeetingCore>).toArray();
     for (const meeting of stale) {
       await collection.updateOne(
@@ -97,5 +75,63 @@ export async function migrateToV3(store: AdminStore) {
         }
       );
     }
+  }
+}
+
+/** Colecciones que se eliminaron del producto (Empresas, Partners, Catálogo y Sources de leads). */
+const REMOVED_COLLECTIONS = ["core_companies", "sales_partners", "sales_products", "sales_use_cases", "sales_lead_sources", "sales_customers"];
+/** Colecciones de reuniones de antes de la tabla única. */
+const LEGACY_MEETINGS: { name: string; owner: "projectId" | "leadId" | null }[] = [
+  { name: "ops_meetings", owner: "projectId" },
+  { name: "sales_meetings", owner: "leadId" },
+  { name: "meetings_inbox", owner: null }
+];
+
+/**
+ * Meetings como tabla única y limpieza de lo que se quitó del producto. Idempotente:
+ * - Las reuniones de proyectos, de leads y de la bandeja pasan a una sola colección, con su equipo
+ *   (el del Team Leader que participó o, si no, el del proyecto). Las colecciones viejas se borran
+ *   después de copiar.
+ * - Se borran Empresas, Partners, Productos, Casos de uso, Sources de leads y los clientes de la
+ *   Fase 1, y los campos que apuntaban a ellos.
+ */
+export async function migrateToV4(store: AdminStore) {
+  const existing = new Set((await store.db.listCollections({}, { nameOnly: true }).toArray()).map((c) => c.name));
+  for (const legacy of LEGACY_MEETINGS) {
+    if (!existing.has(legacy.name)) continue;
+    const docs = await store.db.collection<MeetingCore & Partial<MeetingDoc>>(legacy.name).find({}).toArray();
+    for (const doc of docs) {
+      const record = {
+        ...doc,
+        projectId: legacy.owner === "projectId" ? (doc.projectId ?? null) : null,
+        leadId: legacy.owner === "leadId" ? (doc.leadId ?? null) : null,
+        teamId: doc.teamId ?? null
+      } as MeetingDoc;
+      await store.meetings.updateOne({ _id: doc._id }, { $setOnInsert: record }, { upsert: true });
+    }
+    await store.db.collection(legacy.name).drop();
+  }
+  // Antes de borrar Empresas, cada contacto se queda con el nombre de la suya (texto).
+  if (existing.has("core_companies")) {
+    const companies = await store.db.collection<{ _id: string; name: string }>("core_companies").find({}, { projection: { name: 1 } }).toArray();
+    for (const company of companies) {
+      await store.contacts.updateMany({ companyId: company._id, company: { $exists: false } } as never, { $set: { company: company.name } });
+    }
+  }
+  for (const name of REMOVED_COLLECTIONS) if (existing.has(name)) await store.db.collection(name).drop();
+
+  await store.opsProjects.updateMany({ $or: [{ companyId: { $exists: true } }, { customerId: { $exists: true } }] }, { $unset: { companyId: "", customerId: "" } });
+  await store.leads.updateMany({ $or: [{ companyId: { $exists: true } }, { customerId: { $exists: true } }, { sourceId: { $exists: true } }] }, { $unset: { companyId: "", customerId: "", sourceId: "" } });
+  await store.contacts.updateMany({ companyId: { $exists: true } }, { $unset: { companyId: "" } });
+  await store.deals.updateMany({ $or: [{ partnerId: { $exists: true } }, { partnerCommissionPct: { $exists: true } }] }, { $unset: { partnerId: "", partnerCommissionPct: "" } });
+  await store.proposals.updateMany({ useCaseIds: { $exists: true } }, { $unset: { useCaseIds: "" } });
+  await store.proposals.updateMany({ "lines.productId": { $exists: true } }, { $unset: { "lines.$[].productId": "" } });
+
+  // Equipo de las reuniones que aún no lo tienen.
+  const teamless = await store.meetings.find({ teamId: null }, { projection: { participants: 1, projectId: 1 } }).toArray();
+  for (const meeting of teamless) {
+    const fromProject = meeting.projectId ? (await store.opsProjects.findOne({ _id: meeting.projectId }, { projection: { teamId: 1 } }))?.teamId : null;
+    const teamId = (await teamFromParticipants(store, meeting.participants ?? [])) ?? fromProject ?? null;
+    if (teamId) await store.meetings.updateOne({ _id: meeting._id, teamId: null }, { $set: { teamId } });
   }
 }

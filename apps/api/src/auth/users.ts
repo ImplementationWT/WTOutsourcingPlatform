@@ -61,6 +61,7 @@ const publicUser = (user: UserDoc) => {
     id: user._id,
     username: user.username,
     name: user.name,
+    email: user.email ?? null,
     role: user.role,
     teamId: user.teamId,
     active: user.active,
@@ -174,8 +175,17 @@ export class UserDirectory {
     return teamId;
   }
 
+  /**
+   * Un Team Leader con correo: las reuniones sin equipo donde participó pasan a su equipo (las que
+   * llegaron antes de que se cargara su correo).
+   */
+  private async claimMeetings(user: Pick<UserDoc, "role" | "email" | "teamId" | "active">) {
+    if (user.role !== "lead" || !user.email || !user.teamId || !user.active) return;
+    await this.store.meetings.updateMany({ teamId: null, "participants.email": user.email }, { $set: { teamId: user.teamId } });
+  }
+
   /** Alta con contraseña temporal (se devuelve una vez; debe cambiarla al entrar). */
-  async createUser(input: { username: string; name: string; role: UserRole; teamId?: string | null }, actor: string) {
+  async createUser(input: { username: string; name: string; email?: string | null; role: UserRole; teamId?: string | null }, actor: string) {
     const username = input.username.trim().toLowerCase();
     const teamId = await this.requireTeam(input.teamId, input.role);
     const password = temporaryPassword();
@@ -184,6 +194,7 @@ export class UserDirectory {
       _id: randomUUID(),
       username,
       name: input.name.trim(),
+      email: input.email ?? null,
       role: input.role,
       teamId,
       passwordHash: await hashPassword(password),
@@ -197,14 +208,15 @@ export class UserDirectory {
     try {
       await this.store.users.insertOne(user);
     } catch (error) {
-      if (isDuplicateKey(error)) throw new UserDirectoryError(409, `Ya existe el usuario ${username}.`);
+      if (isDuplicateKey(error)) throw new UserDirectoryError(409, input.email && (await this.store.users.findOne({ email: input.email })) ? `El correo ${input.email} ya es de otro usuario.` : `Ya existe el usuario ${username}.`);
       throw error;
     }
+    await this.claimMeetings(user);
     await this.store.audit({ actor, action: "user.created", clientId: "platform", target: username, details: { role: user.role, ...(teamId ? { teamId } : {}) } });
     return { user: publicUser(user), temporaryPassword: password };
   }
 
-  async updateUser(id: string, patch: { name?: string; role?: UserRole; teamId?: string | null; active?: boolean }, actor: { id: string; username: string }) {
+  async updateUser(id: string, patch: { name?: string; email?: string | null; role?: UserRole; teamId?: string | null; active?: boolean }, actor: { id: string; username: string }) {
     const user = await this.findById(id);
     if (!user) throw new UserDirectoryError(404, "Usuario no encontrado.");
     if (id === actor.id && (patch.active === false || (patch.role && patch.role !== "boss"))) {
@@ -217,8 +229,21 @@ export class UserDirectory {
       const bosses = await this.store.users.countDocuments({ role: "boss", active: true, _id: { $ne: id } });
       if (!bosses) throw new UserDirectoryError(400, "Debe quedar al menos un CEO/CCO activo.");
     }
-    const set = { role, teamId, updatedAt: this.now(), ...(patch.name ? { name: patch.name.trim() } : {}), ...(patch.active === undefined ? {} : { active: patch.active }) };
-    await this.store.users.updateOne({ _id: id }, { $set: set });
+    const set = {
+      role,
+      teamId,
+      updatedAt: this.now(),
+      ...(patch.name ? { name: patch.name.trim() } : {}),
+      ...(patch.email === undefined ? {} : { email: patch.email }),
+      ...(patch.active === undefined ? {} : { active: patch.active })
+    };
+    try {
+      await this.store.users.updateOne({ _id: id }, { $set: set });
+    } catch (error) {
+      if (isDuplicateKey(error)) throw new UserDirectoryError(409, `El correo ${patch.email} ya es de otro usuario.`);
+      throw error;
+    }
+    await this.claimMeetings({ ...user, ...set });
     await this.store.audit({
       actor: actor.username,
       action: patch.active === false ? "user.deactivated" : patch.active === true ? "user.activated" : "user.updated",

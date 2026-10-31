@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { createLoginGuard } from "../src/auth/login-guard.js";
 import { hashPassword } from "../src/auth/password.js";
-import { migrateToV2 } from "../src/core/migrate.js";
+import { migrateToV2, migrateToV4 } from "../src/core/migrate.js";
 import { runTableQuery, tableQuerySchema } from "../src/lib/table-query.js";
 import { PROJECT_STAGES } from "../src/ops/models.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
@@ -92,39 +92,36 @@ describe("tabla en el servidor", () => {
   });
 });
 
-describe("empresas y contactos", () => {
+describe("contactos", () => {
   it("CEO/CCO y Comercial los crean; Financiera solo lee; los equipos no tienen acceso", async () => {
     const { as } = await world();
     const marta = await as("marta");
-    const company = await marta("POST", "/api/companies", { name: "Manpersa SAC", domain: "manpersa.pe", industry: "Retail", size: "51-200", location: "Lima, Perú" });
-    expect(company.status).toBe(201);
-    const contact = await marta("POST", "/api/contacts", { name: "Francisco Wong", emails: ["FRANCISCO@manpersa.pe"], title: "Gerente", companyId: company.body.company.id });
-    expect(contact.body.contact).toMatchObject({ emails: ["francisco@manpersa.pe"], company: { name: "Manpersa SAC" } });
-    expect((await marta("POST", "/api/contacts", { name: "Sin empresa válida", companyId: randomUUID() })).status).toBe(400);
+    const contact = await marta("POST", "/api/contacts", { name: "Francisco Wong", emails: ["FRANCISCO@manpersa.pe"], title: "Gerente", company: "Manpersa SAC" });
+    expect(contact.status).toBe(201);
+    expect(contact.body.contact).toMatchObject({ emails: ["francisco@manpersa.pe"], company: "Manpersa SAC" });
+    expect((await marta("POST", "/api/contacts", { name: "Con id de empresa", companyId: randomUUID() })).status).toBe(400);
 
     const fede = await as("fede");
-    expect((await fede("GET", "/api/companies")).body).toMatchObject({ total: 1, rows: [{ name: "Manpersa SAC", contacts: 1, projects: 0 }] });
-    expect((await fede("POST", "/api/companies", { name: "No debería" })).status).toBe(403);
+    expect((await fede("GET", "/api/contacts?q=manpersa")).body).toMatchObject({ total: 1, rows: [{ name: "Francisco Wong" }] });
+    expect((await fede("POST", "/api/contacts", { name: "No debería" })).status).toBe(403);
     for (const username of ["ana", "dev"]) {
       const api = await as(username);
-      expect((await api("GET", "/api/companies")).status).toBe(403);
       expect((await api("GET", "/api/contacts")).status).toBe(403);
     }
+    // Empresas, Partners, Catálogo y Sources ya no existen.
+    for (const url of ["/api/companies", "/api/partners", "/api/products", "/api/use-cases", "/api/sales/sources"]) expect((await marta("GET", url)).status).toBe(404);
   });
 
-  it("el contacto muestra sus relaciones: empresa, deals y proyectos", async () => {
+  it("el contacto muestra sus relaciones: deals y proyectos", async () => {
     const { as } = await world();
     const jefe = await as("jefe");
-    const company = (await jefe("POST", "/api/companies", { name: "Acme" })).body.company;
-    const contact = (await jefe("POST", "/api/contacts", { name: "Ana Pérez", companyId: company.id })).body.contact;
-    const project = (await jefe("POST", "/api/ops/projects", { name: "Portal Acme", companyId: company.id, contactIds: [contact.id], teamId: TEST_TEAM_ID })).body.project;
-    expect(project).toMatchObject({ customerName: "Acme", company: { id: company.id, name: "Acme" }, contacts: [{ id: contact.id, name: "Ana Pérez" }] });
+    const contact = (await jefe("POST", "/api/contacts", { name: "Ana Pérez", company: "Acme" })).body.contact;
+    const project = (await jefe("POST", "/api/ops/projects", { name: "Portal Acme", customerName: "Acme", contactIds: [contact.id], teamId: TEST_TEAM_ID })).body.project;
+    expect(project).toMatchObject({ customerName: "Acme", contacts: [{ id: contact.id, name: "Ana Pérez" }] });
+    expect(project).not.toHaveProperty("company");
     const deal = (await jefe("POST", "/api/deals", { title: "Módulo de pagos", projectId: project.id, contactIds: [contact.id] })).body.deal;
     const detail = (await jefe("GET", `/api/contacts/${contact.id}`)).body;
-    expect(detail).toMatchObject({ contact: { company: { id: company.id } }, deals: [{ id: deal.id, dealCode: deal.dealCode }], projects: [{ id: project.id }] });
-    // Renombrar la empresa actualiza el nombre del cliente en sus proyectos.
-    await jefe("PATCH", `/api/companies/${company.id}`, { name: "Acme Corp" });
-    expect((await jefe("GET", `/api/ops/projects/${project.id}`)).body.project.customerName).toBe("Acme Corp");
+    expect(detail).toMatchObject({ contact: { company: "Acme" }, deals: [{ id: deal.id, dealCode: deal.dealCode }], projects: [{ id: project.id }] });
   });
 });
 
@@ -189,22 +186,18 @@ describe("deals (tabla de primer nivel)", () => {
   });
 });
 
-describe("migración a la estructura v2", () => {
-  it("clientes → empresas y deals de la Fase 1 → códigos DL y equipo del proyecto; repetirla no cambia nada", async () => {
+describe("migraciones", () => {
+  it("deals de la Fase 1 → códigos DL y equipo del proyecto; repetirla no cambia nada", async () => {
     const store = await freshStore();
     const at = new Date();
-    const customerId = randomUUID();
     const projectId = randomUUID();
-    await store.customers.insertOne({ _id: customerId, name: "Manpersa SAC", contactName: "Francisco", email: "f@manpersa.pe", phone: null, leadId: null, createdBy: "tests", createdAt: at, updatedAt: at });
-    await store.opsProjects.insertOne({ _id: projectId, name: "P", customerName: "Manpersa SAC", customerId, teamId: TEST_TEAM_ID, leadUserId: null, developerUserId: null, clientSlug: null, proposalUrl: null, stage: "kickoff", health: "neutral", sentimentScore: 50, priority: "medium", createdBy: "tests", createdAt: at, updatedAt: at });
+    await store.opsProjects.insertOne({ _id: projectId, name: "P", customerName: "Manpersa SAC", teamId: TEST_TEAM_ID, leadUserId: null, developerUserId: null, clientSlug: null, proposalUrl: null, stage: "kickoff", health: "neutral", sentimentScore: 50, priority: "medium", createdBy: "tests", createdAt: at, updatedAt: at });
     const legacy = (status: string, minutes: number) => ({ _id: randomUUID(), projectId, title: `Deal ${status}`, description: "", hours: 10, rateCents: 1000, amountCents: 10_000, currency: "USD", status, proposalUrl: null, createdBy: "tests", createdAt: new Date(at.getTime() + minutes * 60_000), updatedAt: at });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- documentos con la forma de la Fase 1
     await store.deals.insertMany([legacy("approved", 1), legacy("draft", 2)] as any);
 
     await migrateToV2(store);
     await migrateToV2(store);
-    expect(await store.companies.findOne({ _id: customerId })).toMatchObject({ name: "Manpersa SAC", domain: "manpersa.pe" });
-    expect((await store.opsProjects.findOne({ _id: projectId }))?.companyId).toBe(customerId);
     const deals = await store.deals.find().sort({ createdAt: 1 }).toArray();
     expect(deals.map((d) => [d.dealCode, d.teamId, d.salesStage, d.probability])).toEqual([
       ["DL-0001", TEST_TEAM_ID, "won", 100],
@@ -212,5 +205,32 @@ describe("migración a la estructura v2", () => {
     ]);
     // El siguiente deal nuevo sigue la secuencia.
     expect(await store.nextSequence("deal")).toBe(3);
+  });
+
+  it("reuniones a la tabla única con su equipo, y se borra lo que salió del producto", async () => {
+    const store = await freshStore();
+    const db = store.db;
+    const at = new Date();
+    const projectId = randomUUID();
+    const companyId = randomUUID();
+    await store.opsProjects.insertOne({ _id: projectId, name: "P", customerName: "Acme", companyId, teamId: TEST_TEAM_ID, leadUserId: null, developerUserId: null, clientSlug: null, proposalUrl: null, stage: "kickoff", health: "neutral", priority: "medium", createdBy: "tests", createdAt: at, updatedAt: at } as never);
+    await db.collection("core_companies").insertOne({ _id: companyId, name: "Acme SAC" } as never);
+    await store.contacts.insertOne({ _id: randomUUID(), name: "Ana", emails: [], phone: null, title: null, linkedinUrl: null, companyId, createdBy: "tests", createdAt: at, updatedAt: at } as never);
+    await db.collection("sales_partners").insertOne({ _id: randomUUID(), name: "Agencia" } as never);
+    const meeting = (extra: Record<string, unknown>) => ({ _id: randomUUID(), title: "Reunión", heldAt: at, source: "manual", externalId: null, transcript: "", summary: "", feedback: [], actionItems: [], status: "processed", createdBy: "tests", createdAt: at, updatedAt: at, ...extra });
+    await db.collection("ops_meetings").insertOne(meeting({ projectId }) as never);
+    await db.collection("sales_meetings").insertOne(meeting({ leadId: randomUUID() }) as never);
+    await db.collection("meetings_inbox").insertOne(meeting({ candidates: [] }) as never);
+
+    await migrateToV4(store);
+    await migrateToV4(store);
+    const rows = await store.meetings.find().toArray();
+    expect(rows).toHaveLength(3);
+    expect(rows.find((m) => m.projectId === projectId)).toMatchObject({ teamId: TEST_TEAM_ID, leadId: null });
+    const names = (await db.listCollections({}, { nameOnly: true }).toArray()).map((c) => c.name);
+    for (const gone of ["ops_meetings", "sales_meetings", "meetings_inbox", "core_companies", "sales_partners"]) expect(names).not.toContain(gone);
+    expect(await store.contacts.findOne({})).toMatchObject({ company: "Acme SAC" });
+    expect(await store.contacts.findOne({})).not.toHaveProperty("companyId");
+    expect(await store.opsProjects.findOne({ _id: projectId })).not.toHaveProperty("companyId");
   });
 });

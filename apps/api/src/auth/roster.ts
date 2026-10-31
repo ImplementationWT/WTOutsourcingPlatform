@@ -19,6 +19,8 @@ export const rosterSchema = z
           .object({
             username,
             name: z.string().trim().min(2).max(80),
+            /** Correo de trabajo: identifica a la persona (y al equipo del Team Leader) en las reuniones. */
+            email: z.string().trim().toLowerCase().email().max(200).optional(),
             role: z.enum(["boss", "commercial", "finance", "lead", "developer"]),
             team: z.string().trim().min(2).max(60).optional()
           })
@@ -80,6 +82,16 @@ export async function applyRoster(store: AdminStore, roster: Roster, actor: stri
     const existing = await store.users.findOne({ username: person.username });
     if (existing) {
       const same = existing.role === person.role && (existing.teamId ?? null) === teamId;
+      // Completar el correo de alguien que ya existe es seguro (no cambia rol ni equipo).
+      if (person.email && !existing.email) {
+        try {
+          await directory.updateUser(existing._id, { email: person.email }, { id: "roster", username: actor });
+        } catch (error) {
+          if (!(error instanceof UserDirectoryError)) throw error;
+          result.users.push({ username: person.username, name: existing.name, status: "conflict", message: error.message });
+          continue;
+        }
+      }
       result.users.push(
         same
           ? { username: person.username, name: existing.name, status: "exists" }
@@ -88,7 +100,7 @@ export async function applyRoster(store: AdminStore, roster: Roster, actor: stri
       continue;
     }
     try {
-      const created = await directory.createUser({ username: person.username, name: person.name, role: person.role, teamId }, actor);
+      const created = await directory.createUser({ username: person.username, name: person.name, email: person.email ?? null, role: person.role, teamId }, actor);
       result.users.push({ username: person.username, name: person.name, status: "created", temporaryPassword: created.temporaryPassword });
     } catch (error) {
       if (!(error instanceof UserDirectoryError)) throw error;

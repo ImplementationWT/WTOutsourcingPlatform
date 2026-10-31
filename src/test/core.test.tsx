@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConfirmProvider } from "@/components/ui/confirm-provider";
-import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { SessionUser } from "@/features/auth/auth";
-import type { CompanyRow, Contact, Deal } from "@/features/core/api";
-import CompaniesPage from "@/features/core/CompaniesPage";
+import type { Contact, Deal } from "@/features/core/api";
 import ContactDetailPage from "@/features/core/ContactDetailPage";
+import ContactsPage from "@/features/core/ContactsPage";
 import DealDetailPage from "@/features/core/DealDetailPage";
 import DealsPage from "@/features/core/DealsPage";
 import { optionLabels } from "./pick";
@@ -28,7 +28,6 @@ const deal: Deal = {
   lead: null,
   contacts: [{ id: "c-1", name: "Lucía Pérez" }],
   owner: null,
-  partner: null,
   salesStage: "proposal",
   status: "draft",
   hours: 40,
@@ -43,8 +42,6 @@ const deal: Deal = {
   product: null,
   channel: null,
   lostReason: null,
-  partnerCommissionPct: null,
-  partnerCommissionCents: 0,
   proposalUrl: null,
   sowUrl: null,
   paidAt: null,
@@ -68,10 +65,8 @@ function renderAt(path: string, user: SessionUser, fetchImpl: (url: string, init
         <Routes>
           <Route path="/comercial/deals" element={<DealsPage />} />
           <Route path="/deals/:id" element={<DealDetailPage />} />
-          <Route path="/comercial/empresas" element={<CompaniesPage />} />
-          <Route path="/comercial/empresas/:id" element={<p>Detalle de empresa</p>} />
+          <Route path="/comercial/contactos" element={<ContactsPage />} />
           <Route path="/comercial/contactos/:id" element={<ContactDetailPage />} />
-          <Route path="/comercial/clientes" element={<Navigate to="/comercial/empresas" replace />} />
         </Routes>
       </MemoryRouter>
       </ConfirmProvider>
@@ -151,32 +146,18 @@ describe("Deals", () => {
   });
 });
 
-describe("Empresas y Contactos", () => {
-  const company: CompanyRow = { id: "co-1", name: "Manpersa SAC", domain: "manpersa.pe", industry: "Logística", size: "51-200", location: "Lima", contacts: 2, projects: 1, createdAt: "", updatedAt: "" };
+describe("Contactos", () => {
+  const contact: Contact = { id: "c-1", name: "Lucía Pérez", emails: ["lucia@manpersa.pe"], phone: null, title: "Gerente", linkedinUrl: null, company: "Manpersa SAC", createdAt: "", updatedAt: "" };
 
-  it("Clientes redirige a Empresas; la búsqueda va a la URL de la API", async () => {
-    const { calls } = renderAt("/comercial/clientes", COMMERCIAL, () => json(page([company])));
-    expect(await screen.findByRole("heading", { name: "Empresas" })).toBeTruthy();
-    expect(within(await screen.findByRole("table", { name: "Empresas" })).getByText("Manpersa SAC")).toBeTruthy();
+  it("la empresa es un texto del contacto; la búsqueda va a la URL de la API", async () => {
+    const { calls } = renderAt("/comercial/contactos", COMMERCIAL, () => json(page([contact], { canWrite: true })));
+    const row = within((await screen.findByText("Lucía Pérez")).closest("tr")!);
+    expect(row.getByText("Manpersa SAC")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Buscar"), { target: { value: "manp" } });
-    await waitFor(() => expect(calls.some((c) => c.url.startsWith("/api/companies?") && c.url.includes("q=manp"))).toBe(true));
-    expect(screen.getByRole("button", { name: /Nueva empresa/ })).toBeTruthy();
-  });
-
-  it("Financiera ve Empresas sin poder crear", async () => {
-    renderAt("/comercial/empresas", FINANCE, () => json(page([company])));
-    await screen.findByRole("table", { name: "Empresas" });
-    expect(screen.queryByRole("button", { name: /Nueva empresa/ })).toBeNull();
-  });
-
-  it("clic en la fila abre el detalle", async () => {
-    renderAt("/comercial/empresas", COMMERCIAL, () => json(page([company])));
-    fireEvent.click(await screen.findByText("Manpersa SAC"));
-    expect(await screen.findByText("Detalle de empresa")).toBeTruthy();
+    await waitFor(() => expect(calls.some((c) => c.url.startsWith("/api/contacts?") && c.url.includes("q=manp"))).toBe(true));
   });
 
   it("detalle del contacto: empresa, leads, deals y proyectos enlazados", async () => {
-    const contact: Contact = { id: "c-1", name: "Lucía Pérez", emails: ["lucia@manpersa.pe"], phone: null, title: "Gerente", linkedinUrl: null, company: { id: "co-1", name: "Manpersa SAC" }, createdAt: "", updatedAt: "" };
     renderAt("/comercial/contactos/c-1", COMMERCIAL, () =>
       json({
         contact,
@@ -186,7 +167,8 @@ describe("Empresas y Contactos", () => {
       }),
     );
     expect(await screen.findByRole("heading", { name: "Lucía Pérez" })).toBeTruthy();
-    expect(screen.getAllByRole("link", { name: "Manpersa SAC" }).map((a) => a.getAttribute("href"))).toEqual(["/comercial/empresas/co-1", "/comercial/leads/l-1"]);
+    expect(screen.getAllByRole("link", { name: "Manpersa SAC" }).map((a) => a.getAttribute("href"))).toEqual(["/comercial/leads/l-1"]);
+    expect(screen.getByText("Gerente · Manpersa SAC")).toBeTruthy();
     expect(screen.getByRole("link", { name: "DL-0007 · Módulo de pedidos" }).getAttribute("href")).toBe(`/deals/${deal.id}`);
     expect(screen.getByRole("link", { name: "Automatización Manpersa" }).getAttribute("href")).toBe("/operativa/p-1");
   });

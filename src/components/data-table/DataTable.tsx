@@ -53,6 +53,8 @@ interface DataTableProps<T> {
   rowKey: (row: T) => string;
   /** Clic en la fila (o Enter) abre el detalle. */
   rowHref?: (row: T) => string;
+  /** Clic en la fila (o Enter) abre algo en la misma página, p. ej. un pop-up de detalle. */
+  onRowClick?: (row: T) => void;
   empty: string;
   searchPlaceholder?: string;
   filters?: FilterDef[];
@@ -122,6 +124,7 @@ export function DataTable<T>({
   error,
   rowKey,
   rowHref,
+  onRowClick,
   empty,
   searchPlaceholder = "Buscar…",
   filters = [],
@@ -137,7 +140,8 @@ export function DataTable<T>({
   const filtered = Boolean(state.q.trim()) || Object.keys(state.filters).length > 0;
   const hasFooter = columns.some((c) => c.footer !== undefined);
   const titleColumn = columns.find((c) => c.card === "title") ?? columns[0];
-  const open = (row: T) => rowHref && navigate(rowHref(row));
+  const clickable = Boolean(rowHref || onRowClick);
+  const open = (row: T) => (onRowClick ? onRowClick(row) : rowHref && navigate(rowHref(row)));
 
   // Agrupar: los grupos siguen el orden del catálogo y el contador es del conjunto filtrado.
   const groups =
@@ -230,10 +234,10 @@ export function DataTable<T>({
                     {g.rows.map((row) => (
                       <tr
                         key={rowKey(row)}
-                        tabIndex={rowHref ? 0 : undefined}
+                        tabIndex={clickable ? 0 : undefined}
                         onClick={(e) => !fromControl(e) && open(row)}
                         onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && open(row)}
-                        className={cn("border-b border-foreground/10 last:border-0 transition-colors", rowHref && "cursor-pointer hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.04] focus-visible:outline-none")}
+                        className={cn("border-b border-foreground/10 last:border-0 transition-colors", clickable && "cursor-pointer hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.04] focus-visible:outline-none")}
                       >
                         {columns.map((c) => (
                           <td key={c.id} className={cn("px-3 py-2 align-middle", c.align === "right" && "text-right tabular-nums", c.className)}>
@@ -270,11 +274,11 @@ export function DataTable<T>({
                 {g.rows.map((row) => (
                   <div
                     key={rowKey(row)}
-                    role={rowHref ? "link" : undefined}
-                    tabIndex={rowHref ? 0 : undefined}
+                    role={rowHref ? "link" : onRowClick ? "button" : undefined}
+                    tabIndex={clickable ? 0 : undefined}
                     onClick={(e) => !fromControl(e) && open(row)}
                     onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && open(row)}
-                    className={cn("rounded-xl border border-foreground/10 bg-foreground/[0.02] p-3", rowHref && "cursor-pointer active:bg-foreground/[0.05]")}
+                    className={cn("rounded-xl border border-foreground/10 bg-foreground/[0.02] p-3", clickable && "cursor-pointer active:bg-foreground/[0.05]")}
                   >
                     <div className="font-medium">{titleColumn.cell(row)}</div>
                     <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">

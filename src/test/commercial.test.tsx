@@ -5,10 +5,9 @@ import { ConfirmProvider } from "@/components/ui/confirm-provider";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { SessionUser } from "@/features/auth/auth";
 import ActivitiesPage from "@/features/commercial/ActivitiesPage";
-import MeetingsInboxPage from "@/features/commercial/MeetingsInboxPage";
-import PartnersPage from "@/features/commercial/PartnersPage";
 import ProposalDetailPage from "@/features/commercial/ProposalDetailPage";
 import ProposalsPage from "@/features/commercial/ProposalsPage";
+import MeetingsPage from "@/features/meetings/MeetingsPage";
 import { optionLabels, pick } from "./pick";
 import { BOSS } from "./session";
 
@@ -31,10 +30,9 @@ function renderAt(path: string, user: SessionUser, fetchImpl: (url: string, init
         <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/comercial/actividades" element={<ActivitiesPage />} />
-          <Route path="/comercial/partners" element={<PartnersPage />} />
           <Route path="/comercial/propuestas" element={<ProposalsPage />} />
           <Route path="/comercial/propuestas/:id" element={<ProposalDetailPage />} />
-          <Route path="/comercial/reuniones" element={<MeetingsInboxPage />} />
+          <Route path="/meetings" element={<MeetingsPage />} />
           <Route path="/operativa/:id" element={<p>Proyecto abierto</p>} />
         </Routes>
       </MemoryRouter>
@@ -44,7 +42,7 @@ function renderAt(path: string, user: SessionUser, fetchImpl: (url: string, init
   return { calls };
 }
 
-describe("actividades y partners", () => {
+describe("actividades", () => {
   it("una actividad vencida se marca y su estado se edita en la celda", async () => {
     const activity = { id: "a1", title: "Llamar a Francisco", kind: "call", owner: { id: "u-com", name: "Marta" }, dueDate: "2020-01-01", overdue: true, status: "pending", notes: "", lead: { id: "l1", title: "Manpersa" }, deal: null, completedAt: null, updatedAt: "" };
     const { calls } = renderAt("/comercial/actividades", COMMERCIAL, (_url, init) => (init?.method === "PATCH" ? json({ activity }) : json(page([activity]))));
@@ -54,16 +52,6 @@ describe("actividades y partners", () => {
     await pick("Estado de Llamar a Francisco", "Hecha");
     await waitFor(() => expect(calls.some((c) => c.init?.method === "PATCH")).toBe(true));
     expect(JSON.parse(String(calls.find((c) => c.init?.method === "PATCH")!.init?.body))).toEqual({ status: "done" });
-  });
-
-  it("partners: comisión por defecto, valor vendido y comisión generada", async () => {
-    const partner = { id: "p1", name: "Agencia Norte", kind: "agency", commissionPct: 10, contactId: null, notes: "", active: true, deals: 2, soldCents: 300_000, commissionCents: 30_000, updatedAt: "" };
-    renderAt("/comercial/partners", COMMERCIAL, () => json(page([partner])));
-    const row = within((await screen.findByText("Agencia Norte")).closest("tr")!);
-    expect(row.getByText("10%")).toBeTruthy();
-    expect(row.getByText(/3,000\.00/)).toBeTruthy();
-    expect(row.getByText(/300\.00/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Nuevo partner/ })).toBeTruthy();
   });
 });
 
@@ -82,8 +70,7 @@ describe("propuestas con líneas", () => {
     lead: { id: "l1", title: "Manpersa" },
     deal: null,
     project: null,
-    lines: [{ id: "x1", productId: null, product: null, description: "Portal", hours: 40, rateCents: 2500, subtotalCents: 100_000 }],
-    useCases: [],
+    lines: [{ id: "x1", description: "Portal", hours: 40, rateCents: 2500, subtotalCents: 100_000 }],
   };
 
   it("la tabla suma los montos al pie", async () => {
@@ -93,10 +80,8 @@ describe("propuestas con líneas", () => {
   });
 
   it("agregar una línea y guardar envía las líneas; el monto lo calcula el servidor", async () => {
-    const { calls } = renderAt("/comercial/propuestas/pr1", COMMERCIAL, (url, init) => {
+    const { calls } = renderAt("/comercial/propuestas/pr1", COMMERCIAL, (_url, init) => {
       if (init?.method === "PATCH") return json({ proposal });
-      if (url === "/api/products") return json({ products: [], canWrite: true });
-      if (url === "/api/use-cases") return json({ useCases: [], canWrite: true });
       return json({ proposal, canWrite: true });
     });
     expect(await screen.findByRole("heading", { name: "Propuesta Manpersa" })).toBeTruthy();
@@ -108,32 +93,42 @@ describe("propuestas con líneas", () => {
     await waitFor(() => expect(calls.some((c) => c.init?.method === "PATCH")).toBe(true));
     expect(JSON.parse(String(calls.find((c) => c.init?.method === "PATCH")!.init?.body))).toEqual({
       lines: [
-        { productId: null, description: "Portal", hours: 40, rateCents: 2500 },
-        { productId: null, description: "Capacitación", hours: 4, rateCents: 2000 },
+        { description: "Portal", hours: 40, rateCents: 2500 },
+        { description: "Capacitación", hours: 4, rateCents: 2000 },
       ],
     });
   });
 });
 
-describe("reuniones por asignar", () => {
-  const inbox = {
-    id: "m1",
-    title: "Sprint review Acme",
+describe("Meetings", () => {
+  const TEAM_A = { id: "t-a", name: "Equipo A" };
+  const row = (id: string, title: string, team: typeof TEAM_A | null, engagement: "low" | "neutral" | "good" | "excellent" | null) => ({
+    id,
+    title,
     heldAt: "2026-10-28T15:00:00Z",
-    source: "read_ai",
-    kind: null,
     durationMinutes: 45,
+    source: "read_ai",
+    status: "processed",
+    engagement,
+    team,
+    project: null,
+    lead: null,
+  });
+  const rows = [row("m1", "Sprint review Acme", TEAM_A, "excellent"), row("m2", "Llamada sin equipo", null, "low")];
+  const detail = {
+    ...rows[0],
+    team: null,
+    kind: null,
     url: "https://app.read.ai/analytics/meetings/S1",
     deal: null,
     attendees: [],
     participants: [{ name: "Lucía", email: "lucia@acme.pe" }],
-    status: "pending",
     reviewStatus: "new",
-    summary: "",
+    summary: "Se revisó el sprint y el cliente aprobó la demo.",
     feedback: [],
     actionItems: [],
     clientSentiment: null,
-    readAi: { summary: "Resumen de Read.ai.", actionItems: [], topics: [], keyQuestions: [] },
+    readAi: { summary: "Resumen de Read.ai.", actionItems: ["Enviar acta"], topics: ["Sprint 4"], keyQuestions: ["¿Cuándo sale?"] },
     processingError: null,
     processedAt: null,
     transcriptLength: 300,
@@ -142,31 +137,50 @@ describe("reuniones por asignar", () => {
       { kind: "lead", id: "l1", name: "Acme (lead)" },
     ],
   };
+  const route = (permissions: Record<string, boolean>) => (url: string, init?: RequestInit) => {
+    if (init?.method && init.method !== "GET") return json({ ok: true, assigned: { kind: "project", id: "p1" } });
+    if (url.startsWith("/api/teams")) return json({ teams: [TEAM_A] });
+    if (url === "/api/meetings/m1") return json({ meeting: detail, permissions });
+    return json(page(rows, { facets: { "t-a": 1, "": 1 } }));
+  };
 
-  it("el CEO/CCO asigna la reunión a un candidato y se abre el proyecto", async () => {
-    const { calls } = renderAt("/comercial/reuniones", BOSS, (url, init) => {
-      if (init?.method === "POST") return json({ ok: true, assigned: { kind: "project", id: "p1" } });
-      if (url.startsWith("/api/ops/projects")) return json(page([]));
-      return json({ meetings: [inbox] });
-    });
-    expect(await screen.findByText("Sprint review Acme")).toBeTruthy();
-    expect(screen.getByText(/lucia@acme\.pe/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Asignar" }));
-    expect(await screen.findByText("Proyecto abierto")).toBeTruthy();
+  it("tabla con nombre, fecha, equipo y engagement; se agrupa por equipo", async () => {
+    renderAt("/meetings?group=1", BOSS, route({ assign: true, team: true, discard: true }));
+    const table = await screen.findByRole("table", { name: "Meetings" });
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent?.trim())).toEqual(expect.arrayContaining(["Reunión", "Fecha", "Equipo", "Engagement"]));
+    const acme = within(within(table).getByText("Sprint review Acme").closest("tr")!);
+    expect(acme.getByText("Excelente")).toBeTruthy();
+    expect(within(within(table).getByText("Llamada sin equipo").closest("tr")!).getByText("Bajo")).toBeTruthy();
+    expect(within(table).getByRole("columnheader", { name: /Equipo A/ })).toBeTruthy();
+    expect(within(table).getByRole("columnheader", { name: /^Sin equipo/ })).toBeTruthy();
+  });
+
+  it("clic en la fila abre el pop-up con el resumen y lo de Read.ai; el CEO/CCO liga la reunión", async () => {
+    const { calls } = renderAt("/meetings", BOSS, route({ assign: true, team: true, discard: true }));
+    fireEvent.click(await screen.findByText("Sprint review Acme"));
+    const dialog = await screen.findByRole("dialog", { name: "Sprint review Acme" });
+    expect(await within(dialog).findByText(/el cliente aprobó la demo/)).toBeTruthy();
+    expect(within(dialog).getByText("Sprint 4")).toBeTruthy();
+    expect(within(dialog).getByText("¿Cuándo sale?")).toBeTruthy();
+    expect(within(dialog).getByText(/lucia@acme\.pe/)).toBeTruthy();
+    await pick("Ligar la reunión a un proyecto o lead", /^Proyecto Acme/);
+    await waitFor(() => expect(calls.some((c) => c.init?.method === "POST")).toBe(true));
     const post = calls.find((c) => c.init?.method === "POST")!;
-    expect(post.url).toBe("/api/meetings/inbox/m1/assign");
+    expect(post.url).toBe("/api/meetings/m1/assign");
     expect(JSON.parse(String(post.init?.body))).toEqual({ projectId: "p1" });
   });
 
-  it("Comercial solo ve los leads candidatos; descartar pide confirmación", async () => {
-    const { calls } = renderAt("/comercial/reuniones", COMMERCIAL, (_url, init) => (init?.method === "DELETE" ? json({ ok: true }) : json({ meetings: [inbox] })));
-    expect(await optionLabels("Asignar «Sprint review Acme»")).toEqual(["Lead: Acme (lead)Coincide por correo"]);
-    fireEvent.click(screen.getByRole("button", { name: /Descartar/ }));
-    // El diálogo dice qué se pierde; sin confirmar no se borra nada.
-    const dialog = await screen.findByRole("alertdialog", { name: "¿Descartar «Sprint review Acme»?" });
-    expect(within(dialog).getByText(/hay que reenviarla desde Read.ai/)).toBeTruthy();
+  it("Comercial solo puede ligar a leads; descartar pide confirmación", async () => {
+    const { calls } = renderAt("/meetings", COMMERCIAL, route({ assign: true, team: false, discard: true }));
+    fireEvent.click(await screen.findByText("Sprint review Acme"));
+    await screen.findByRole("dialog", { name: "Sprint review Acme" });
+    expect(await optionLabels("Ligar la reunión a un proyecto o lead")).toEqual(["Acme (lead)Lead (coincide por correo)"]);
+    expect(screen.queryByLabelText("Equipo de la reunión")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Descartar reunión/ }));
+    const ask = await screen.findByRole("alertdialog", { name: "¿Descartar «Sprint review Acme»?" });
+    expect(within(ask).getByText(/hay que reenviarla desde Read.ai/)).toBeTruthy();
     expect(calls.some((c) => c.init?.method === "DELETE")).toBe(false);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Descartar" }));
-    await waitFor(() => expect(calls.some((c) => c.init?.method === "DELETE" && c.url === "/api/meetings/inbox/m1")).toBe(true));
+    fireEvent.click(within(ask).getByRole("button", { name: "Descartar" }));
+    await waitFor(() => expect(calls.some((c) => c.init?.method === "DELETE" && c.url === "/api/meetings/m1")).toBe(true));
   });
 });

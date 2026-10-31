@@ -24,7 +24,6 @@ const project: OpsProject = {
   team: { id: "t-1", name: "Equipo A" },
   lead: { id: "u-lead", name: "Ana" },
   developer: { id: "u-dev", name: "Diego" },
-  company: null,
   contacts: [],
   clientSlug: null,
   proposalUrl: "https://demo.example.com/manpersa",
@@ -98,7 +97,7 @@ describe("menú por áreas", () => {
     expect(screen.getByRole("link", { name: /^Leads$/ })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /Sources de leads/ })).toBeNull();
     expect(screen.queryByRole("link", { name: /Reuniones por asignar/ })).toBeNull();
-    expect(screen.getByRole("link", { name: /Empresas/ })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Empresas/ })).toBeNull();
   });
 
   it("developer: Operativa e Infraestructura", () => {
@@ -113,11 +112,12 @@ describe("menú por áreas", () => {
     expect(screen.getByRole("link", { name: /Proyectos del cliente/ })).toBeTruthy();
   });
 
-  it("el menú tiene las tablas del núcleo: Contactos, Empresas y Deals", () => {
+  it("Deals y Meetings son generales (un solo tablero); Contactos sigue en Comercial", () => {
     renderAt("/operativa", BOSS, (async () => json(page([]))) as typeof fetch);
     expect(screen.getByRole("link", { name: /Contactos/ }).getAttribute("href")).toBe("/comercial/contactos");
-    expect(screen.getByRole("link", { name: /Empresas/ }).getAttribute("href")).toBe("/comercial/empresas");
-    expect(screen.getAllByRole("link", { name: /^Deals$/ }).map((a) => a.getAttribute("href"))).toEqual(["/comercial/deals", "/operativa/deals"]);
+    expect(screen.queryByRole("link", { name: /Empresas/ })).toBeNull();
+    expect(screen.getAllByRole("link", { name: /^Deals$/ }).map((a) => a.getAttribute("href"))).toEqual(["/deals"]);
+    expect(screen.getByRole("link", { name: /^Meetings$/ }).getAttribute("href")).toBe("/meetings");
     expect(screen.queryByRole("link", { name: /^Clientes$/ })).toBeNull();
   });
 });

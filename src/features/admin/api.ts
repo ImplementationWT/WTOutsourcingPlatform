@@ -17,6 +17,8 @@ export interface AdminUser {
   id: string;
   username: string;
   name: string;
+  /** Correo de trabajo: el de los Team Leaders asigna sus reuniones de Read.ai al equipo. */
+  email: string | null;
   role: UserRole;
   teamId: string | null;
   active: boolean;
@@ -51,9 +53,9 @@ export function useAdminTeams() {
 const json = (method: string, body?: unknown): RequestInit => ({ method, body: body === undefined ? undefined : JSON.stringify(body) });
 
 /** Alta: la contraseña temporal se devuelve una sola vez. */
-export const createUser = (input: { username: string; name: string; role: UserRole; teamId: string | null }) =>
+export const createUser = (input: { username: string; name: string; email: string | null; role: UserRole; teamId: string | null }) =>
   apiFetch<{ user: AdminUser; temporaryPassword: string }>("/api/admin/users", json("POST", input));
-export const updateUser = (id: string, patch: Partial<Pick<AdminUser, "name" | "role" | "teamId" | "active">>) =>
+export const updateUser = (id: string, patch: Partial<Pick<AdminUser, "name" | "email" | "role" | "teamId" | "active">>) =>
   apiFetch<{ user: AdminUser }>(`/api/admin/users/${id}`, json("PATCH", patch));
 export const resetPassword = (id: string) => apiFetch<{ temporaryPassword: string }>(`/api/admin/users/${id}/reset-password`, json("POST"));
 export const createTeam = (input: { name: string }) => apiFetch<{ team: Team }>("/api/admin/teams", json("POST", input));

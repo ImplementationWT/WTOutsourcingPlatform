@@ -1,21 +1,17 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Activity,
-  BookOpen,
   BriefcaseBusiness,
-  Building2,
   Contact,
   FileText,
   FolderKanban,
   Handshake,
-  Inbox,
   Landmark,
   ListTodo,
   Megaphone,
   MessagesSquare,
   MonitorPlay,
   Plug,
-  Users,
   type LucideIcon,
 } from "lucide-react";
 import { BrandLockup } from "@/components/brand/Brand";
@@ -45,6 +41,15 @@ interface Group {
 // Costos está dentro del Dashboard y Usuarios en el menú del usuario.
 const groups: Group[] = [
   {
+    // Tableros generales: los usan Comercial y Operativa por igual.
+    title: "General",
+    roles: ["boss", "commercial", "finance", "lead", "developer"],
+    items: [
+      { to: "/deals", label: "Deals", icon: Handshake, also: /^\/deals\// },
+      { to: "/meetings", label: "Meetings", icon: MessagesSquare },
+    ],
+  },
+  {
     title: "Comercial",
     roles: ["boss", "commercial", "finance"],
     items: [
@@ -52,21 +57,14 @@ const groups: Group[] = [
       { to: "/comercial/actividades", label: "Actividades", icon: ListTodo },
       { to: "/comercial/demos", label: "Demos", icon: MonitorPlay },
       { to: "/comercial/propuestas", label: "Propuestas", icon: FileText },
-      { to: "/comercial/deals", label: "Deals", icon: Handshake },
       { to: "/comercial/contactos", label: "Contactos", icon: Contact },
-      { to: "/comercial/empresas", label: "Empresas", icon: Building2 },
-      { to: "/comercial/partners", label: "Partners", icon: Users },
-      { to: "/comercial/catalogo", label: "Catálogo", icon: BookOpen },
-      { to: "/comercial/reuniones", label: "Reuniones por asignar", icon: MessagesSquare, roles: ["boss", "commercial"] },
-      { to: "/comercial/sources", label: "Sources de leads", icon: Inbox, roles: ["boss", "commercial"] },
     ],
   },
   {
     title: "Operativa",
     roles: ["boss", "commercial", "finance", "lead", "developer"],
     items: [
-      { to: "/operativa", label: "Proyectos del cliente", icon: BriefcaseBusiness, end: true, also: /^\/operativa\/(?!deals$)[^/]+$/ },
-      { to: "/operativa/deals", label: "Deals", icon: Handshake },
+      { to: "/operativa", label: "Proyectos del cliente", icon: BriefcaseBusiness, end: true, also: /^\/operativa\/[^/]+$/ },
     ],
   },
   {

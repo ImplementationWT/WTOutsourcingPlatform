@@ -3,22 +3,16 @@ import { type Db, MongoServerError } from "mongodb";
 import { OwnershipError } from "../lib/errors.js";
 import { redact } from "../lib/redact.js";
 import type { AiAgentSettingsDoc } from "../ai/anthropic-adapter.js";
-import type { DealDoc, InboxMeetingDoc, MeetingDoc, OpsProjectDoc, OpsTaskDoc, ProjectUpdateDoc, VaultAccountDoc } from "../ops/models.js";
-import type { CompanyDoc, ContactDoc } from "../core/models.js";
-import { migrateToV2, migrateToV3 } from "../core/migrate.js";
+import type { DealDoc, MeetingDoc, OpsProjectDoc, OpsTaskDoc, ProjectUpdateDoc, VaultAccountDoc } from "../ops/models.js";
+import type { ContactDoc } from "../core/models.js";
+import { migrateToV2, migrateToV3, migrateToV4 } from "../core/migrate.js";
 import type {
   ActivityDoc,
-  CustomerDoc,
   DealUpdateDoc,
   DemoDoc,
   LeadDoc,
-  LeadMeetingDoc,
-  LeadSourceDoc,
   LeadUpdateDoc,
-  PartnerDoc,
-  ProductDoc,
-  ProposalDoc,
-  UseCaseDoc
+  ProposalDoc
 } from "../sales/models.js";
 import type { InitialPasswordDoc } from "./initial-password-vault.js";
 import type { ProvisioningSecretDoc } from "./provisioning-secrets.js";
@@ -76,28 +70,20 @@ export class AdminStore {
   readonly projectUpdates;
   readonly meetings;
   /** Comercial: sources, leads, demos, propuestas (también de Operativa), clientes, novedades y reuniones. */
-  readonly leadSources;
   readonly leads;
   readonly demos;
   readonly proposals;
-  readonly customers;
   readonly leadUpdates;
-  readonly leadMeetings;
   /** Núcleo compartido (v2): Empresas, Contactos y secuencias (DL-0001…). */
-  readonly companies;
   readonly contacts;
   readonly counters;
-  readonly partners;
   readonly activities;
-  readonly products;
-  readonly useCases;
   readonly dealUpdates;
-  /** Reuniones de Read.ai que no se pudieron asignar a un proyecto o lead. */
-  readonly meetingInbox;
   /** request_id de Read.ai ya recibidos (evita procesar dos veces el mismo envío). */
   readonly webhookDeliveries;
 
-  constructor(db: Db, private readonly now: () => Date = () => new Date()) {
+  /** Base de datos (las migraciones leen colecciones que ya no tienen propiedad propia). */
+  constructor(readonly db: Db, private readonly now: () => Date = () => new Date()) {
     this.clients = db.collection<ClientDoc>("clients");
     this.jobs = db.collection<JobDoc>("jobs");
     this.resources = db.collection<ResourceDoc>("resources");
@@ -115,23 +101,16 @@ export class AdminStore {
     this.opsTasks = db.collection<OpsTaskDoc>("ops_tasks");
     this.vaultAccounts = db.collection<VaultAccountDoc>("ops_vault_accounts");
     this.projectUpdates = db.collection<ProjectUpdateDoc>("ops_project_updates");
-    this.meetings = db.collection<MeetingDoc>("ops_meetings");
-    this.leadSources = db.collection<LeadSourceDoc>("sales_lead_sources");
+    // Tabla única de reuniones (antes ops_meetings, sales_meetings y meetings_inbox).
+    this.meetings = db.collection<MeetingDoc>("core_meetings");
     this.leads = db.collection<LeadDoc>("sales_leads");
     this.demos = db.collection<DemoDoc>("sales_demos");
     this.proposals = db.collection<ProposalDoc>("sales_proposals");
-    this.customers = db.collection<CustomerDoc>("sales_customers");
     this.leadUpdates = db.collection<LeadUpdateDoc>("sales_lead_updates");
-    this.leadMeetings = db.collection<LeadMeetingDoc>("sales_meetings");
-    this.companies = db.collection<CompanyDoc>("core_companies");
     this.contacts = db.collection<ContactDoc>("core_contacts");
     this.counters = db.collection<{ _id: string; seq: number }>("counters");
-    this.partners = db.collection<PartnerDoc>("sales_partners");
     this.activities = db.collection<ActivityDoc>("sales_activities");
-    this.products = db.collection<ProductDoc>("sales_products");
-    this.useCases = db.collection<UseCaseDoc>("sales_use_cases");
     this.dealUpdates = db.collection<DealUpdateDoc>("core_deal_updates");
-    this.meetingInbox = db.collection<InboxMeetingDoc>("meetings_inbox");
     this.webhookDeliveries = db.collection<{ _id: string; source: string; receivedAt: Date }>("webhook_deliveries");
   }
 
@@ -157,6 +136,7 @@ export class AdminStore {
       this.clients.createIndex({ teamId: 1 }),
       this.users.createIndex({ username: 1 }, { unique: true }),
       this.users.createIndex({ teamId: 1 }),
+      this.users.createIndex({ email: 1 }, { unique: true, partialFilterExpression: { email: { $type: "string" } }, name: "one_user_per_email" }),
       this.teams.createIndex({ name: 1 }, { unique: true }),
       this.aiSessions.createIndex({ teamId: 1, createdAt: -1 }),
       this.aiSessions.createIndex({ startedByUserId: 1, createdAt: -1 }),
@@ -168,40 +148,31 @@ export class AdminStore {
       this.vaultAccounts.createIndex({ projectId: 1, label: 1 }),
       this.projectUpdates.createIndex({ projectId: 1, createdAt: -1 }),
       this.meetings.createIndex({ projectId: 1, heldAt: -1 }),
-      this.meetings.createIndex({ projectId: 1, externalId: 1 }, { unique: true, partialFilterExpression: { externalId: { $type: "string" } }, name: "one_meeting_per_external_id" }),
-      this.leadSources.createIndex({ name: 1 }, { unique: true }),
-      this.leadSources.createIndex({ ingestKeyHash: 1 }, { unique: true, partialFilterExpression: { ingestKeyHash: { $type: "string" } }, name: "one_source_per_key" }),
+      this.meetings.createIndex({ leadId: 1, heldAt: -1 }),
+      this.meetings.createIndex({ teamId: 1, heldAt: -1 }),
+      this.meetings.createIndex({ heldAt: -1 }),
+      this.meetings.createIndex({ "participants.email": 1 }),
+      this.meetings.createIndex({ externalId: 1 }, { unique: true, partialFilterExpression: { externalId: { $type: "string" } }, name: "one_meeting_per_external_id" }),
       this.leads.createIndex({ status: 1, updatedAt: -1 }),
       this.leads.createIndex({ email: 1 }),
-      this.leads.createIndex({ sourceId: 1, externalId: 1 }, { unique: true, partialFilterExpression: { externalId: { $type: "string" } }, name: "one_lead_per_external_id" }),
       this.demos.createIndex({ leadId: 1, scheduledAt: -1 }),
       this.proposals.createIndex({ leadId: 1, createdAt: -1 }),
       this.proposals.createIndex({ projectId: 1, createdAt: -1 }),
-      this.customers.createIndex({ name: 1 }),
       this.leadUpdates.createIndex({ leadId: 1, createdAt: -1 }),
-      this.leadMeetings.createIndex({ leadId: 1, heldAt: -1 }),
-      this.leadMeetings.createIndex({ leadId: 1, externalId: 1 }, { unique: true, partialFilterExpression: { externalId: { $type: "string" } }, name: "one_lead_meeting_per_external_id" }),
       this.deals.createIndex({ dealCode: 1 }, { unique: true, partialFilterExpression: { dealCode: { $type: "string" } }, name: "one_deal_per_code" }),
       this.deals.createIndex({ teamId: 1, status: 1 }),
       this.deals.createIndex({ leadId: 1 }),
       this.deals.createIndex({ contactIds: 1 }),
       this.deals.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_deal_per_monday_id" }),
-      this.opsProjects.createIndex({ companyId: 1 }),
       this.opsProjects.createIndex({ contactIds: 1 }),
       this.opsProjects.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_project_per_monday_id" }),
-      this.companies.createIndex({ name: 1 }),
-      this.companies.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_company_per_monday_id" }),
       this.contacts.createIndex({ name: 1 }),
-      this.contacts.createIndex({ companyId: 1 }),
       this.contacts.createIndex({ emails: 1 }),
       this.contacts.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_contact_per_monday_id" }),
       this.leads.createIndex({ setterUserId: 1 }),
       this.leads.createIndex({ closerUserId: 1 }),
       this.leads.createIndex({ contactId: 1 }),
       this.leads.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_lead_per_monday_id" }),
-      this.deals.createIndex({ partnerId: 1 }),
-      this.partners.createIndex({ name: 1 }, { unique: true }),
-      this.partners.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_partner_per_monday_id" }),
       this.activities.createIndex({ leadId: 1, dueDate: 1 }),
       this.activities.createIndex({ dealId: 1, dueDate: 1 }),
       this.activities.createIndex({ ownerUserId: 1, status: 1 }),
@@ -210,19 +181,14 @@ export class AdminStore {
       this.demos.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_demo_per_monday_id" }),
       this.proposals.createIndex({ dealId: 1 }),
       this.proposals.createIndex({ mondayId: 1 }, { unique: true, partialFilterExpression: { mondayId: { $type: "string" } }, name: "one_proposal_per_monday_id" }),
-      this.products.createIndex({ name: 1 }, { unique: true }),
-      this.useCases.createIndex({ productId: 1 }),
       this.dealUpdates.createIndex({ dealId: 1, createdAt: -1 }),
       this.meetings.createIndex({ dealId: 1 }),
-      this.leadMeetings.createIndex({ dealId: 1 }),
       this.meetings.createIndex({ attendeeContactIds: 1 }),
-      this.leadMeetings.createIndex({ attendeeContactIds: 1 }),
-      this.meetingInbox.createIndex({ externalId: 1 }, { unique: true, partialFilterExpression: { externalId: { $type: "string" } }, name: "one_inbox_meeting_per_external_id" }),
-      this.meetingInbox.createIndex({ heldAt: -1 }),
       // Los ids de envío solo sirven unos días (Read.ai reintenta durante minutos).
       this.webhookDeliveries.createIndex({ receivedAt: 1 }, { expireAfterSeconds: 14 * 86_400 })
     ]);
     await migrateToV2(this);
+    await migrateToV4(this);
     await migrateToV3(this);
   }
 

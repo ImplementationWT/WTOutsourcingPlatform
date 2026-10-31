@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, X } from "lucide-react";
 import { DataTable, type Column } from "@/components/data-table/DataTable";
-import { InlineSelect, RelationCell, TotalCell } from "@/components/data-table/cells";
+import { InlineSelect, TotalCell } from "@/components/data-table/cells";
 import { useTableState } from "@/components/data-table/table-state";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -12,7 +12,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTeams } from "@/features/admin/api";
 import { useSession } from "@/features/auth/auth";
-import { useCompanyOptions } from "@/features/core/api";
 import { formatDate } from "@/lib/format";
 import {
   createProject,
@@ -42,9 +41,6 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
   const teams = useTeams().data ?? [];
   const [name, setName] = useState("");
   const [customerName, setCustomerName] = useState("");
-  // El CEO/CCO elige la empresa cliente; quien no ve Empresas escribe el nombre del cliente.
-  const companies = useCompanyOptions(isBoss).data ?? [];
-  const [companyId, setCompanyId] = useState("");
   const [teamId, setTeamId] = useState("");
   const [leadId, setLeadId] = useState("");
   const [developerId, setDeveloperId] = useState("");
@@ -55,7 +51,7 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
 
   const effectiveTeam = isBoss ? teamId : (session?.teamId ?? "");
   const members = useTeamMembers(effectiveTeam || null, Boolean(effectiveTeam)).data ?? [];
-  const valid = name.trim().length >= 3 && (Boolean(companyId) || customerName.trim().length >= 2) && Boolean(effectiveTeam);
+  const valid = name.trim().length >= 3 && customerName.trim().length >= 2 && Boolean(effectiveTeam);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -65,7 +61,7 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
     try {
       const { project } = await createProject({
         name: name.trim(),
-        ...(companyId ? { companyId } : { customerName: customerName.trim() }),
+        customerName: customerName.trim(),
         ...(isBoss ? { teamId } : {}),
         leadUserId: leadId || null,
         developerUserId: developerId || null,
@@ -96,24 +92,10 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
               <Label htmlFor="op-name">Nombre del proyecto</Label>
               <Input id="op-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Automatización de pedidos" />
             </div>
-            {isBoss && (
-              <div className="space-y-1.5">
-                <Label htmlFor="op-company">Empresa cliente</Label>
-                <Select
-                  id="op-company"
-                  value={companyId || null}
-                  emptyLabel="Otra (escribir el nombre)"
-                  options={companies.map((c) => ({ value: c.id, label: c.name }))}
-                  onValueChange={(v) => setCompanyId((v ?? ""))}
-                />
-              </div>
-            )}
-            {!companyId && (
-              <div className="space-y-1.5">
-                <Label htmlFor="op-customer">Cliente</Label>
-                <Input id="op-customer" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Manpersa SAC" />
-              </div>
-            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="op-customer">Cliente</Label>
+              <Input id="op-customer" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Manpersa SAC" />
+            </div>
             {isBoss && (
               <div className="space-y-1.5">
                 <Label htmlFor="op-team">Equipo</Label>
@@ -187,12 +169,10 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
 }
 
 export default function OpsProjectsPage() {
-  const session = useSession().data;
   const queryClient = useQueryClient();
   const table = useTableState({ filterKeys: PROJECT_FILTERS });
   const { data, isLoading, isFetching, error } = useOpsProjects(table.query);
   const [creating, setCreating] = useState(false);
-  const seesCompanies = session?.role === "boss" || session?.role === "commercial" || session?.role === "finance";
   const save = async (p: OpsProjectRow, patch: Partial<ProjectInput>) => {
     await updateProject(p.id, patch);
     await Promise.all([queryClient.invalidateQueries({ queryKey: opsKeys.allProjects }), queryClient.invalidateQueries({ queryKey: opsKeys.project(p.id) })]);
@@ -209,7 +189,7 @@ export default function OpsProjectsPage() {
         <span className="flex min-w-0 flex-col">
           <span className="font-medium">{p.name}</span>
           <span className="text-xs text-muted-foreground">
-            {p.company && seesCompanies ? <RelationCell to={`/comercial/empresas/${p.company.id}`}>{p.customerName}</RelationCell> : p.customerName} · {p.team.name ?? "Sin equipo"}
+            {p.customerName} · {p.team.name ?? "Sin equipo"}
           </span>
         </span>
       ),

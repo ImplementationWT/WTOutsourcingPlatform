@@ -82,13 +82,39 @@ export interface Meeting {
   feedback: string[];
   actionItems: ActionItem[];
   clientSentiment: ClientSentiment | null;
+  engagement: MeetingEngagement | null;
   readAi: { summary: string; actionItems: string[]; topics: string[]; keyQuestions: string[] } | null;
   processingError: string | null;
   processedAt: string | null;
   transcriptLength: number;
 }
 
-export interface InboxMeeting extends Meeting {
+export const MEETING_ENGAGEMENTS = ["low", "neutral", "good", "excellent"] as const;
+export type MeetingEngagement = (typeof MEETING_ENGAGEMENTS)[number];
+export const ENGAGEMENT_LABELS: Record<MeetingEngagement, string> = { low: "Bajo", neutral: "Neutral", good: "Bueno", excellent: "Excelente" };
+export const ENGAGEMENT_TONE: Record<MeetingEngagement, Tone> = { low: "danger", neutral: "neutral", good: "info", excellent: "ok" };
+
+type MeetingRef<T> = T | null;
+
+/** Fila de la tabla de Meetings. */
+export interface MeetingRow {
+  id: string;
+  title: string;
+  heldAt: string;
+  durationMinutes: number | null;
+  source: "read_ai" | "manual";
+  status: Meeting["status"];
+  engagement: MeetingEngagement | null;
+  team: MeetingRef<{ id: string; name: string }>;
+  project: MeetingRef<{ id: string; name: string }>;
+  lead: MeetingRef<{ id: string; title: string }>;
+}
+
+/** Reunión completa para el pop-up de la tabla de Meetings. */
+export interface MeetingDetail extends Meeting {
+  team: MeetingRef<{ id: string; name: string }>;
+  project: MeetingRef<{ id: string; name: string }>;
+  lead: MeetingRef<{ id: string; title: string }>;
   candidates: { kind: "project" | "lead"; id: string; name: string }[];
 }
 
@@ -142,13 +168,20 @@ export const convertActionItem = (
   input: { to: Conversion; dealId?: string; title?: string; hours?: number; assigneeUserId?: string | null; dueDate?: string | null },
 ) => apiFetch<{ created: { id: string; label: string }; meeting: Meeting }>(`${base}/meetings/${meetingId}/action-items/${itemId}/convert`, send("POST", input));
 
-// ---- bandeja «Por asignar» (Read.ai) ----------------------------------------------
+// ---- tabla de Meetings ------------------------------------------------------------
 
-export const inboxKey = ["activity", "inbox"] as const;
-export const inboxQuery = () => ({ queryKey: inboxKey, queryFn: async () => (await apiFetch<{ meetings: InboxMeeting[] }>("/api/meetings/inbox")).meetings });
-export const assignInboxMeeting = (id: string, target: { projectId: string } | { leadId: string }) =>
-  apiFetch<{ ok: true; assigned: { kind: "project" | "lead"; id: string } }>(`/api/meetings/inbox/${id}/assign`, send("POST", target));
-export const discardInboxMeeting = (id: string) => apiFetch<{ ok: true }>(`/api/meetings/inbox/${id}`, send("DELETE"));
+export const MEETING_FILTERS = ["teamId", "engagement"] as const;
+export const meetingsTableKey = ["activity", "meetings-table"] as const;
+export const meetingKey = (id: string) => ["activity", "meeting", id] as const;
+export const meetingDetailQuery = (id: string) => ({
+  queryKey: meetingKey(id),
+  queryFn: () => apiFetch<{ meeting: MeetingDetail; permissions: { assign: boolean; team: boolean; discard: boolean } }>(`/api/meetings/${id}`),
+});
+export const assignMeeting = (id: string, target: { projectId: string } | { leadId: string }) =>
+  apiFetch<{ ok: true; assigned: { kind: "project" | "lead"; id: string } }>(`/api/meetings/${id}/assign`, send("POST", target));
+export const setMeetingTeam = (id: string, teamId: string | null) => apiFetch<{ ok: true }>(`/api/meetings/${id}`, send("PATCH", { teamId }));
+export const discardMeeting = (id: string) => apiFetch<{ ok: true }>(`/api/meetings/${id}`, send("DELETE"));
+
 export const processMeeting = (base: string, meetingId: string) => apiFetch<{ meeting: Meeting }>(`${base}/meetings/${meetingId}/process`, send("POST"));
 export const createUpdate = (base: string, body: string) => apiFetch<{ update: ActivityUpdate }>(`${base}/updates`, send("POST", { body }));
 

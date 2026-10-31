@@ -65,15 +65,7 @@ export default function ContactDetailPage() {
           )}
         </div>
         <p className="text-sm text-muted-foreground">
-          {contact.title ?? "Sin cargo"}
-          {contact.company && (
-            <>
-              {" · "}
-              <Link className="text-primary underline-offset-4 hover:underline" to={`/comercial/empresas/${contact.company.id}`}>
-                {contact.company.name}
-              </Link>
-            </>
-          )}
+          {[contact.title ?? "Sin cargo", contact.company].filter(Boolean).join(" · ")}
         </p>
       </div>
 

@@ -95,6 +95,8 @@ const REVIEW_LABELS: Record<MeetingReviewStatus, string> = { new: "Nueva sin pro
 /** Dueño de las reuniones (proyecto o lead) ya cargado y con los permisos del usuario. */
 export interface MeetingOwner {
   id: string;
+  /** Equipo de las reuniones que se registren aquí (el del proyecto; null en un lead). */
+  teamId: string | null;
   /** Registrar, revisar y reprocesar reuniones. */
   canWork: boolean;
   /** Contexto para el modelo: de quién es la reunión. */
@@ -160,6 +162,7 @@ export async function meetingViews(store: AdminStore, meetings: MeetingCore[]) {
     feedback: meeting.feedback,
     actionItems: actionItemsOf(meeting.actionItems).map((a) => itemView(a, userName)),
     clientSentiment: meeting.clientSentiment ?? null,
+    engagement: meeting.engagement ?? null,
     readAi: meeting.readAi ?? null,
     processingError: meeting.processingError ?? null,
     processedAt: meeting.processedAt ?? null,
@@ -271,7 +274,10 @@ export function registerMeetingRoutes<T extends MeetingCore>(
     const transcript = input.transcript?.trim() ?? "";
     const meeting = {
       _id: randomUUID(),
+      projectId: null,
+      leadId: null,
       [ownerKey]: owner.id,
+      teamId: owner.teamId,
       title: input.title,
       heldAt: new Date(input.heldAt),
       source: input.source ?? "manual",

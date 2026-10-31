@@ -27,7 +27,6 @@ import {
   updateLead,
   useLeads,
   useOwners,
-  useSources,
   type Lead,
   type LeadFunnel,
   type LeadInput,
@@ -39,13 +38,12 @@ import { LeadStatusBadge, TemperatureBadge } from "./SalesBadges";
 function NewLeadForm({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const sources = useSources().data ?? [];
   const [company, setCompany] = useState("");
   const [contactName, setContactName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
-  const [sourceId, setSourceId] = useState("");
+  const [source, setSource] = useState("");
   const [funnel, setFunnel] = useState<LeadFunnel | "">("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +61,7 @@ function NewLeadForm({ onClose }: { onClose: () => void }) {
         email: email.trim() || null,
         phone: phone.trim() || null,
         notes: notes.trim(),
-        ...(sourceId ? { sourceId } : {}),
+        ...(source.trim() ? { source: source.trim() } : {}),
         ...(funnel ? { funnel } : {}),
       });
       await queryClient.invalidateQueries({ queryKey: salesKeys.all });
@@ -103,14 +101,8 @@ function NewLeadForm({ onClose }: { onClose: () => void }) {
               <Input id="lead-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="lead-source">Source</Label>
-              <Select
-                id="lead-source"
-                value={sourceId || null}
-                emptyLabel="Manual"
-                options={sources.map((s) => ({ value: s.id, label: s.name }))}
-                onValueChange={(v) => setSourceId((v ?? ""))}
-              />
+              <Label htmlFor="lead-source">Origen</Label>
+              <Input id="lead-source" value={source} onChange={(e) => setSource(e.target.value)} placeholder="Manual, Referido, Formulario web…" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="lead-funnel">Funnel</Label>
@@ -147,14 +139,10 @@ function NewLeadForm({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Estados que se eligen a mano: "Ganado" solo llega al convertir el lead. */
-const MANUAL_STATUSES = LEAD_STATUSES.filter((s) => s !== "won");
-
 export default function LeadsPage() {
   const table = useTableState({ filterKeys: LEAD_FILTERS });
   const { data, isLoading, isFetching, error } = useLeads(table.query);
   const queryClient = useQueryClient();
-  const sources = useSources().data ?? [];
   const canWrite = data?.canWrite ?? false;
   const owners = useOwners(canWrite).data ?? [];
   const [creating, setCreating] = useState(false);
@@ -191,9 +179,9 @@ export default function LeadsPage() {
         <InlineSelect
           label={`Estado de ${l.title}`}
           value={l.status}
-          options={MANUAL_STATUSES}
+          options={LEAD_STATUSES}
           labels={LEAD_STATUS_LABELS}
-          disabled={!canWrite || l.status === "won"}
+          disabled={!canWrite}
           display={<LeadStatusBadge value={l.status} />}
           onSave={(v) => save(l, { status: v ?? l.status })}
         />
@@ -217,7 +205,7 @@ export default function LeadsPage() {
       ),
     },
     { id: "funnel", header: "Funnel", sortKey: "funnel", cell: (l) => (l.funnel ? LEAD_FUNNEL_LABELS[l.funnel] : <span className="text-muted-foreground">—</span>) },
-    { id: "source", header: "Source", cell: (l) => l.source.name },
+    { id: "source", header: "Origen", cell: (l) => l.source },
     {
       id: "setter",
       header: "Setter",
@@ -242,7 +230,7 @@ export default function LeadsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Leads</h1>
-        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Leads de todos los sources: activos y fríos en una sola tabla, con Setter, Closer y su conversión en cliente.</p>
+        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Leads activos y fríos en una sola tabla, con su Setter y su Closer.</p>
       </div>
 
       {creating && <NewLeadForm onClose={() => setCreating(false)} />}
@@ -290,10 +278,9 @@ export default function LeadsPage() {
         error={error}
         rowKey={(l) => l.id}
         rowHref={(l) => `/comercial/leads/${l.id}`}
-        empty="Aún no hay leads. Crea uno o conecta un source."
+        empty="Aún no hay leads. Crea el primero con «Nuevo lead»."
         searchPlaceholder="Buscar por empresa, contacto o correo"
         filters={[
-          { key: "sourceId", label: "Filtrar por source", all: "Todos los sources", options: sources.map((s) => ({ value: s.id, label: s.name })) },
           { key: "funnel", label: "Filtrar por funnel", all: "Todos los funnels", options: LEAD_FUNNELS.map((f) => ({ value: f, label: LEAD_FUNNEL_LABELS[f] })) },
           { key: "temperature", label: "Filtrar por temperatura", all: "Toda temperatura", options: LEAD_TEMPERATURES.map((t) => ({ value: t, label: LEAD_TEMPERATURE_LABELS[t] })) },
           ...(owners.length ? [{ key: "closerUserId", label: "Filtrar por Closer", all: "Todos los Closers", options: owners.map((o) => ({ value: o.id, label: o.name })) }] : []),

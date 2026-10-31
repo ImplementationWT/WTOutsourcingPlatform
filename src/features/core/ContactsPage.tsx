@@ -3,31 +3,27 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, X } from "lucide-react";
 import { DataTable, type Column } from "@/components/data-table/DataTable";
-import { RelationCell } from "@/components/data-table/cells";
 import { useTableState } from "@/components/data-table/table-state";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSession } from "@/features/auth/auth";
-import { CONTACT_FILTERS, createContact, updateContact, useCompanyOptions, useContacts, type Contact, type ContactInput } from "./api";
+import { createContact, updateContact, useContacts, type Contact, type ContactInput } from "./api";
 import { canWriteCore } from "./hooks";
 
 /**
- * Alta o edición de un contacto. `companyId` fija la empresa (desde su detalle); con `stay` el alta
- * no navega al contacto nuevo.
+ * Alta o edición de un contacto; con `stay` el alta no navega al contacto nuevo.
  */
-export function ContactForm({ contact, companyId, onClose, stay }: { contact?: Contact; companyId?: string; onClose: () => void; stay?: boolean }) {
+export function ContactForm({ contact, onClose, stay }: { contact?: Contact; onClose: () => void; stay?: boolean }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const companies = useCompanyOptions(!companyId).data ?? [];
   const [form, setForm] = useState({
     name: contact?.name ?? "",
     emails: contact?.emails.join(", ") ?? "",
     phone: contact?.phone ?? "",
     title: contact?.title ?? "",
     linkedinUrl: contact?.linkedinUrl ?? "",
-    companyId: companyId ?? contact?.company?.id ?? "",
+    company: contact?.company ?? "",
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +44,7 @@ export function ContactForm({ contact, companyId, onClose, stay }: { contact?: C
       phone: form.phone.trim() || null,
       title: form.title.trim() || null,
       linkedinUrl: form.linkedinUrl.trim() || null,
-      companyId: form.companyId || null,
+      company: form.company.trim() || null,
     };
     try {
       if (contact) await updateContact(contact.id, input);
@@ -92,18 +88,10 @@ export function ContactForm({ contact, companyId, onClose, stay }: { contact?: C
           <Label htmlFor="ct-linkedin">LinkedIn</Label>
           <Input id="ct-linkedin" value={form.linkedinUrl} onChange={(e) => set("linkedinUrl", e.target.value)} placeholder="https://linkedin.com/in/…" />
         </div>
-        {!companyId && (
-          <div className="space-y-1.5">
-            <Label htmlFor="ct-company">Empresa</Label>
-            <Select
-              id="ct-company"
-              value={form.companyId || null}
-              emptyLabel="Sin empresa"
-              options={companies.map((c) => ({ value: c.id, label: c.name }))}
-              onValueChange={(v) => set("companyId", (v ?? ""))}
-            />
-          </div>
-        )}
+        <div className="space-y-1.5">
+          <Label htmlFor="ct-company">Empresa</Label>
+          <Input id="ct-company" value={form.company} onChange={(e) => set("company", e.target.value)} placeholder="Manpersa SAC" />
+        </div>
       </div>
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -125,16 +113,15 @@ export function ContactForm({ contact, companyId, onClose, stay }: { contact?: C
 
 export default function ContactsPage() {
   const role = useSession().data?.role;
-  const table = useTableState({ filterKeys: CONTACT_FILTERS });
+  const table = useTableState();
   const { data, isLoading, isFetching, error } = useContacts(table.query);
-  const companies = useCompanyOptions().data ?? [];
   const [creating, setCreating] = useState(false);
   const muted = (v: string | null | undefined) => v || <span className="text-muted-foreground">—</span>;
 
   const columns: Column<Contact>[] = [
     { id: "name", header: "Contacto", sortKey: "name", card: "title", cell: (c) => <span className="font-medium">{c.name}</span> },
     { id: "title", header: "Cargo", sortKey: "title", cell: (c) => muted(c.title) },
-    { id: "company", header: "Empresa", cell: (c) => <RelationCell to={c.company ? `/comercial/empresas/${c.company.id}` : null}>{c.company?.name}</RelationCell> },
+    { id: "company", header: "Empresa", sortKey: "company", cell: (c) => muted(c.company) },
     { id: "emails", header: "Correo", cell: (c) => muted(c.emails[0]) },
     { id: "phone", header: "Teléfono", cell: (c) => muted(c.phone) },
   ];
@@ -158,7 +145,6 @@ export default function ContactsPage() {
         rowHref={(c) => `/comercial/contactos/${c.id}`}
         empty="Aún no hay contactos."
         searchPlaceholder="Buscar por nombre, correo o cargo"
-        filters={[{ key: "companyId", label: "Filtrar por empresa", all: "Todas las empresas", options: companies.map((c) => ({ value: c.id, label: c.name })) }]}
         actions={
           canWriteCore(role) && !creating ? (
             <Button size="sm" onClick={() => setCreating(true)}>

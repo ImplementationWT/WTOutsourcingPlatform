@@ -40,13 +40,12 @@ describe("leads (Paso 3)", () => {
     expect(table.rows[0]).not.toHaveProperty("rawJson");
   });
 
-  it("un lead se enlaza a un Contacto y una Empresa existentes; un nurturing vuelve al embudo con una demo", async () => {
+  it("un lead se enlaza a un Contacto existente; un nurturing vuelve al embudo con una demo", async () => {
     const { as } = await world();
     const marta = await as("marta");
-    const company = (await marta("POST", "/api/companies", { name: "Acme SAC" })).body.company;
-    const contact = (await marta("POST", "/api/contacts", { name: "Lucía Pérez", companyId: company.id })).body.contact;
-    const lead = (await marta("POST", "/api/sales/leads", { company: "Acme", contactId: contact.id, companyId: company.id })).body.lead;
-    expect(lead).toMatchObject({ contactRef: { id: contact.id, name: "Lucía Pérez" }, companyRef: { id: company.id, name: "Acme SAC" } });
+    const contact = (await marta("POST", "/api/contacts", { name: "Lucía Pérez", company: "Acme SAC" })).body.contact;
+    const lead = (await marta("POST", "/api/sales/leads", { company: "Acme", contactId: contact.id })).body.lead;
+    expect(lead).toMatchObject({ contactRef: { id: contact.id, name: "Lucía Pérez" } });
     expect((await marta("PATCH", `/api/sales/leads/${lead.id}`, { contactId: "99999999-9999-4999-8999-999999999999" })).status).toBe(400);
     // El contacto muestra su lead.
     expect((await marta("GET", `/api/contacts/${contact.id}`)).body.leads.map((l: { id: string }) => l.id)).toEqual([lead.id]);
@@ -75,26 +74,6 @@ describe("demos y aprendizajes", () => {
   });
 });
 
-describe("partners", () => {
-  it("un deal toma la comisión por defecto del partner; el partner ve sus deals y su comisión", async () => {
-    const { as } = await world();
-    const marta = await as("marta");
-    const partner = (await marta("POST", "/api/partners", { name: "Agencia Norte", kind: "agency", commissionPct: 10 })).body.partner;
-    expect((await marta("POST", "/api/partners", { name: "Agencia Norte" })).status).toBe(409);
-    const deal = (await marta("POST", "/api/deals", { title: "Portal de clientes", partnerId: partner.id, hours: 100, rateCents: 3000, status: "proposed" })).body.deal;
-    expect(deal).toMatchObject({ partner: { id: partner.id, name: "Agencia Norte" }, partnerCommissionPct: 10, partnerCommissionCents: 30_000 });
-    // Aún no vendido: no suma comisión al partner.
-    expect((await marta("GET", "/api/partners")).body.rows[0]).toMatchObject({ deals: 1, soldCents: 0, commissionCents: 0 });
-    const jefe = await as("jefe");
-    await jefe("PATCH", `/api/deals/${deal.id}`, { status: "approved" });
-    const detail = (await marta("GET", `/api/partners/${partner.id}`)).body;
-    expect(detail.partner).toMatchObject({ soldCents: 300_000, commissionCents: 30_000 });
-    expect(detail.deals).toMatchObject([{ dealCode: deal.dealCode, commissionCents: 30_000 }]);
-    expect((await marta("POST", "/api/deals", { title: "Otro", partnerId: "99999999-9999-4999-8999-999999999999" })).status).toBe(400);
-    expect((await (await as("ana"))("GET", "/api/partners")).status).toBe(403);
-  });
-});
-
 describe("actividades comerciales", () => {
   it("se ligan a un lead o a un deal, quedan vencidas si pasa la fecha y su cambio deja novedad", async () => {
     const { as, users } = await world();
@@ -114,12 +93,10 @@ describe("actividades comerciales", () => {
   });
 });
 
-describe("cotizaciones con líneas, productos y casos de uso", () => {
+describe("cotizaciones con líneas", () => {
   it("el monto es la suma de las líneas (calc); enviar adelanta el lead; un deal muestra su propuesta y su bitácora", async () => {
     const { as } = await world();
     const marta = await as("marta");
-    const product = (await marta("POST", "/api/products", { name: "Portal web", defaultRateCents: 2500 })).body.product;
-    const useCase = (await marta("POST", "/api/use-cases", { title: "Portal de pedidos B2B", productId: product.id, industry: "Retail" })).body.useCase;
     const lead = (await marta("POST", "/api/sales/leads", { company: "Manpersa" })).body.lead;
     expect((await marta("POST", "/api/proposals", { title: "Propuesta", url: "https://p.example.com/" })).status).toBe(400);
     expect((await marta("POST", "/api/proposals", { title: "Propuesta", url: "https://p.example.com/", leadId: lead.id, lines: [{ description: "x", hours: 1, rateCents: 1 }], amountCents: 5 })).status).toBe(400);
@@ -127,16 +104,15 @@ describe("cotizaciones con líneas, productos y casos de uso", () => {
       title: "Propuesta Manpersa",
       url: "https://p.example.com/",
       leadId: lead.id,
-      useCaseIds: [useCase.id],
       lines: [
-        { productId: product.id, description: "", hours: 40, rateCents: 2500 },
+        { description: "Portal web", hours: 40, rateCents: 2500 },
         { description: "Capacitación", hours: 4, rateCents: 2000 }
       ]
     });
     expect(created.status).toBe(201);
     const proposal = created.body.proposal;
-    expect(proposal).toMatchObject({ amountCents: 108_000, useCases: [{ id: useCase.id }] });
-    expect(proposal.lines).toMatchObject([{ product: "Portal web", description: "Portal web", subtotalCents: 100_000 }, { subtotalCents: 8_000 }]);
+    expect(proposal).toMatchObject({ amountCents: 108_000 });
+    expect(proposal.lines).toMatchObject([{ description: "Portal web", subtotalCents: 100_000 }, { subtotalCents: 8_000 }]);
 
     const sent = await marta("PATCH", `/api/proposals/${proposal.id}`, { status: "sent", lines: [{ description: "Todo", hours: 10, rateCents: 1000 }] });
     expect(sent.body.proposal).toMatchObject({ status: "sent", amountCents: 10_000 });

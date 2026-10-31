@@ -5,7 +5,6 @@ import { createLoginGuard } from "../src/auth/login-guard.js";
 import { hashPassword } from "../src/auth/password.js";
 import { clearRegisteredSecrets } from "../src/lib/redact.js";
 import type { MeetingAnalyzer } from "../src/meetings/analyzer.js";
-import { flatten, mapLead } from "../src/sales/ingest.js";
 import type { AdminStore } from "../src/store/admin-store.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
 import { createFakes } from "./helpers/fakes.js";
@@ -40,6 +39,7 @@ function fakeAnalyzer({ fail = false } = {}) {
         feedback: ["Quieren reportes semanales."],
         actionItems: [{ text: "Enviar el plan del proyecto", kind: "internal_work", owner: "Ana", projectedHours: 3, phase: null }],
         clientSentiment: "good",
+        engagement: "neutral",
         kind: "sprint_review",
         inputTokens: 1200,
         outputTokens: 200
@@ -83,89 +83,6 @@ async function world({ analyzer, logs }: { analyzer?: MeetingAnalyzer; logs?: st
   return { app, store, as, lead, dev, marta };
 }
 
-const ingest = (app: App, sourceId: string, key: string | null, payload: unknown, contentType = "application/json") =>
-  app.inject({
-    method: "POST",
-    url: `/api/ingest/leads/${sourceId}`,
-    headers: { ...(key ? { "x-ingest-key": key } : {}), "content-type": contentType },
-    payload: typeof payload === "string" ? payload : JSON.stringify(payload)
-  });
-
-async function newSource(api: Awaited<ReturnType<Awaited<ReturnType<typeof world>>["as"]>>, extra: Record<string, unknown> = {}) {
-  const created = await api("POST", "/api/sales/sources", { name: "Formulario web", kind: "webhook", ...extra });
-  expect(created.status).toBe(201);
-  return { id: created.body.source.id as string, key: created.body.ingestKey as string };
-}
-
-describe("datos de los sources", () => {
-  it("aplana cualquier JSON y adivina los campos habituales", () => {
-    const fields = flatten({ contacto: { Nombre: "Francisco Wong", "Correo electrónico": "FRANCISCO@Manpersa.pe" }, empresa: "Manpersa", tags: ["ads", "peru"], respuestas: [{ q: "presupuesto", a: 5000 }] });
-    expect(fields).toContainEqual({ key: "tags", value: "ads, peru" });
-    expect(fields).toContainEqual({ key: "respuestas.0.a", value: "5000" });
-    expect(mapLead(fields, [])).toMatchObject({ company: "Manpersa", contactName: "Francisco Wong", email: "francisco@manpersa.pe" });
-  });
-
-  it("el mapeo del source manda sobre lo adivinado; nombre y apellido se juntan", () => {
-    const fields = flatten({ first_name: "Ana", last_name: "Pérez", org: "Acme", email: "no-es-correo", alt: "ana@acme.pe", lead_id: "fb-991" });
-    expect(mapLead(fields, [{ from: "org", to: "company" }, { from: "lead_id", to: "externalId" }])).toMatchObject({ company: "Acme", contactName: "Ana Pérez", email: "ana@acme.pe", externalId: "fb-991" });
-  });
-});
-
-describe("ingesta de leads", () => {
-  it("con la clave crea el lead con los datos originales; sin ella o con otra responde 401", async () => {
-    const { app, as, store } = await world();
-    const marta = await as("marta");
-    const source = await newSource(marta, { mapping: [{ from: "form.biz", to: "company" }] });
-    expect(source.key).toMatch(/^lpk_/);
-    // La clave no se vuelve a mostrar ni se guarda en claro.
-    expect(JSON.stringify((await marta("GET", "/api/sales/sources")).body)).not.toContain(source.key);
-    expect(JSON.stringify(await store.leadSources.findOne({ _id: source.id }))).not.toContain(source.key);
-
-    expect((await ingest(app, source.id, null, { email: "a@b.pe" })).statusCode).toBe(401);
-    expect((await ingest(app, source.id, "lpk_otra", { email: "a@b.pe" })).statusCode).toBe(401);
-    expect((await ingest(app, "33333333-3333-4333-8333-333333333333", source.key, { email: "a@b.pe" })).statusCode).toBe(401);
-
-    const ok = await ingest(app, source.id, source.key, { form: { biz: "Manpersa SAC", who: "Francisco" }, email: "francisco@manpersa.pe", utm: { campaign: "octubre" } });
-    expect(ok.statusCode).toBe(201);
-    const lead = await store.leads.findOne({ _id: ok.json().leadId });
-    expect(lead).toMatchObject({ status: "new", company: "Manpersa SAC", email: "francisco@manpersa.pe", sourceName: "Formulario web" });
-    expect(lead?.fields).toContainEqual({ key: "utm.campaign", value: "octubre" });
-    expect(JSON.parse(lead!.rawJson!)).toMatchObject({ utm: { campaign: "octubre" } });
-    expect((await store.leadSources.findOne({ _id: source.id }))?.received).toBe(1);
-    expect((await marta("GET", `/api/sales/leads/${lead!._id}/updates`)).body.updates[0].body).toBe("Lead recibido desde Formulario web.");
-  });
-
-  it("acepta formularios, Authorization: Bearer, y no duplica el mismo id externo", async () => {
-    const { app, as, store } = await world();
-    const source = await newSource(await as("marta"), { mapping: [{ from: "id", to: "externalId" }] });
-    const form = await app.inject({
-      method: "POST",
-      url: `/api/ingest/leads/${source.id}`,
-      headers: { authorization: `Bearer ${source.key}`, "content-type": "application/x-www-form-urlencoded" },
-      payload: "id=77&nombre=Luisa+Ramos&telefono=%2B51999111222&interes=web&interes=app"
-    });
-    expect(form.statusCode).toBe(201);
-    const again = await ingest(app, source.id, source.key, { id: "77", nombre: "Luisa Ramos" });
-    expect(again.statusCode).toBe(200);
-    expect(again.json()).toMatchObject({ duplicate: true, leadId: form.json().leadId });
-    expect(await store.leads.countDocuments()).toBe(1);
-    expect(await store.leads.findOne()).toMatchObject({ contactName: "Luisa Ramos", phone: "+51999111222" });
-  });
-
-  it("un source desactivado o rotado deja de aceptar la clave anterior", async () => {
-    const { app, as } = await world();
-    const marta = await as("marta");
-    const source = await newSource(marta);
-    const rotated = await marta("POST", `/api/sales/sources/${source.id}/rotate-key`);
-    expect(rotated.body.ingestKey).not.toBe(source.key);
-    expect((await ingest(app, source.id, source.key, { email: "a@b.pe" })).statusCode).toBe(401);
-    expect((await ingest(app, source.id, rotated.body.ingestKey, { email: "a@b.pe" })).statusCode).toBe(201);
-    await marta("PATCH", `/api/sales/sources/${source.id}`, { active: false });
-    expect((await ingest(app, source.id, rotated.body.ingestKey, { email: "c@d.pe" })).statusCode).toBe(403);
-    expect((await ingest(app, source.id, rotated.body.ingestKey, "[1,2]")).statusCode).toBe(403);
-  });
-});
-
 describe("acceso a Comercial", () => {
   it("CEO/CCO y Comercial trabajan; Financiera solo lee (§6); team leaders y developers reciben 403", async () => {
     const { as } = await world();
@@ -176,11 +93,9 @@ describe("acceso a Comercial", () => {
     expect(read.status).toBe(200);
     expect(read.body.canWrite).toBe(false);
     expect((await fede("POST", "/api/sales/leads", { company: "Acme" })).status).toBe(403);
-    expect((await fede("GET", "/api/sales/sources")).status).toBe(403);
     for (const username of ["ana", "dev"]) {
       const api = await as(username);
       expect((await api("GET", "/api/sales/leads")).status).toBe(403);
-      expect((await api("GET", "/api/sales/sources")).status).toBe(403);
     }
   });
 
@@ -196,13 +111,13 @@ describe("acceso a Comercial", () => {
 });
 
 describe("embudo comercial", () => {
-  it("contacto, demo y propuesta enviada adelantan el lead; 'won' solo por conversión", async () => {
+  it("contacto, demo y propuesta enviada adelantan el lead; «Ganado» se marca a mano", async () => {
     const { as, marta: martaUser } = await world();
     const marta = await as("marta");
     const created = await marta("POST", "/api/sales/leads", { company: "Manpersa", contactName: "Francisco Wong", email: "francisco@manpersa.pe" });
     expect(created.status).toBe(201);
     const id = created.body.lead.id;
-    expect(created.body.lead).toMatchObject({ status: "new", setter: { id: martaUser._id }, closer: null, source: { name: "Manual" } });
+    expect(created.body.lead).toMatchObject({ status: "new", setter: { id: martaUser._id }, closer: null, source: "Manual" });
 
     await marta("POST", `/api/sales/leads/${id}/updates`, { body: "Primera llamada: interesado." });
     expect((await marta("GET", `/api/sales/leads/${id}`)).body.lead.status).toBe("contacted");
@@ -215,10 +130,13 @@ describe("embudo comercial", () => {
     expect(detail.lead.status).toBe("proposal_sent");
     expect(detail.demos).toHaveLength(1);
 
-    expect((await marta("PATCH", `/api/sales/leads/${id}`, { status: "won" })).status).toBe(409);
     // Una demo posterior no lo atrasa.
     await marta("POST", `/api/sales/leads/${id}/demos`, { title: "Segunda demo", scheduledAt: "2026-11-05T15:00:00-05:00" });
     expect((await marta("GET", `/api/sales/leads/${id}`)).body.lead.status).toBe("proposal_sent");
+    // Sin conversión: «Ganado» se marca a mano, y el lead muestra sus deals.
+    expect((await marta("PATCH", `/api/sales/leads/${id}`, { status: "won", source: "Referido" })).body.lead).toMatchObject({ status: "won", source: "Referido" });
+    const deal = (await marta("POST", "/api/deals", { title: "Portal Manpersa", leadId: id })).body.deal;
+    expect((await marta("GET", `/api/sales/leads/${id}`)).body.deals).toMatchObject([{ id: deal.id, dealCode: deal.dealCode }]);
   });
 
   it("filtra por estado y busca por texto, con los conteos del embudo", async () => {
@@ -235,37 +153,6 @@ describe("embudo comercial", () => {
     // Vistas: activos y fríos (Cold Leads) en la misma tabla.
     expect((await marta("GET", "/api/sales/leads?view=active")).body.rows.map((l: { title: string }) => l.title)).toEqual(["Manpersa"]);
     expect((await marta("GET", "/api/sales/leads?view=cold")).body.rows.map((l: { title: string }) => l.title)).toEqual(["Otra SAC"]);
-  });
-
-  it("convertir crea el cliente y el proyecto en Kick Off con la propuesta, y no se repite", async () => {
-    const { as, store, lead: ana, dev } = await world();
-    const marta = await as("marta");
-    const id = (await marta("POST", "/api/sales/leads", { company: "Manpersa SAC", contactName: "Francisco Wong" })).body.lead.id;
-    const convert = { teamId: TEST_TEAM_ID, projectName: "Automatización Manpersa", leadUserId: ana._id, developerUserId: dev._id };
-    expect((await marta("POST", `/api/sales/leads/${id}/convert`, convert)).status).toBe(409);
-
-    const proposal = (await marta("POST", `/api/sales/leads/${id}/proposals`, { title: "Propuesta", url: "https://propuesta.example.com/", status: "sent" })).body.proposal;
-    // Responsables de otro rol o equipo: rechazados.
-    expect((await marta("POST", `/api/sales/leads/${id}/convert`, { ...convert, leadUserId: dev._id, proposalId: proposal.id })).status).toBe(400);
-
-    const done = await marta("POST", `/api/sales/leads/${id}/convert`, { ...convert, proposalId: proposal.id });
-    expect(done.status).toBe(201);
-    const project = await store.opsProjects.findOne({ _id: done.body.project.id });
-    expect(project).toMatchObject({ stage: "kickoff", customerName: "Manpersa SAC", proposalUrl: "https://propuesta.example.com/", leadId: id, teamId: TEST_TEAM_ID, leadUserId: ana._id });
-    // Regla 5.3: empresa y contacto en el núcleo, y el deal de la propuesta aprobado y ligado al proyecto.
-    expect(await store.companies.findOne({ _id: done.body.company.id })).toMatchObject({ name: "Manpersa SAC" });
-    expect(await store.contacts.findOne({ companyId: done.body.company.id })).toMatchObject({ name: "Francisco Wong" });
-    expect(await store.deals.findOne({ _id: done.body.deal.id })).toMatchObject({ status: "approved", salesStage: "won", projectId: project!._id, leadId: id, dealCode: done.body.deal.dealCode });
-    expect(await store.proposals.findOne({ _id: proposal.id })).toMatchObject({ status: "accepted", projectId: project!._id });
-    expect((await marta("GET", `/api/sales/leads/${id}`)).body).toMatchObject({ lead: { status: "won" }, project: { id: project!._id } });
-    expect((await marta("POST", `/api/sales/leads/${id}/convert`, convert)).status).toBe(409);
-    expect((await marta("PATCH", `/api/sales/leads/${id}`, { status: "lost" })).status).toBe(409);
-
-    // El equipo lo ve en Operativa con la propuesta; Comercial lo ve en clientes.
-    const team = await as("ana");
-    expect((await team("GET", `/api/ops/projects/${project!._id}`)).body.project).toMatchObject({ leadId: id, company: { id: done.body.company.id, name: "Manpersa SAC" } });
-    expect((await team("GET", `/api/ops/projects/${project!._id}/proposals`)).body.proposals).toHaveLength(1);
-    expect((await marta("GET", `/api/companies/${done.body.company.id}`)).body).toMatchObject({ company: { name: "Manpersa SAC" }, projects: [{ name: "Automatización Manpersa", stage: "kickoff" }] });
   });
 });
 

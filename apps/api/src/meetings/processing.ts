@@ -61,6 +61,7 @@ export class MeetingProcessing {
             feedback: analysis.feedback,
             actionItems,
             clientSentiment: analysis.clientSentiment,
+            engagement: analysis.engagement,
             // El tipo lo sugiere el modelo solo si nadie lo indicó.
             ...(claimed.kind ? {} : { kind: analysis.kind }),
             processingError: null,

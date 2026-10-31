@@ -1,26 +1,29 @@
-import { useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useConfirm } from "@/components/ui/confirm-context";
-import { DatePicker, DateTimePicker } from "@/components/ui/date-picker";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ExternalLink, Loader2, Plus, UserCheck } from "lucide-react";
+import { CalendarPlus, ChevronRight, CircleAlert, ExternalLink, FilePlus2, Handshake, ListPlus, Loader2, Mail, MessageSquarePlus, Phone, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/select";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DatePicker, DateTimePicker } from "@/components/ui/date-picker";
+import { CopyButton, EditableText, FieldRow } from "@/components/ui/editable";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useTeams } from "@/features/admin/api";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Empty, ErrorLine, MeetingsPanel, UpdatesPanel } from "@/features/activity/ActivityPanels";
 import { activityKeys, dateText } from "@/features/activity/api";
-import { money, opsKeys, PROPOSAL_STATUS_LABELS, PROPOSAL_STATUSES, STAGE_LABELS, useTeamMembers, type Proposal, type ProposalStatus } from "@/features/ops/api";
-import { cn } from "@/lib/utils";
 import { ActivitiesTable } from "@/features/commercial/ActivitiesTable";
-import { useCompanyOptions, useContactOptions } from "@/features/core/api";
+import { createDeal, useContactOptions } from "@/features/core/api";
+import { DealStatusBadge } from "@/features/core/DealsTable";
+import { money, PROPOSAL_STATUS_LABELS, PROPOSAL_STATUSES, STAGE_LABELS, type Proposal, type ProposalStatus } from "@/features/ops/api";
+import { formatDate } from "@/lib/format";
+import { errorText, toast } from "@/lib/toast";
+import { cn } from "@/lib/utils";
 import {
   addDemoLearning,
-  convertLead,
   createDemo,
   createLeadProposal,
   DEMO_STATUS_LABELS,
@@ -28,8 +31,10 @@ import {
   LEAD_FUNNEL_LABELS,
   LEAD_FUNNELS,
   LEAD_STATUS_LABELS,
+  LEAD_STATUS_TONE,
   LEAD_STATUSES,
   LEAD_TEMPERATURE_LABELS,
+  LEAD_TEMPERATURE_TONE,
   LEAD_TEMPERATURES,
   leadBase,
   salesKeys,
@@ -42,12 +47,12 @@ import {
   type DemoStatus,
   type LeadDetail,
   type LeadFunnel,
+  type LeadInput,
   type LeadStatus,
   type LeadTemperature,
 } from "./api";
-import { LeadStatusBadge } from "./SalesBadges";
 
-type TabId = "demos" | "proposals" | "activities" | "meetings" | "updates" | "data";
+type TabId = "updates" | "activities" | "demos" | "proposals" | "deals" | "meetings" | "data";
 
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
@@ -62,319 +67,199 @@ function useRefresh(id: string) {
   };
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <div className="text-sm">{children}</div>
-    </div>
-  );
+/** Lo que había antes de un cambio, para «Deshacer». */
+function previousOf(lead: LeadDetail, patch: Partial<LeadInput>): Partial<LeadInput> {
+  const before: Partial<LeadInput> = {};
+  const current: Record<keyof LeadInput, unknown> = {
+    company: lead.company,
+    contactName: lead.contactName,
+    email: lead.email,
+    phone: lead.phone,
+    notes: lead.notes,
+    status: lead.status,
+    setterUserId: lead.setter?.id ?? null,
+    closerUserId: lead.closer?.id ?? null,
+    funnel: lead.funnel,
+    temperature: lead.temperature,
+    submittedAt: lead.submittedAt,
+    meetingAt: lead.meetingAt,
+    proposalUrl: lead.proposalUrl,
+    contactId: lead.contactId,
+    source: lead.source,
+    lostReason: lead.lostReason,
+  };
+  for (const key of Object.keys(patch) as (keyof LeadInput)[]) (before as Record<string, unknown>)[key] = current[key];
+  return before;
 }
 
-/**
- * Estado, temperatura, funnel, Setter y Closer, fechas y enlaces del lead (§4.1). "Ganado" no se
- * elige: se llega al convertir. Financiera ve todo en lectura.
- */
-function LeadControls({ lead, canWrite }: { lead: LeadDetail; canWrite: boolean }) {
+/** Guarda un cambio del lead con aviso «Guardado» y «Deshacer». */
+function useSaveLead(lead: LeadDetail) {
   const refresh = useRefresh(lead.id);
-  const owners = useOwners(canWrite).data ?? [];
-  const companies = useCompanyOptions(canWrite).data ?? [];
-  const contacts = useContactOptions(lead.companyRef?.id ?? null, canWrite).data ?? [];
-  const [error, setError] = useState<string | null>(null);
-  const [lostReason, setLostReason] = useState(lead.lostReason ?? "");
-  const [proposalUrl, setProposalUrl] = useState(lead.proposalUrl ?? "");
-  const won = lead.status === "won";
-  const disabled = !canWrite;
+  return async (patch: Partial<LeadInput>, what = "Cambio guardado") => {
+    const before = previousOf(lead, patch);
+    await updateLead(lead.id, patch);
+    await refresh();
+    toast.success(what, {
+      undo: async () => {
+        await updateLead(lead.id, before);
+        await refresh();
+      },
+    });
+  };
+}
 
-  async function save(patch: Parameters<typeof updateLead>[1]) {
-    setError(null);
-    try {
-      await updateLead(lead.id, patch);
-      await refresh();
-    } catch (err) {
-      setError(message(err, "No se pudo guardar el cambio."));
-    }
-  }
-
-  const people = (label: string, value: { id: string; name: string | null } | null, key: "setterUserId" | "closerUserId") => (
-    <Field label={label}>
-      {canWrite ? (
-        <Select
-          label={label}
-          value={value?.id ?? null}
-          emptyLabel="Sin asignar"
-          options={owners.map((o) => ({ value: o.id, label: o.name }))}
-          onValueChange={(v) => void save({ [key]: v })}
-        />
-      ) : (
-        (value?.name ?? "Sin asignar")
-      )}
-    </Field>
-  );
-
+function Section({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Field label="Estado">
-          <Select
-            label="Estado del lead"
-            value={lead.status}
-            options={LEAD_STATUSES.filter((s) => s !== "won" || won).map((s) => ({ value: s, label: LEAD_STATUS_LABELS[s] }))}
-            disabled={won || disabled}
-            onValueChange={(v) => void save({ status: (v ?? "") as LeadStatus, ...((v ?? "") === "lost" && lostReason.trim() ? { lostReason: lostReason.trim() } : {}) })}
-          />
-        </Field>
-        <Field label="Temperatura">
-          <Select
-            label="Temperatura"
-            value={lead.temperature ?? null}
-            emptyLabel="Sin definir"
-            options={LEAD_TEMPERATURES.map((t) => ({ value: t, label: LEAD_TEMPERATURE_LABELS[t] }))}
-            disabled={disabled}
-            onValueChange={(v) => void save({ temperature: v as LeadTemperature | null })}
-          />
-        </Field>
-        <Field label="Funnel">
-          <Select
-            label="Funnel"
-            value={lead.funnel ?? null}
-            emptyLabel="Sin definir"
-            options={LEAD_FUNNELS.map((f) => ({ value: f, label: LEAD_FUNNEL_LABELS[f] }))}
-            disabled={disabled}
-            onValueChange={(v) => void save({ funnel: v as LeadFunnel | null })}
-          />
-        </Field>
-        <Field label="Respuesta">
-          {lead.responseDays === null ? <span className="text-muted-foreground">Falta la fecha de submission o de reunión</span> : `${lead.responseDays} días`}
-        </Field>
-        {people("Setter", lead.setter, "setterUserId")}
-        {people("Closer", lead.closer, "closerUserId")}
-        <Field label="Submission">
-          <DatePicker label="Fecha de submission" disabled={disabled} value={lead.submittedAt} onValueChange={(v) => void save({ submittedAt: v })} />
-        </Field>
-        <Field label="Reunión">
-          <DatePicker label="Fecha de reunión" disabled={disabled} value={lead.meetingAt} onValueChange={(v) => void save({ meetingAt: v })} />
-        </Field>
-        <Field label="Empresa">
-          {canWrite ? (
-            <Select
-              label="Empresa"
-              value={lead.companyRef?.id ?? null}
-              emptyLabel={lead.company ? `${lead.company} (sin enlazar)` : "Sin empresa"}
-              options={companies.map((c) => ({ value: c.id, label: c.name }))}
-              onValueChange={(v) => void save({ companyId: v })}
-            />
-          ) : lead.companyRef ? (
-            <Link className="text-primary underline-offset-4 hover:underline" to={`/comercial/empresas/${lead.companyRef.id}`}>
-              {lead.companyRef.name}
-            </Link>
-          ) : (
-            lead.company || "—"
-          )}
-        </Field>
-        <Field label="Contacto">
-          {canWrite ? (
-            <Select
-              label="Contacto"
-              value={lead.contactRef?.id ?? null}
-              emptyLabel={lead.contactName ? `${lead.contactName} (sin enlazar)` : "Sin contacto"}
-              options={contacts.map((c) => ({ value: c.id, label: c.name }))}
-              onValueChange={(v) => void save({ contactId: v })}
-            />
-          ) : lead.contactRef ? (
-            <Link className="text-primary underline-offset-4 hover:underline" to={`/comercial/contactos/${lead.contactRef.id}`}>
-              {lead.contactRef.name}
-            </Link>
-          ) : (
-            lead.contactName || "—"
-          )}
-        </Field>
-        <Field label="Correo">
-          {lead.email ? (
-            <a className="break-all text-primary underline-offset-4 hover:underline" href={`mailto:${lead.email}`}>
-              {lead.email}
-            </a>
-          ) : (
-            "—"
-          )}
-        </Field>
-        <Field label="Teléfono">
-          {lead.phone ? (
-            <a className="text-primary underline-offset-4 hover:underline" href={`tel:${lead.phone.replace(/[^\d+]/g, "")}`}>
-              {lead.phone}
-            </a>
-          ) : (
-            "—"
-          )}
-        </Field>
-      </div>
-      {canWrite ? (
-        <form
-          className="flex flex-wrap items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void save({ proposalUrl: proposalUrl.trim() || null });
-          }}
-        >
-          <div className="min-w-64 flex-1 space-y-1.5">
-            <Label htmlFor="lead-proposal-url">Propuesta (enlace)</Label>
-            <Input id="lead-proposal-url" value={proposalUrl} onChange={(e) => setProposalUrl(e.target.value)} placeholder="https://…" />
-          </div>
-          <Button type="submit" size="sm" variant="outline" disabled={(proposalUrl.trim() || null) === lead.proposalUrl}>
-            Guardar enlace
-          </Button>
-        </form>
-      ) : (
-        lead.proposalUrl && (
-          <a className="inline-flex items-center gap-1 text-sm text-primary underline-offset-4 hover:underline" href={lead.proposalUrl} target="_blank" rel="noreferrer">
-            Propuesta <ExternalLink className="size-3.5" />
-          </a>
-        )
+    <Card size="sm">
+      <CardHeader className="flex-row items-center justify-between">
+        <CardTitle className="text-section-title">{title}</CardTitle>
+        {action}
+      </CardHeader>
+      <CardContent className="space-y-1.5">{children}</CardContent>
+    </Card>
+  );
+}
+
+/** Correo o teléfono: enlace con icono (color de texto, acento al pasar el cursor) y botón de copiar. */
+function ContactLink({ kind, value, onEdit, canWrite }: { kind: "email" | "phone"; value: string | null; onEdit: (v: string | null) => Promise<unknown>; canWrite: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const label = kind === "email" ? "Correo" : "Teléfono";
+  if (!value || editing) {
+    return (
+      <EditableText
+        label={label}
+        type={kind === "email" ? "email" : "tel"}
+        value={value}
+        placeholder={kind === "email" ? "Agregar correo" : "Agregar teléfono"}
+        disabled={!canWrite}
+        onSave={async (v) => {
+          await onEdit(v);
+          setEditing(false);
+        }}
+      />
+    );
+  }
+  const Icon = kind === "email" ? Mail : Phone;
+  const href = kind === "email" ? `mailto:${value}` : `tel:${value.replace(/[^\d+]/g, "")}`;
+  return (
+    <div className="flex min-w-0 items-center gap-1 px-2">
+      <a href={href} className="inline-flex min-w-0 items-center gap-1.5 text-sm text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline">
+        <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="truncate">{value}</span>
+      </a>
+      <CopyButton value={value} label={label} />
+      {canWrite && (
+        <button type="button" className="ml-auto rounded px-1.5 text-xs text-muted-foreground hover:text-foreground" onClick={() => setEditing(true)}>
+          Editar
+        </button>
       )}
-      {lead.status === "lost" && canWrite && (
-        <form
-          className="flex flex-wrap items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void save({ lostReason: lostReason.trim() || null });
-          }}
-        >
-          <div className="min-w-64 flex-1 space-y-1.5">
-            <Label htmlFor="lost-reason">Motivo de la pérdida</Label>
-            <Input id="lost-reason" value={lostReason} onChange={(e) => setLostReason(e.target.value)} placeholder="Sin presupuesto, eligió otra opción…" />
-          </div>
-          <Button type="submit" size="sm" variant="outline">
-            Guardar motivo
-          </Button>
-        </form>
-      )}
-      {lead.status === "lost" && !canWrite && lead.lostReason && <p className="text-sm">Motivo de la pérdida: {lead.lostReason}</p>}
-      {lead.notes && <p className="text-sm whitespace-pre-wrap text-muted-foreground">{lead.notes}</p>}
-      <ErrorLine error={error} />
     </div>
   );
 }
 
-/**
- * Convertir en cliente (§5.3): crea la empresa y el contacto (si no existen), el proyecto en Kick Off
- * con la propuesta aceptada y su deal aprobado. Se pregunta antes de crear.
- */
-function ConvertCard({ lead, proposals }: { lead: LeadDetail; proposals: Proposal[] }) {
-  const confirm = useConfirm();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const teams = useTeams().data ?? [];
-  const usable = proposals.filter((p) => p.status !== "rejected");
-  const [teamId, setTeamId] = useState("");
-  const [projectName, setProjectName] = useState(lead.company ? `Proyecto ${lead.company}` : "");
-  const [proposalId, setProposalId] = useState(usable.find((p) => p.status === "accepted")?.id ?? usable[0]?.id ?? "");
-  const [leadUserId, setLeadUserId] = useState("");
-  const [developerUserId, setDeveloperUserId] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const members = useTeamMembers(teamId || null, Boolean(teamId)).data ?? [];
-  const valid = Boolean(teamId && projectName.trim().length >= 3 && proposalId);
+/** Indicadores del lead: respuesta, demos, propuestas, actividades y deals. */
+function Kpis({ data, onOpen, onFixDates }: { data: NonNullable<ReturnType<typeof useLead>["data"]>; onOpen: (tab: TabId) => void; onFixDates: () => void }) {
+  const { lead, demos, proposals, deals, pendingActivities } = data;
+  const items: { label: string; value: ReactNode; tab?: TabId; hint?: ReactNode }[] = [
+    {
+      label: "Respuesta",
+      value: lead.responseDays === null ? "—" : `${lead.responseDays} d`,
+      hint:
+        lead.responseDays === null ? (
+          <button type="button" onClick={onFixDates} className="inline-flex items-center gap-1 text-left text-xs text-muted-foreground hover:text-primary">
+            <CircleAlert className="size-3 shrink-0" aria-hidden />
+            Agrega {lead.submittedAt ? "la fecha de reunión" : "la fecha de submission"} para calcularla
+          </button>
+        ) : (
+          <span className="text-xs text-muted-foreground">Desde la submission hasta la reunión</span>
+        ),
+    },
+    { label: "Actividades pendientes", value: pendingActivities, tab: "activities" },
+    { label: "Demos", value: demos.length, tab: "demos" },
+    { label: "Propuestas", value: proposals.length, tab: "proposals" },
+    { label: "Deals", value: deals.length, tab: "deals" },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+      {items.map((k) =>
+        k.tab ? (
+          <button
+            key={k.label}
+            type="button"
+            onClick={() => onOpen(k.tab!)}
+            className="flex min-h-20 flex-col justify-between rounded-xl border border-border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-accent/40"
+          >
+            <span className="text-field-label">{k.label}</span>
+            <span className="text-xl font-semibold tabular-nums">{k.value}</span>
+          </button>
+        ) : (
+          <div key={k.label} className="col-span-2 flex min-h-20 flex-col justify-between rounded-xl border border-border bg-card p-3 sm:col-span-1">
+            <span className="text-field-label">{k.label}</span>
+            <span className="text-xl font-semibold tabular-nums">{k.value}</span>
+            {k.hint}
+          </div>
+        ),
+      )}
+    </div>
+  );
+}
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!valid) return;
-    const proposal = usable.find((p) => p.id === proposalId);
-    const question = [
-      `Se marcará el lead como ganado y la propuesta «${proposal?.title ?? ""}» como aceptada, y se creará:`,
-      `• la empresa «${lead.company || lead.contactName || lead.title}» y su contacto (si aún no existen),`,
-      `• el proyecto «${projectName.trim()}» en Kick Off,`,
-      "• un deal aprobado ligado al proyecto.",
-    ].join("\n");
-    const ok = await confirm({ title: `¿Convertir «${lead.title}» en cliente?`, description: question, confirmLabel: "Convertir en cliente" });
-    if (!ok) return;
+/** Deals del lead, con acceso directo a crear uno nuevo. */
+function DealsTab({ data, canWrite }: { data: NonNullable<ReturnType<typeof useLead>["data"]>; canWrite: boolean }) {
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const { lead, deals } = data;
+  async function create() {
     setBusy(true);
-    setError(null);
     try {
-      const { project } = await convertLead(lead.id, { teamId, projectName: projectName.trim(), proposalId, leadUserId: leadUserId || null, developerUserId: developerUserId || null });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: salesKeys.all }),
-        queryClient.invalidateQueries({ queryKey: opsKeys.allProjects }),
-        queryClient.invalidateQueries({ queryKey: ["core"] }),
-      ]);
-      navigate(`/operativa/${project.id}`);
+      const { deal } = await createDeal({ title: lead.title.length >= 3 ? lead.title : `Deal ${lead.title}`, leadId: lead.id, contactIds: lead.contactId ? [lead.contactId] : [] });
+      toast.success(`Deal ${deal.dealCode} creado`);
+      navigate(`/deals/${deal.id}`);
     } catch (err) {
-      setError(message(err, "No se pudo convertir el lead."));
+      toast.error("No se pudo crear el deal.", { description: errorText(err, "Inténtalo de nuevo.") });
     } finally {
       setBusy(false);
     }
   }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Convertir en cliente</CardTitle>
-        <CardDescription>Crea la empresa, el contacto, el proyecto en Kick Off con la propuesta aceptada y su deal aprobado. Te pedirá confirmación.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {!usable.length ? (
-          <p className="text-sm text-muted-foreground">Primero registra la propuesta que el cliente aceptó (pestaña Propuestas).</p>
-        ) : (
-          <form onSubmit={submit} className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="conv-name">Nombre del proyecto</Label>
-                <Input id="conv-name" value={projectName} onChange={(e) => setProjectName(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="conv-proposal">Propuesta aceptada</Label>
-                <Select
-                  id="conv-proposal"
-                  value={proposalId}
-                  options={usable.map((p) => ({ value: p.id, label: `${p.title} (${PROPOSAL_STATUS_LABELS[p.status]})` }))}
-                  onValueChange={(v) => setProposalId((v ?? ""))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="conv-team">Equipo</Label>
-                <Select
-                  id="conv-team"
-                  value={teamId || null}
-                  emptyLabel="Elige un equipo"
-                  options={teams.map((t) => ({ value: t.id, label: t.name }))}
-                  onValueChange={(v) => {
-                    setTeamId((v ?? ""));
-                    setLeadUserId("");
-                    setDeveloperUserId("");
-                  }}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="conv-lead">Team Leader</Label>
-                <Select
-                  id="conv-lead"
-                  value={leadUserId || null}
-                  emptyLabel="Sin asignar"
-                  options={members.filter((m) => m.role === "lead").map((m) => ({ value: m.id, label: m.name }))}
-                  disabled={!teamId}
-                  onValueChange={(v) => setLeadUserId((v ?? ""))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="conv-dev">Developer</Label>
-                <Select
-                  id="conv-dev"
-                  value={developerUserId || null}
-                  emptyLabel="Sin asignar"
-                  options={members.filter((m) => m.role === "developer").map((m) => ({ value: m.id, label: m.name }))}
-                  disabled={!teamId}
-                  onValueChange={(v) => setDeveloperUserId((v ?? ""))}
-                />
-              </div>
-            </div>
-            <ErrorLine error={error} />
-            <Button type="submit" disabled={!valid || busy}>
-              {busy ? <Loader2 className="animate-spin" /> : <UserCheck />}
-              Convertir en cliente
+  if (!deals.length) {
+    return (
+      <EmptyState
+        icon={Handshake}
+        title="Este lead aún no tiene deals"
+        description="Crea el deal cuando haya algo concreto que vender: horas, tarifa y probabilidad se completan después."
+        action={
+          canWrite ? (
+            <Button onClick={() => void create()} loading={busy}>
+              {!busy && <Plus />}
+              Crear deal
             </Button>
-          </form>
-        )}
-      </CardContent>
-    </Card>
+          ) : undefined
+        }
+      />
+    );
+  }
+  return (
+    <div className="space-y-3">
+      {canWrite && (
+        <Button size="sm" variant="outline" onClick={() => void create()} loading={busy}>
+          {!busy && <Plus />}
+          Crear deal
+        </Button>
+      )}
+      <ul className="divide-y divide-border rounded-xl border border-border">
+        {deals.map((d) => (
+          <li key={d.id}>
+            <Link to={`/deals/${d.id}`} className="flex flex-wrap items-center gap-3 p-3 transition-colors hover:bg-accent/40">
+              <span className="text-xs text-muted-foreground tabular-nums">{d.dealCode}</span>
+              <span className="min-w-0 flex-1 truncate font-medium">{d.title}</span>
+              <DealStatusBadge value={d.status} />
+              <span className="tabular-nums">{money(d.amountCents, d.currency)}</span>
+              <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -628,7 +513,7 @@ function SourceDataTab({ lead }: { lead: LeadDetail }) {
   if (!lead.fields.length && !lead.rawJson) return <Empty>Este lead se creó a mano: no hay datos del source.</Empty>;
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">Datos recibidos desde {lead.source.name}. Lo que no encaja en los campos del lead queda aquí.</p>
+      <p className="text-sm text-muted-foreground">Datos recibidos desde {lead.source}. Lo que no encaja en los campos del lead queda aquí.</p>
       <dl className="divide-y divide-foreground/10 rounded-lg border border-foreground/10">
         {lead.fields.map((f) => (
           <div key={f.key} className="grid gap-1 p-2.5 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
@@ -649,26 +534,46 @@ function SourceDataTab({ lead }: { lead: LeadDetail }) {
   );
 }
 
+/**
+ * Detalle del lead: todo se edita en el lugar con guardado automático y «Deshacer», con atajos a
+ * lo siguiente que suele pasar (nota, actividad, demo, propuesta, deal). Financiera solo lee.
+ */
 export default function LeadDetailPage() {
   const { id = "" } = useParams();
   const { data, isLoading, error } = useLead(id);
   const refresh = useRefresh(id);
-  const [tab, setTab] = useState<TabId>("demos");
+  const [tab, setTab] = useState<TabId>("updates");
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const datesRef = useRef<HTMLDivElement>(null);
+  const canWrite = data?.canWrite ?? false;
+  const owners = useOwners(canWrite).data ?? [];
+  const contacts = useContactOptions(canWrite).data ?? [];
+  const save = useSaveLead(data?.lead ?? ({} as LeadDetail));
+
+  const open = (next: TabId) => {
+    setTab(next);
+    tabsRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  };
+  const persist = (patch: Partial<LeadInput>, what?: string) =>
+    save(patch, what).catch((err: unknown) => toast.error("No se pudo guardar el cambio.", { description: errorText(err, "Inténtalo de nuevo.") }));
 
   if (isLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-64 w-full" />
       </div>
     );
   }
   if (error || !data) {
     return (
       <div className="space-y-4">
-        <Link to="/comercial" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-4" /> Leads
-        </Link>
+        <nav aria-label="Migas de pan" className="text-sm text-muted-foreground">
+          <Link to="/comercial" className="hover:text-foreground">
+            Leads
+          </Link>
+        </nav>
         <p role="alert" className="text-sm text-destructive">
           {error instanceof Error ? error.message : "Lead no encontrado."}
         </p>
@@ -676,67 +581,178 @@ export default function LeadDetailPage() {
     );
   }
 
-  const { lead, demos, proposals, project, company, deal, canWrite } = data;
-  const tabs: { id: TabId; label: string }[] = [
-    { id: "demos", label: `Demos (${demos.length})` },
-    { id: "proposals", label: `Propuestas (${proposals.length})` },
-    { id: "activities", label: "Actividades" },
+  const { lead, demos, proposals, project, deals } = data;
+  const people = owners.map((o) => ({ value: o.id, label: o.name }));
+  const hasSourceData = lead.fields.length > 0 || Boolean(lead.rawJson);
+  const tabs: { id: TabId; label: string; count?: number }[] = [
+    { id: "updates", label: "Actividad" },
+    { id: "activities", label: "Pendientes", count: data.pendingActivities },
+    { id: "demos", label: "Demos", count: demos.length },
+    { id: "proposals", label: "Propuestas", count: proposals.length },
+    { id: "deals", label: "Deals", count: deals.length },
     { id: "meetings", label: "Reuniones" },
-    { id: "updates", label: "Updates" },
-    { id: "data", label: "Datos del source" },
+    ...(hasSourceData ? [{ id: "data" as const, label: "Datos de origen" }] : []),
   ];
 
   return (
     <div className="space-y-6">
-      <div>
-        <Link to="/comercial" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-4" /> Leads
+      <nav aria-label="Migas de pan" className="flex items-center gap-1 text-sm text-muted-foreground">
+        <Link to="/comercial" className="hover:text-foreground">
+          Leads
         </Link>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{lead.title}</h1>
-          <LeadStatusBadge value={lead.status} />
-          <Badge variant="outline">{lead.source.name}</Badge>
+        <ChevronRight className="size-3.5" aria-hidden />
+        <span className="truncate text-foreground">{lead.title}</span>
+      </nav>
+
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 space-y-2">
+          <h1 className="text-page-title break-words">{lead.title}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              label="Estado del lead"
+              value={lead.status}
+              options={LEAD_STATUSES.map((st) => ({ value: st, label: LEAD_STATUS_LABELS[st] }))}
+              disabled={!canWrite}
+              size="sm"
+              className="w-auto border-transparent bg-transparent px-1 hover:border-input dark:bg-transparent"
+              renderValue={() => <StatusBadge tone={LEAD_STATUS_TONE[lead.status]}>{LEAD_STATUS_LABELS[lead.status]}</StatusBadge>}
+              onValueChange={(v) => v && v !== lead.status && void persist({ status: v as LeadStatus }, `Estado: ${LEAD_STATUS_LABELS[v as LeadStatus]}`)}
+            />
+            <Select
+              label="Temperatura"
+              value={lead.temperature}
+              emptyLabel="Sin temperatura"
+              options={LEAD_TEMPERATURES.map((t) => ({ value: t, label: LEAD_TEMPERATURE_LABELS[t] }))}
+              disabled={!canWrite}
+              size="sm"
+              className="w-auto border-transparent bg-transparent px-1 hover:border-input dark:bg-transparent"
+              renderValue={() =>
+                lead.temperature ? (
+                  <StatusBadge tone={LEAD_TEMPERATURE_TONE[lead.temperature]} dot>
+                    {LEAD_TEMPERATURE_LABELS[lead.temperature]}
+                  </StatusBadge>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Sin temperatura</span>
+                )
+              }
+              onValueChange={(v) => void persist({ temperature: v as LeadTemperature | null }, "Temperatura actualizada")}
+            />
+            <StatusBadge tone="outline">{lead.source}</StatusBadge>
+            <span className="text-xs text-muted-foreground">Creado {dateText(lead.createdAt)}</span>
+          </div>
         </div>
-        <p className="text-sm text-muted-foreground">
-          {lead.contactName || "Sin contacto"} · creado {dateText(lead.createdAt)}
-        </p>
+        {canWrite && (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => open("updates")}>
+              <MessageSquarePlus />
+              Nota
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => open("activities")}>
+              <ListPlus />
+              Actividad
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => open("demos")}>
+              <CalendarPlus />
+              Demo
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => open("proposals")}>
+              <FilePlus2 />
+              Propuesta
+            </Button>
+            <Button size="sm" onClick={() => open("deals")}>
+              <Handshake />
+              Deal
+            </Button>
+          </div>
+        )}
+      </header>
+
+      <Kpis data={data} onOpen={open} onFixDates={() => datesRef.current?.querySelector<HTMLButtonElement>("button")?.focus()} />
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Section title="Contacto">
+          <FieldRow label="Empresa">
+            <EditableText label="Empresa" value={lead.company || null} placeholder="Agregar empresa" disabled={!canWrite} onSave={(v) => persist({ company: v ?? "" }, "Empresa guardada")} />
+          </FieldRow>
+          <FieldRow label="Persona">
+            <EditableText label="Persona de contacto" value={lead.contactName || null} placeholder="Agregar nombre" disabled={!canWrite} onSave={(v) => persist({ contactName: v ?? "" }, "Contacto guardado")} />
+          </FieldRow>
+          <FieldRow label="Correo">
+            <ContactLink kind="email" value={lead.email} canWrite={canWrite} onEdit={(v) => persist({ email: v }, "Correo guardado")} />
+          </FieldRow>
+          <FieldRow label="Teléfono">
+            <ContactLink kind="phone" value={lead.phone} canWrite={canWrite} onEdit={(v) => persist({ phone: v }, "Teléfono guardado")} />
+          </FieldRow>
+          <FieldRow label="Contacto enlazado" hint={lead.contactRef ? <Link to={`/comercial/contactos/${lead.contactRef.id}`} className="text-xs text-primary hover:underline">Ver contacto</Link> : undefined}>
+            {canWrite ? (
+              <Select
+                label="Contacto enlazado"
+                value={lead.contactRef?.id ?? null}
+                emptyLabel="Sin enlazar"
+                searchable
+                options={contacts.map((c) => ({ value: c.id, label: c.name, description: c.company ?? undefined }))}
+                onValueChange={(v) => void persist({ contactId: v }, v ? "Contacto enlazado" : "Contacto desenlazado")}
+              />
+            ) : (
+              <span className="px-2 text-sm">{lead.contactRef?.name ?? "—"}</span>
+            )}
+          </FieldRow>
+        </Section>
+
+        <Section title="Comercial">
+          <FieldRow label="Setter">
+            <Select label="Setter" value={lead.setter?.id ?? null} emptyLabel="Sin asignar" options={people} disabled={!canWrite} placeholder={lead.setter?.name ?? "Sin asignar"} onValueChange={(v) => void persist({ setterUserId: v }, "Setter actualizado")} />
+          </FieldRow>
+          <FieldRow label="Closer">
+            <Select label="Closer" value={lead.closer?.id ?? null} emptyLabel="Sin asignar" options={people} disabled={!canWrite} placeholder={lead.closer?.name ?? "Sin asignar"} onValueChange={(v) => void persist({ closerUserId: v }, "Closer actualizado")} />
+          </FieldRow>
+          <FieldRow label="Funnel">
+            <Select
+              label="Funnel"
+              value={lead.funnel}
+              emptyLabel="Sin definir"
+              options={LEAD_FUNNELS.map((f) => ({ value: f, label: LEAD_FUNNEL_LABELS[f] }))}
+              disabled={!canWrite}
+              onValueChange={(v) => void persist({ funnel: v as LeadFunnel | null }, "Funnel actualizado")}
+            />
+          </FieldRow>
+          <FieldRow label="Origen">
+            <EditableText label="Origen" value={lead.source} minLength={2} disabled={!canWrite} onSave={(v) => persist({ source: v ?? "Manual" }, "Origen guardado")} />
+          </FieldRow>
+          <FieldRow label="Propuesta (web)">
+            <EditableText label="Enlace de la propuesta" type="url" value={lead.proposalUrl} placeholder="https://…" disabled={!canWrite} onSave={(v) => persist({ proposalUrl: v }, "Enlace guardado")} />
+          </FieldRow>
+          {lead.status === "lost" && (
+            <FieldRow label="Motivo de pérdida">
+              <EditableText label="Motivo de la pérdida" value={lead.lostReason} placeholder="Sin presupuesto, eligió otra opción…" disabled={!canWrite} onSave={(v) => persist({ lostReason: v }, "Motivo guardado")} />
+            </FieldRow>
+          )}
+          {project && (
+            <FieldRow label="Proyecto">
+              <Link to={`/operativa/${project.id}`} className="px-2 text-sm text-primary hover:underline">
+                {project.name} ({STAGE_LABELS[project.stage]})
+              </Link>
+            </FieldRow>
+          )}
+        </Section>
+
+        <Section title="Fechas">
+          <div ref={datesRef} className="space-y-1.5">
+            <FieldRow label="Submission">
+              <DatePicker label="Fecha de submission" disabled={!canWrite} value={lead.submittedAt} onValueChange={(v) => void persist({ submittedAt: v }, v ? `Submission: ${formatDate(v)}` : "Submission borrada")} />
+            </FieldRow>
+            <FieldRow label="Reunión">
+              <DatePicker label="Fecha de reunión" disabled={!canWrite} value={lead.meetingAt} onValueChange={(v) => void persist({ meetingAt: v }, v ? `Reunión: ${formatDate(v)}` : "Reunión borrada")} />
+            </FieldRow>
+          </div>
+        </Section>
+
+        <Section title="Notas">
+          <EditableText label="Notas del lead" multiline value={lead.notes || null} placeholder="Qué necesita, contexto, próximos pasos…" disabled={!canWrite} onSave={(v) => persist({ notes: v ?? "" }, "Notas guardadas")} />
+        </Section>
       </div>
 
-      <Card>
-        <CardContent className="space-y-4 pt-4">
-          <LeadControls key={lead.updatedAt} lead={lead} canWrite={canWrite} />
-          {project && (
-            <p className="text-sm">
-              Cliente{" "}
-              {company ? (
-                <Link className="font-medium text-primary underline-offset-4 hover:underline" to={`/comercial/empresas/${company.id}`}>
-                  {company.name}
-                </Link>
-              ) : (
-                <span className="font-medium">—</span>
-              )}{" "}
-              · proyecto{" "}
-              <Link className="text-primary underline-offset-4 hover:underline" to={`/operativa/${project.id}`}>
-                {project.name}
-              </Link>{" "}
-              <span className="text-muted-foreground">({STAGE_LABELS[project.stage]})</span>
-              {deal && (
-                <>
-                  {" "}
-                  · deal{" "}
-                  <Link className="text-primary underline-offset-4 hover:underline" to={`/deals/${deal.id}`}>
-                    {deal.dealCode}
-                  </Link>
-                </>
-              )}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {lead.status !== "won" && canWrite && <ConvertCard key={proposals.map((p) => p.id + p.status).join()} lead={lead} proposals={proposals} />}
-
-      <div role="tablist" aria-label="Secciones del lead" className="-mx-4 flex gap-1 overflow-x-auto border-b border-foreground/10 px-4 sm:mx-0 sm:px-0">
+      <div ref={tabsRef} role="tablist" aria-label="Secciones del lead" className="-mx-4 flex scroll-mt-4 gap-1 overflow-x-auto border-b border-foreground/10 px-4 sm:mx-0 sm:px-0">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -745,21 +761,23 @@ export default function LeadDetailPage() {
             aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
             className={cn(
-              "-mb-px shrink-0 border-b-2 px-3 py-2 text-sm whitespace-nowrap transition-colors",
+              "-mb-px inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm whitespace-nowrap transition-colors",
               tab === t.id ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             {t.label}
+            {t.count !== undefined && <span className="rounded-full bg-foreground/10 px-1.5 text-[11px] tabular-nums">{t.count}</span>}
           </button>
         ))}
       </div>
 
-      <div role="tabpanel">
+      <div role="tabpanel" className="min-h-64">
+        {tab === "updates" && <UpdatesPanel base={leadBase(lead.id)} canWork={canWrite} onPosted={refresh} />}
+        {tab === "activities" && <ActivitiesTable leadId={lead.id} prefix="a." />}
         {tab === "demos" && <DemosTab leadId={lead.id} demos={demos} canWrite={canWrite} />}
         {tab === "proposals" && <ProposalsTab leadId={lead.id} proposals={proposals} canWrite={canWrite} />}
-        {tab === "activities" && <ActivitiesTable leadId={lead.id} prefix="a." />}
-        {tab === "meetings" && <MeetingsPanel base={leadBase(lead.id)} canWork={canWrite} deals={deal ? [deal] : []} />}
-        {tab === "updates" && <UpdatesPanel base={leadBase(lead.id)} canWork={canWrite} onPosted={refresh} />}
+        {tab === "deals" && <DealsTab data={data} canWrite={canWrite} />}
+        {tab === "meetings" && <MeetingsPanel base={leadBase(lead.id)} canWork={canWrite} deals={deals.map((d) => ({ id: d.id, dealCode: d.dealCode, title: d.title }))} />}
         {tab === "data" && <SourceDataTab lead={lead} />}
       </div>
     </div>

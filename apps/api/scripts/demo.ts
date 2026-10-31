@@ -29,6 +29,50 @@ for (const project of [
   await new JobEngine(store, fakes.deps, silent).run(job._id, "admin");
 }
 
+// Reuniones de ejemplo de Read.ai (Meetings), ya procesadas, en dos equipos y una sin equipo.
+{
+  const at = new Date();
+  const teams = [
+    { _id: crypto.randomUUID(), name: "Equipo Andes", leadUserId: null, createdAt: at, updatedAt: at },
+    { _id: crypto.randomUUID(), name: "Equipo Pacífico", leadUserId: null, createdAt: at, updatedAt: at }
+  ];
+  await store.teams.insertMany(teams);
+  const day = (n: number, hour: number) => new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate() - n, hour));
+  const meeting = (title: string, teamId: string | null, engagement: "low" | "neutral" | "good" | "excellent", heldAt: Date, summary: string, topics: string[]) => ({
+    _id: crypto.randomUUID(),
+    title,
+    heldAt,
+    source: "read_ai" as const,
+    externalId: null,
+    durationMinutes: 30 + Math.round(Math.random() * 30),
+    url: null,
+    participants: [
+      { name: "Ana Torres", email: "ana@example.com" },
+      { name: "Cliente", email: "cliente@example.com" }
+    ],
+    transcript: "",
+    summary,
+    feedback: [],
+    actionItems: [],
+    status: "processed" as const,
+    engagement,
+    readAi: { summary, actionItems: ["Enviar el acta al cliente"], topics, keyQuestions: ["¿Cuándo sale a producción?"] },
+    projectId: null,
+    leadId: null,
+    teamId,
+    createdBy: "read.ai",
+    createdAt: heldAt,
+    updatedAt: heldAt
+  });
+  await store.meetings.insertMany([
+    meeting("Sprint review · Portal de pedidos", teams[0]!._id, "excellent", day(1, 15), "El cliente aprobó la demo del portal y pidió sumar reportes por vendedor.", ["Sprint 4", "Reportes"]),
+    meeting("Kick off · App de inventario", teams[0]!._id, "good", day(3, 14), "Se acordó el alcance de la primera fase y las fechas de entrega.", ["Alcance", "Cronograma"]),
+    meeting("Seguimiento semanal · CRM", teams[1]!._id, "neutral", day(2, 16), "Avance según lo previsto; quedan dudas sobre la migración de datos.", ["Migración"]),
+    meeting("Revisión de presupuesto", teams[1]!._id, "low", day(5, 17), "El cliente pidió bajar el alcance por presupuesto; poca participación.", ["Presupuesto"]),
+    meeting("Llamada de descubrimiento", null, "good", day(0, 13), "Primera conversación con un prospecto interesado en automatizar su facturación.", ["Facturación"])
+  ]);
+}
+
 // Will Doo simulado: piensa, lee, edita, pasa las pruebas, sube un commit y resume en markdown.
 const agent = new FakeAgent();
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

@@ -13,10 +13,11 @@ const usernameSchema = z
   .regex(/^[a-z0-9][a-z0-9._-]{1,38}[a-z0-9]$/);
 const nameSchema = z.string().trim().min(2).max(80);
 const teamIdSchema = z.string().uuid().nullable();
+const emailSchema = z.string().trim().toLowerCase().email("Correo inválido.").max(200).nullable();
 
-const createUserSchema = z.object({ username: usernameSchema, name: nameSchema, role: roleSchema, teamId: teamIdSchema.optional() }).strict();
+const createUserSchema = z.object({ username: usernameSchema, name: nameSchema, email: emailSchema.optional(), role: roleSchema, teamId: teamIdSchema.optional() }).strict();
 const updateUserSchema = z
-  .object({ name: nameSchema.optional(), role: roleSchema.optional(), teamId: teamIdSchema.optional(), active: z.boolean().optional() })
+  .object({ name: nameSchema.optional(), email: emailSchema.optional(), role: roleSchema.optional(), teamId: teamIdSchema.optional(), active: z.boolean().optional() })
   .strict()
   .refine((patch) => Object.keys(patch).length > 0);
 const createTeamSchema = z.object({ name: nameSchema, leadUserId: z.string().uuid().nullable().optional() }).strict();
@@ -60,7 +61,9 @@ export async function registerAdminRoutes(app: FastifyInstance, { users }: { use
   app.post("/api/admin/users", { preHandler: requireBoss }, async (request, reply) => {
     const body = createUserSchema.safeParse(request.body);
     if (!body.success) {
-      return reply.code(400).send({ error: "Indica usuario (3-40 caracteres: minúsculas, números, punto, guion), nombre y rol." });
+      return reply.code(400).send({
+        error: body.error.issues.some((i) => i.path[0] === "email") ? "Correo inválido." : "Indica usuario (3-40 caracteres: minúsculas, números, punto, guion), nombre y rol."
+      });
     }
     return run(reply, async () => sendOnce(reply.code(201), await users.createUser(body.data, request.user!.username)));
   });
@@ -68,7 +71,7 @@ export async function registerAdminRoutes(app: FastifyInstance, { users }: { use
   app.patch("/api/admin/users/:id", { preHandler: requireBoss }, async (request, reply) => {
     const params = idParams.safeParse(request.params);
     const body = updateUserSchema.safeParse(request.body);
-    if (!params.success || !body.success) return reply.code(400).send({ error: "Datos inválidos." });
+    if (!params.success || !body.success) return reply.code(400).send({ error: body.error?.issues.some((i) => i.path[0] === "email") ? "Correo inválido." : "Datos inválidos." });
     return run(reply, async () => ({ user: await users.updateUser(params.data.id, body.data, request.user!) }));
   });
 

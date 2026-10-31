@@ -1,4 +1,3 @@
-import type { MeetingCore } from "../ops/models.js";
 
 // ---- catálogos -----------------------------------------------------------------
 
@@ -13,52 +12,24 @@ export const COLD_LEAD_STATUSES = ["nurturing", "unqualified", "lost"] as const;
 /** Funnel de origen (§4.1). */
 export const LEAD_FUNNELS = ["lht", "upwork", "guide", "outreach", "aitp", "other"] as const;
 export const LEAD_TEMPERATURES = ["hot", "warm", "nurturing"] as const;
-export const PARTNER_KINDS = ["referral", "agency", "platform", "consultant", "other"] as const;
 export const ACTIVITY_KINDS = ["call", "email", "meeting", "follow_up", "task", "other"] as const;
 export const ACTIVITY_STATUSES = ["pending", "done", "cancelled"] as const;
 export const DEMO_STATUSES = ["scheduled", "done", "cancelled", "no_show"] as const;
 export const PROPOSAL_STATUSES = ["draft", "sent", "accepted", "rejected"] as const;
-export const SOURCE_KINDS = ["webhook", "form", "manual", "import"] as const;
-/** Campos del lead que se pueden llenar desde los datos de un source. */
-export const LEAD_FIELDS = ["company", "contactName", "email", "phone", "notes", "externalId"] as const;
 
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
 export type DemoStatus = (typeof DEMO_STATUSES)[number];
 export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
-export type SourceKind = (typeof SOURCE_KINDS)[number];
-export type LeadField = (typeof LEAD_FIELDS)[number];
 export type LeadFunnel = (typeof LEAD_FUNNELS)[number];
 export type LeadTemperature = (typeof LEAD_TEMPERATURES)[number];
-export type PartnerKind = (typeof PARTNER_KINDS)[number];
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 export type ActivityStatus = (typeof ACTIVITY_STATUSES)[number];
 
 // ---- documentos ----------------------------------------------------------------
 
-/** Origen de leads (web, ads, formularios…). Cada uno manda datos distintos: se mapean aquí. */
-export interface LeadSourceDoc {
-  _id: string;
-  name: string;
-  kind: SourceKind;
-  /** SHA-256 de la clave de ingesta; la clave solo se muestra al crearla o rotarla. */
-  ingestKeyHash: string | null;
-  /** Últimos 4 caracteres, para reconocerla. */
-  keyHint: string | null;
-  /** Campo del origen (ruta con puntos, p. ej. "contact.mail") → campo del lead. */
-  mapping: { from: string; to: LeadField }[];
-  active: boolean;
-  received: number;
-  lastReceivedAt: Date | null;
-  /** Campos vistos en el último envío: ayudan a armar el mapeo. */
-  sampleKeys: string[];
-  createdBy: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 export interface LeadDoc {
   _id: string;
-  sourceId: string | null;
+  /** Origen del lead (texto: "Manual", el formulario o la campaña de donde vino). */
   sourceName: string;
   /** Id del lead en el origen (si se mapeó): evita duplicarlo al reenviarlo. */
   externalId: string | null;
@@ -85,11 +56,9 @@ export interface LeadDoc {
   meetingAt?: string | null;
   proposalUrl?: string | null;
   lostReason: string | null;
-  customerId: string | null;
   projectId: string | null;
-  /** Contacto y Empresa del núcleo compartido (se enlazan a mano o al convertir el lead). */
+  /** Contacto del lead (se enlaza a mano). */
   contactId?: string | null;
-  companyId?: string | null;
   dealId?: string | null;
   mondayId?: string;
   createdBy: string;
@@ -107,22 +76,6 @@ export interface DemoDoc {
   status: DemoStatus;
   /** Aprendizajes de la demo (§4.1): texto ligado a la demo. */
   learnings?: { _id: string; text: string; authorName: string; createdAt: Date }[];
-  mondayId?: string;
-  createdBy: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-/** Partner que origina deals; su comisión es aparte (§5.2): comisión % × valor del deal. */
-export interface PartnerDoc {
-  _id: string;
-  name: string;
-  kind: PartnerKind;
-  /** Comisión por defecto (%) que toman sus deals nuevos. */
-  commissionPct: number;
-  contactId: string | null;
-  notes: string;
-  active: boolean;
   mondayId?: string;
   createdBy: string;
   createdAt: Date;
@@ -147,37 +100,9 @@ export interface ActivityDoc {
   updatedAt: Date;
 }
 
-/** Catálogo de productos que se cotizan (Products DB). */
-export interface ProductDoc {
-  _id: string;
-  name: string;
-  description: string;
-  /** Tarifa por hora sugerida, en centavos. */
-  defaultRateCents: number;
-  active: boolean;
-  mondayId?: string;
-  createdBy: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-/** Casos de uso (Use Cases) que respaldan las cotizaciones. */
-export interface UseCaseDoc {
-  _id: string;
-  title: string;
-  description: string;
-  industry: string | null;
-  productId: string | null;
-  mondayId?: string;
-  createdBy: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-/** Línea de una cotización: producto × horas × tarifa; el subtotal lo calcula el servidor. */
+/** Línea de una cotización: concepto × horas × tarifa; el subtotal lo calcula el servidor. */
 export interface ProposalLineDoc {
   _id: string;
-  productId: string | null;
   description: string;
   hours: number;
   rateCents: number;
@@ -198,23 +123,9 @@ export interface ProposalDoc {
   area: "commercial" | "operations";
   /** Con líneas, el monto es la suma de sus subtotales (calc). */
   lines?: ProposalLineDoc[];
-  useCaseIds?: string[];
   mondayId?: string;
   sentAt?: Date;
   decidedAt?: Date;
-  createdBy: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-/** Cliente: nace al convertir un lead ganado. */
-export interface CustomerDoc {
-  _id: string;
-  name: string;
-  contactName: string;
-  email: string | null;
-  phone: string | null;
-  leadId: string | null;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
@@ -228,10 +139,6 @@ export interface LeadUpdateDoc {
   authorUsername: string;
   authorName: string;
   createdAt: Date;
-}
-
-export interface LeadMeetingDoc extends MeetingCore {
-  leadId: string;
 }
 
 /** Bitácora comercial de un deal (§4.1: updates por lead/deal). */
@@ -266,3 +173,6 @@ export function responseDays(submittedAt: string | null | undefined, meetingAt: 
 /** Subtotal de una línea y monto de una cotización (calc). */
 export const lineSubtotalCents = (hours: number, rateCents: number) => Math.round(hours * rateCents);
 export const linesTotalCents = (lines: Pick<ProposalLineDoc, "subtotalCents">[]) => lines.reduce((sum, l) => sum + l.subtotalCents, 0);
+
+/** Nombre a mostrar cuando el lead no trae empresa. */
+export const leadTitle = (lead: Pick<LeadDoc, "company" | "contactName" | "email">) => lead.company || lead.contactName || lead.email || "Lead sin nombre";
