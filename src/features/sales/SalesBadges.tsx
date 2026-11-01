@@ -6,5 +6,5 @@ export function LeadStatusBadge({ value }: { value: LeadStatus }) {
 }
 
 export function TemperatureBadge({ value }: { value: LeadTemperature }) {
-  return <StatusBadge tone={LEAD_TEMPERATURE_TONE[value]} dot>{LEAD_TEMPERATURE_LABELS[value]}</StatusBadge>;
+  return <StatusBadge tone={LEAD_TEMPERATURE_TONE[value]}>{LEAD_TEMPERATURE_LABELS[value]}</StatusBadge>;
 }

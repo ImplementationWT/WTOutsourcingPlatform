@@ -8,6 +8,7 @@ import NewServerForm from "./NewServerForm";
 import ServerCard from "./ServerCard";
 import { useServers } from "./api";
 import { useSession } from "@/features/auth/auth";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 type Tab = "servers";
 const TABS: [Tab, string, typeof Server][] = [["servers", "Servidores", Server]];
@@ -21,10 +22,7 @@ export default function IntegrationsPage() {
 
   return (
     <section className="max-w-4xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Integraciones</h1>
-        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Conexiones de la plataforma que luego se eligen en cada proyecto.</p>
-      </div>
+      <PageHeader title="Integraciones" description="Conexiones de la plataforma que luego se eligen en cada proyecto." />
 
       <div className="flex items-center gap-1 border-b border-foreground/10" role="tablist">
         {TABS.map(([id, label, Icon]) => (

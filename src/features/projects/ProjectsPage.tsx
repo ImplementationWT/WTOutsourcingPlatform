@@ -25,6 +25,7 @@ import { accountStatusMeta, providerMeta } from "./meta";
 import StatusLabel from "./StatusLabel";
 import TopicsEditor from "./TopicsEditor";
 import { useCanOperate } from "@/features/auth/auth";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 type Platform = ReturnType<typeof usePlatform>["data"];
 type Account = LinkedAccount & { href?: string; hrefTitle?: string };
@@ -75,26 +76,24 @@ export default function ProjectsPage() {
 
   return (
     <section className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Apps y repositorios</h1>
-          <p className="mt-1 text-sm text-muted-foreground sm:text-base">
-            Repositorios de GitHub de la organización y sus cuentas ligadas.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={() => refetch()} disabled={isFetching}>
-            <RefreshCw className={cn(isFetching && "animate-spin")} />
-            Actualizar
-          </Button>
-          {canOperate && (
-            <Button render={<Link to="/projects/new" />} nativeButton={false}>
-              <Plus />
-              Nueva app
+      <PageHeader
+        title="Apps y repositorios"
+        description="Repositorios de GitHub de la organización y sus cuentas ligadas."
+        actions={
+          <>
+            <Button size="lg" variant="outline" onClick={() => refetch()} disabled={isFetching} aria-label="Actualizar">
+              <RefreshCw className={cn(isFetching && "animate-spin")} />
+              <span className="max-sm:hidden">Actualizar</span>
             </Button>
-          )}
-        </div>
-      </div>
+            {canOperate && (
+              <Button size="lg" render={<Link to="/projects/new" />} nativeButton={false}>
+                <Plus />
+                Nueva app
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {!isError && (
         <div className="space-y-3">

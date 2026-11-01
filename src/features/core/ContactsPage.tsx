@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { useSession } from "@/features/auth/auth";
 import { createContact, updateContact, useContacts, type Contact, type ContactInput } from "./api";
 import { canWriteCore } from "./hooks";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 /**
  * Alta o edición de un contacto; con `stay` el alta no navega al contacto nuevo.
@@ -128,10 +129,18 @@ export default function ContactsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Contactos</h1>
-        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Las personas de cada empresa, con sus leads, deals y proyectos.</p>
-      </div>
+      <PageHeader
+        title="Contactos"
+        description="Las personas de cada empresa, con sus leads, deals y proyectos."
+        actions={
+          canWriteCore(role) && !creating ? (
+            <Button size="lg" onClick={() => setCreating(true)}>
+              <Plus />
+              Nuevo <span className="max-sm:hidden">contacto</span>
+            </Button>
+          ) : undefined
+        }
+      />
       {creating && <ContactForm onClose={() => setCreating(false)} />}
       <DataTable
         label="Contactos"
@@ -145,14 +154,6 @@ export default function ContactsPage() {
         rowHref={(c) => `/comercial/contactos/${c.id}`}
         empty="Aún no hay contactos."
         searchPlaceholder="Buscar por nombre, correo o cargo"
-        actions={
-          canWriteCore(role) && !creating ? (
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus />
-              Nuevo contacto
-            </Button>
-          ) : undefined
-        }
       />
     </div>
   );

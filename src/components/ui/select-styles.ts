@@ -11,8 +11,8 @@ export interface SelectOption {
 /** Botón del select: mismo alto que Input y Button (tokens de control). */
 export const triggerClass = (size: "sm" | "default" = "default") =>
   cn(
-    "group/select inline-flex w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-input bg-transparent px-2.5 text-left text-sm outline-none transition-colors select-none dark:bg-input/30",
-    "hover:bg-muted/60 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 data-popup-open:border-ring",
+    "group/select inline-flex w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-input bg-card px-3 text-left text-sm outline-none transition-colors select-none dark:bg-white/[0.03]",
+    "hover:border-foreground/20 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 data-popup-open:border-ring",
     "disabled:pointer-events-none disabled:opacity-50 data-disabled:pointer-events-none data-disabled:opacity-50 aria-invalid:border-destructive",
     size === "sm" ? "h-control-sm" : "h-control",
   );

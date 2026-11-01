@@ -1,12 +1,15 @@
-import { useRef, useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { CalendarPlus, ChevronRight, CircleAlert, ExternalLink, FilePlus2, Handshake, ListPlus, Loader2, Mail, MessageSquarePlus, Phone, Plus } from "lucide-react";
+import { CalendarPlus, Check as CheckIcon, ChevronRight, ExternalLink, FilePlus2, FileText, Handshake, ListPlus, Loader2, Mail, MessageSquarePlus, MonitorPlay, MoreHorizontal, Pencil, Phone, Plus } from "lucide-react";
+import { useCrumbs } from "@/components/layout/crumbs";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DatePicker, DateTimePicker } from "@/components/ui/date-picker";
-import { CopyButton, EditableText, FieldRow } from "@/components/ui/editable";
+import { CopyButton, EditableText } from "@/components/ui/editable";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,10 +19,10 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Empty, ErrorLine, MeetingsPanel, UpdatesPanel } from "@/features/activity/ActivityPanels";
 import { activityKeys, dateText } from "@/features/activity/api";
 import { ActivitiesTable } from "@/features/commercial/ActivitiesTable";
-import { createDeal, useContactOptions } from "@/features/core/api";
+import { useContactOptions } from "@/features/core/api";
 import { DealStatusBadge } from "@/features/core/DealsTable";
 import { money, PROPOSAL_STATUS_LABELS, PROPOSAL_STATUSES, STAGE_LABELS, type Proposal, type ProposalStatus } from "@/features/ops/api";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { errorText, toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import {
@@ -31,10 +34,8 @@ import {
   LEAD_FUNNEL_LABELS,
   LEAD_FUNNELS,
   LEAD_STATUS_LABELS,
-  LEAD_STATUS_TONE,
   LEAD_STATUSES,
   LEAD_TEMPERATURE_LABELS,
-  LEAD_TEMPERATURE_TONE,
   LEAD_TEMPERATURES,
   leadBase,
   salesKeys,
@@ -51,6 +52,9 @@ import {
   type LeadStatus,
   type LeadTemperature,
 } from "./api";
+import { ResponseNotice } from "./LeadPanel";
+import { LeadStatusBadge } from "./SalesBadges";
+import { useCreateDeal } from "./use-create-deal";
 
 type TabId = "updates" | "activities" | "demos" | "proposals" | "deals" | "meetings" | "data";
 
@@ -108,17 +112,33 @@ function useSaveLead(lead: LeadDetail) {
   };
 }
 
-function Section({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
+/** Tarjeta de sección del detalle. */
+function Panel({ title, children, action, className }: { title: string; children: ReactNode; action?: ReactNode; className?: string }) {
   return (
-    <Card size="sm">
+    <Card className={className}>
       <CardHeader className="flex-row items-center justify-between">
-        <CardTitle className="text-section-title">{title}</CardTitle>
+        <CardTitle>{title}</CardTitle>
         {action}
       </CardHeader>
-      <CardContent className="space-y-1.5">{children}</CardContent>
+      <CardContent>{children}</CardContent>
     </Card>
   );
 }
+
+/** Campo con etiqueta en mayúsculas sobre el control (formularios del detalle). */
+function Field({ label, htmlFor, children, className }: { label: string; htmlFor?: string; children: ReactNode; className?: string }) {
+  return (
+    <div className={cn("min-w-0 space-y-1.5", className)}>
+      <label htmlFor={htmlFor} className="text-caps-label block">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+/** Texto editable con aspecto de campo (borde y fondo), para los formularios del detalle. */
+const boxed = "h-control border-input bg-card px-3 hover:border-foreground/20 dark:bg-white/[0.03]";
 
 /** Correo o teléfono: enlace con icono (color de texto, acento al pasar el cursor) y botón de copiar. */
 function ContactLink({ kind, value, onEdit, canWrite }: { kind: "email" | "phone"; value: string | null; onEdit: (v: string | null) => Promise<unknown>; canWrite: boolean }) {
@@ -142,85 +162,107 @@ function ContactLink({ kind, value, onEdit, canWrite }: { kind: "email" | "phone
   const Icon = kind === "email" ? Mail : Phone;
   const href = kind === "email" ? `mailto:${value}` : `tel:${value.replace(/[^\d+]/g, "")}`;
   return (
-    <div className="flex min-w-0 items-center gap-1 px-2">
-      <a href={href} className="inline-flex min-w-0 items-center gap-1.5 text-sm text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline">
+    <div className="flex min-h-control min-w-0 items-center gap-2">
+      <a href={href} className="inline-flex min-w-0 items-center gap-1.5 text-sm font-semibold text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline">
         <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         <span className="truncate">{value}</span>
       </a>
-      <CopyButton value={value} label={label} />
+      <CopyButton value={value} label={label} text />
       {canWrite && (
-        <button type="button" className="ml-auto rounded px-1.5 text-xs text-muted-foreground hover:text-foreground" onClick={() => setEditing(true)}>
-          Editar
+        <button type="button" aria-label={`Editar ${label}`} title={`Editar ${label}`} className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground pointer-coarse:size-10" onClick={() => setEditing(true)}>
+          <Pencil className="size-3.5" />
         </button>
       )}
     </div>
   );
 }
 
-/** Indicadores del lead: respuesta, demos, propuestas, actividades y deals. */
-function Kpis({ data, onOpen, onFixDates }: { data: NonNullable<ReturnType<typeof useLead>["data"]>; onOpen: (tab: TabId) => void; onFixDates: () => void }) {
-  const { lead, demos, proposals, deals, pendingActivities } = data;
-  const items: { label: string; value: ReactNode; tab?: TabId; hint?: ReactNode }[] = [
-    {
-      label: "Respuesta",
-      value: lead.responseDays === null ? "—" : `${lead.responseDays} d`,
-      hint:
-        lead.responseDays === null ? (
-          <button type="button" onClick={onFixDates} className="inline-flex items-center gap-1 text-left text-xs text-muted-foreground hover:text-primary">
-            <CircleAlert className="size-3 shrink-0" aria-hidden />
-            Agrega {lead.submittedAt ? "la fecha de reunión" : "la fecha de submission"} para calcularla
-          </button>
-        ) : (
-          <span className="text-xs text-muted-foreground">Desde la submission hasta la reunión</span>
-        ),
-    },
-    { label: "Actividades pendientes", value: pendingActivities, tab: "activities" },
-    { label: "Demos", value: demos.length, tab: "demos" },
-    { label: "Propuestas", value: proposals.length, tab: "proposals" },
-    { label: "Deals", value: deals.length, tab: "deals" },
-  ];
+type LeadData = NonNullable<ReturnType<typeof useLead>["data"]>;
+
+function Check({ ok, children, action }: { ok: boolean; children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-      {items.map((k) =>
-        k.tab ? (
-          <button
-            key={k.label}
-            type="button"
-            onClick={() => onOpen(k.tab!)}
-            className="flex min-h-20 flex-col justify-between rounded-xl border border-border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-accent/40"
-          >
-            <span className="text-field-label">{k.label}</span>
-            <span className="text-xl font-semibold tabular-nums">{k.value}</span>
-          </button>
+    <li className="flex items-center gap-2.5 text-sm">
+      <span aria-hidden className={cn("flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold", ok ? "bg-ok/15 text-ok-fg" : "bg-warn/15 text-warn-fg")}>
+        {ok ? <CheckIcon className="size-3" /> : "!"}
+      </span>
+      <span className="flex-1">{children}</span>
+      {action}
+    </li>
+  );
+}
+
+/** Siguiente paso del lead: el deal (con lo que conviene tener antes) o los deals que ya tiene. */
+function DealCard({ data, canWrite, onOpenProposals }: { data: LeadData; canWrite: boolean; onOpenProposals: () => void }) {
+  const { lead, deals, proposals } = data;
+  const { create, busy } = useCreateDeal(lead);
+  const contactReady = Boolean(lead.contactName && (lead.email || lead.phone));
+  const accepted = proposals.some((p) => p.status === "accepted");
+  return (
+    <Panel title={deals.length ? "Deals" : "Crear deal"}>
+      <div className="space-y-4">
+        {deals.length ? (
+          <ul className="-mx-1 space-y-1">
+            {deals.map((d) => (
+              <li key={d.id}>
+                <Link to={`/deals/${d.id}`} className="flex items-center gap-2 rounded-lg px-1 py-1.5 text-sm transition-colors hover:bg-accent">
+                  <span className="text-xs text-muted-foreground tabular-nums">{d.dealCode}</span>
+                  <span className="min-w-0 flex-1 truncate font-medium">{d.title}</span>
+                  <DealStatusBadge value={d.status} />
+                </Link>
+              </li>
+            ))}
+          </ul>
         ) : (
-          <div key={k.label} className="col-span-2 flex min-h-20 flex-col justify-between rounded-xl border border-border bg-card p-3 sm:col-span-1">
-            <span className="text-field-label">{k.label}</span>
-            <span className="text-xl font-semibold tabular-nums">{k.value}</span>
-            {k.hint}
-          </div>
-        ),
+          <>
+            <p className="text-sm text-muted-foreground">Crea el deal ligado a este lead y a su contacto. Horas, tarifa y probabilidad se completan después.</p>
+            <ul className="space-y-2.5">
+              <Check ok={contactReady}>Datos de contacto completos</Check>
+              <Check
+                ok={accepted}
+                action={
+                  !accepted && (
+                    <button type="button" onClick={onOpenProposals} className="text-sm font-semibold text-primary underline underline-offset-4 hover:opacity-80">
+                      Registrar
+                    </button>
+                  )
+                }
+              >
+                Propuesta aceptada
+              </Check>
+            </ul>
+          </>
+        )}
+        {canWrite && (
+          <Button variant={deals.length ? "outline" : "secondary"} className="w-full" loading={busy} onClick={() => void create()}>
+            {!busy && <Plus />}
+            {deals.length ? "Crear otro deal" : "Crear deal"}
+          </Button>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+/** Tiempo de respuesta: días entre la submission y la reunión, o qué fecha falta. */
+function ResponseCard({ lead, onFixDates }: { lead: LeadDetail; onFixDates: () => void }) {
+  return (
+    <Panel title="Respuesta">
+      {lead.responseDays === null ? (
+        <ResponseNotice lead={lead} onFix={onFixDates} />
+      ) : (
+        <div>
+          <p className="text-3xl font-bold tracking-tight tabular-nums">{lead.responseDays} d</p>
+          <p className="mt-1 text-sm text-muted-foreground">Desde la submission hasta la reunión.</p>
+        </div>
       )}
-    </div>
+    </Panel>
   );
 }
 
 /** Deals del lead, con acceso directo a crear uno nuevo. */
-function DealsTab({ data, canWrite }: { data: NonNullable<ReturnType<typeof useLead>["data"]>; canWrite: boolean }) {
-  const navigate = useNavigate();
-  const [busy, setBusy] = useState(false);
+function DealsTab({ data, canWrite }: { data: LeadData; canWrite: boolean }) {
   const { lead, deals } = data;
-  async function create() {
-    setBusy(true);
-    try {
-      const { deal } = await createDeal({ title: lead.title.length >= 3 ? lead.title : `Deal ${lead.title}`, leadId: lead.id, contactIds: lead.contactId ? [lead.contactId] : [] });
-      toast.success(`Deal ${deal.dealCode} creado`);
-      navigate(`/deals/${deal.id}`);
-    } catch (err) {
-      toast.error("No se pudo crear el deal.", { description: errorText(err, "Inténtalo de nuevo.") });
-    } finally {
-      setBusy(false);
-    }
-  }
+  const { create, busy } = useCreateDeal(lead);
   if (!deals.length) {
     return (
       <EmptyState
@@ -229,7 +271,7 @@ function DealsTab({ data, canWrite }: { data: NonNullable<ReturnType<typeof useL
         description="Crea el deal cuando haya algo concreto que vender: horas, tarifa y probabilidad se completan después."
         action={
           canWrite ? (
-            <Button onClick={() => void create()} loading={busy}>
+            <Button variant="outline" onClick={() => void create()} loading={busy}>
               {!busy && <Plus />}
               Crear deal
             </Button>
@@ -239,27 +281,19 @@ function DealsTab({ data, canWrite }: { data: NonNullable<ReturnType<typeof useL
     );
   }
   return (
-    <div className="space-y-3">
-      {canWrite && (
-        <Button size="sm" variant="outline" onClick={() => void create()} loading={busy}>
-          {!busy && <Plus />}
-          Crear deal
-        </Button>
-      )}
-      <ul className="divide-y divide-border rounded-xl border border-border">
-        {deals.map((d) => (
-          <li key={d.id}>
-            <Link to={`/deals/${d.id}`} className="flex flex-wrap items-center gap-3 p-3 transition-colors hover:bg-accent/40">
-              <span className="text-xs text-muted-foreground tabular-nums">{d.dealCode}</span>
-              <span className="min-w-0 flex-1 truncate font-medium">{d.title}</span>
-              <DealStatusBadge value={d.status} />
-              <span className="tabular-nums">{money(d.amountCents, d.currency)}</span>
-              <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
+      {deals.map((d) => (
+        <li key={d.id}>
+          <Link to={`/deals/${d.id}`} className="flex flex-wrap items-center gap-3 p-3 transition-colors hover:bg-accent/40">
+            <span className="text-xs text-muted-foreground tabular-nums">{d.dealCode}</span>
+            <span className="min-w-0 flex-1 truncate font-medium">{d.title}</span>
+            <DealStatusBadge value={d.status} />
+            <span className="tabular-nums">{money(d.amountCents, d.currency)}</span>
+            <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -311,8 +345,9 @@ function DemoLearnings({ leadId, demo, canWrite }: { leadId: string; demo: Demo;
   );
 }
 
-function DemosTab({ leadId, demos, canWrite }: { leadId: string; demos: Demo[]; canWrite: boolean }) {
+function DemosTab({ leadId, demos, canWrite, startAdding = false }: { leadId: string; demos: Demo[]; canWrite: boolean; startAdding?: boolean }) {
   const refresh = useRefresh(leadId);
+  const [adding, setAdding] = useState(startAdding);
   const [title, setTitle] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [url, setUrl] = useState("");
@@ -330,6 +365,7 @@ function DemosTab({ leadId, demos, canWrite }: { leadId: string; demos: Demo[]; 
       setTitle("");
       setScheduledAt("");
       setUrl("");
+      setAdding(false);
       await refresh();
     } catch (err) {
       setError(message(err, "No se pudo agendar la demo."));
@@ -350,7 +386,13 @@ function DemosTab({ leadId, demos, canWrite }: { leadId: string; demos: Demo[]; 
 
   return (
     <div className="space-y-4">
-      {canWrite && <form onSubmit={add} className="grid items-end gap-3 rounded-lg border border-foreground/10 p-4 sm:grid-cols-2 lg:grid-cols-[2fr_1.3fr_2fr_auto]">
+      {canWrite && demos.length > 0 && !adding && (
+        <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
+          <Plus />
+          Agregar demo
+        </Button>
+      )}
+      {canWrite && adding && <form onSubmit={add} className="grid items-end gap-3 rounded-xl border border-border bg-muted/30 p-4 sm:grid-cols-2 lg:grid-cols-[2fr_1.3fr_2fr_auto]">
         <div className="space-y-1.5">
           <Label htmlFor="demo-title">Demo</Label>
           <Input id="demo-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Demo del portal de pedidos" />
@@ -370,11 +412,25 @@ function DemosTab({ leadId, demos, canWrite }: { leadId: string; demos: Demo[]; 
       </form>}
       <ErrorLine error={error} />
       {!demos.length ? (
-        <Empty>Aún no hay demos.</Empty>
+        !adding && (
+          <EmptyState
+            icon={MonitorPlay}
+            title="Todavía no hay demos"
+            description="Registra la web demo que se le mostró a este lead para llevar el seguimiento."
+            action={
+              canWrite ? (
+                <Button variant="outline" onClick={() => setAdding(true)}>
+                  <Plus />
+                  Agregar demo
+                </Button>
+              ) : undefined
+            }
+          />
+        )
       ) : (
         <ul className="space-y-2">
           {demos.map((d) => (
-            <li key={d.id} className="grid items-center gap-3 rounded-lg border border-foreground/10 p-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_10rem]">
+            <li key={d.id} className="grid items-center gap-3 rounded-xl border border-border p-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_10rem]">
               <div className="min-w-0">
                 <p className="truncate font-medium">{d.title}</p>
                 {d.url && (
@@ -403,8 +459,9 @@ function DemosTab({ leadId, demos, canWrite }: { leadId: string; demos: Demo[]; 
   );
 }
 
-function ProposalsTab({ leadId, proposals, canWrite }: { leadId: string; proposals: Proposal[]; canWrite: boolean }) {
+function ProposalsTab({ leadId, proposals, canWrite, startAdding = false }: { leadId: string; proposals: Proposal[]; canWrite: boolean; startAdding?: boolean }) {
   const refresh = useRefresh(leadId);
+  const [adding, setAdding] = useState(startAdding);
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const [amount, setAmount] = useState("");
@@ -422,6 +479,7 @@ function ProposalsTab({ leadId, proposals, canWrite }: { leadId: string; proposa
       setTitle("");
       setUrl("");
       setAmount("");
+      setAdding(false);
       await refresh();
     } catch (err) {
       setError(message(err, "No se pudo crear la propuesta."));
@@ -442,10 +500,13 @@ function ProposalsTab({ leadId, proposals, canWrite }: { leadId: string; proposa
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        La web de la propuesta que se le envía al prospecto. Al marcarla como enviada, el lead pasa a «Propuesta enviada». En su detalle se cargan las líneas (producto, horas y tarifa).
-      </p>
-      {canWrite && <form onSubmit={add} className="grid items-end gap-3 rounded-lg border border-foreground/10 p-4 sm:grid-cols-2 lg:grid-cols-[1.5fr_2fr_0.8fr_auto]">
+      {canWrite && proposals.length > 0 && !adding && (
+        <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
+          <Plus />
+          Agregar propuesta
+        </Button>
+      )}
+      {canWrite && adding && <form onSubmit={add} className="grid items-end gap-3 rounded-xl border border-border bg-muted/30 p-4 sm:grid-cols-2 lg:grid-cols-[1.5fr_2fr_0.8fr_auto]">
         <div className="space-y-1.5">
           <Label htmlFor="lp-title">Propuesta</Label>
           <Input id="lp-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Propuesta Manpersa" />
@@ -465,11 +526,25 @@ function ProposalsTab({ leadId, proposals, canWrite }: { leadId: string; proposa
       </form>}
       <ErrorLine error={error} />
       {!proposals.length ? (
-        <Empty>Aún no hay propuestas.</Empty>
+        !adding && (
+          <EmptyState
+            icon={FileText}
+            title="Todavía no hay propuestas"
+            description="La web de la propuesta que se le envía al prospecto. Al marcarla como enviada, el lead pasa a «Propuesta enviada»."
+            action={
+              canWrite ? (
+                <Button variant="outline" onClick={() => setAdding(true)}>
+                  <Plus />
+                  Agregar propuesta
+                </Button>
+              ) : undefined
+            }
+          />
+        )
       ) : (
         <ul className="space-y-2">
           {proposals.map((p) => (
-            <li key={p.id} className="grid items-center gap-3 rounded-lg border border-foreground/10 p-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_10rem]">
+            <li key={p.id} className="grid items-center gap-3 rounded-xl border border-border p-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_10rem]">
               <span className="flex min-w-0 flex-col">
                 <Link className="truncate font-medium text-primary underline-offset-4 hover:underline" to={`/comercial/propuestas/${p.id}`}>
                   {p.title}
@@ -540,40 +615,56 @@ function SourceDataTab({ lead }: { lead: LeadDetail }) {
  */
 export default function LeadDetailPage() {
   const { id = "" } = useParams();
+  const { hash } = useLocation();
   const { data, isLoading, error } = useLead(id);
   const refresh = useRefresh(id);
-  const [tab, setTab] = useState<TabId>("updates");
+  const [tab, setTab] = useState<TabId>("demos");
+  // Al abrir un atajo («Demo», «Propuesta») la pestaña empieza con el formulario a la vista.
+  const [adding, setAdding] = useState<{ tab: TabId; n: number } | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
-  const datesRef = useRef<HTMLDivElement>(null);
   const canWrite = data?.canWrite ?? false;
   const owners = useOwners(canWrite).data ?? [];
   const contacts = useContactOptions(canWrite).data ?? [];
   const save = useSaveLead(data?.lead ?? ({} as LeadDetail));
+  const { create: createDealNow, busy: creatingDeal } = useCreateDeal(data?.lead ?? null);
+  useCrumbs([data && { label: data.lead.title }]);
 
-  const open = (next: TabId) => {
+  const open = (next: TabId, add = false) => {
     setTab(next);
+    if (add) setAdding((a) => ({ tab: next, n: (a?.n ?? 0) + 1 }));
     tabsRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   };
   const persist = (patch: Partial<LeadInput>, what?: string) =>
     save(patch, what).catch((err: unknown) => toast.error("No se pudo guardar el cambio.", { description: errorText(err, "Inténtalo de nuevo.") }));
+  const focusDate = (which: "submission" | "reunion") => {
+    const el = document.getElementById(`lead-${which}`);
+    el?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    el?.focus();
+  };
+
+  // Desde la vista rápida («Ir al campo»): la fecha que falta queda enfocada.
+  const ready = Boolean(data);
+  useEffect(() => {
+    if (ready && (hash === "#reunion" || hash === "#submission")) focusDate(hash.slice(1) as "submission" | "reunion");
+  }, [ready, hash]);
 
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-9 w-64" />
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <Skeleton className="h-80 w-full rounded-2xl" />
+          <Skeleton className="h-48 w-full rounded-2xl" />
+        </div>
       </div>
     );
   }
   if (error || !data) {
     return (
       <div className="space-y-4">
-        <nav aria-label="Migas de pan" className="text-sm text-muted-foreground">
-          <Link to="/comercial" className="hover:text-foreground">
-            Leads
-          </Link>
-        </nav>
+        <Link to="/comercial" className="text-sm text-muted-foreground hover:text-foreground">
+          ← Leads
+        </Link>
         <p role="alert" className="text-sm text-destructive">
           {error instanceof Error ? error.message : "Lead no encontrado."}
         </p>
@@ -585,200 +676,205 @@ export default function LeadDetailPage() {
   const people = owners.map((o) => ({ value: o.id, label: o.name }));
   const hasSourceData = lead.fields.length > 0 || Boolean(lead.rawJson);
   const tabs: { id: TabId; label: string; count?: number }[] = [
-    { id: "updates", label: "Actividad" },
-    { id: "activities", label: "Pendientes", count: data.pendingActivities },
     { id: "demos", label: "Demos", count: demos.length },
     { id: "proposals", label: "Propuestas", count: proposals.length },
-    { id: "deals", label: "Deals", count: deals.length },
+    { id: "activities", label: "Actividades", count: data.pendingActivities },
     { id: "meetings", label: "Reuniones" },
-    ...(hasSourceData ? [{ id: "data" as const, label: "Datos de origen" }] : []),
+    { id: "updates", label: "Updates" },
+    { id: "deals", label: "Deals", count: deals.length },
+    ...(hasSourceData ? [{ id: "data" as const, label: "Datos del source" }] : []),
   ];
+  const startAdding = (t: TabId) => adding?.tab === t;
 
   return (
     <div className="space-y-6">
-      <nav aria-label="Migas de pan" className="flex items-center gap-1 text-sm text-muted-foreground">
-        <Link to="/comercial" className="hover:text-foreground">
-          Leads
-        </Link>
-        <ChevronRight className="size-3.5" aria-hidden />
-        <span className="truncate text-foreground">{lead.title}</span>
-      </nav>
+      <PageHeader
+        stackOnMobile
+        title={lead.title}
+        badges={
+          <>
+            <LeadStatusBadge value={lead.status} />
+            <StatusBadge tone="neutral">{lead.source}</StatusBadge>
+          </>
+        }
+        description={[lead.contactName, `creado ${formatDateTime(lead.createdAt)}`].filter(Boolean).join(" · ")}
+        actions={
+          canWrite && (
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger aria-label="Más acciones" className="inline-flex size-10 items-center justify-center rounded-xl border border-border bg-card transition-colors hover:bg-accent data-[popup-open]:bg-accent dark:bg-white/[0.03]">
+                  <MoreHorizontal className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" sideOffset={6} className="w-52">
+                  <DropdownMenuItem onClick={() => open("updates")}>
+                    <MessageSquarePlus />
+                    Nota
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => open("activities")}>
+                    <ListPlus />
+                    Actividad
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => open("demos", true)}>
+                    <CalendarPlus />
+                    Demo
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => open("proposals", true)}>
+                    <FilePlus2 />
+                    Propuesta
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button size="lg" loading={creatingDeal} onClick={() => void createDealNow()}>
+                {!creatingDeal && <Handshake />}
+                Crear deal
+              </Button>
+            </>
+          )
+        }
+      />
 
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 space-y-2">
-          <h1 className="text-page-title break-words">{lead.title}</h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <Select
-              label="Estado del lead"
-              value={lead.status}
-              options={LEAD_STATUSES.map((st) => ({ value: st, label: LEAD_STATUS_LABELS[st] }))}
-              disabled={!canWrite}
-              size="sm"
-              className="w-auto border-transparent bg-transparent px-1 hover:border-input dark:bg-transparent"
-              renderValue={() => <StatusBadge tone={LEAD_STATUS_TONE[lead.status]}>{LEAD_STATUS_LABELS[lead.status]}</StatusBadge>}
-              onValueChange={(v) => v && v !== lead.status && void persist({ status: v as LeadStatus }, `Estado: ${LEAD_STATUS_LABELS[v as LeadStatus]}`)}
-            />
-            <Select
-              label="Temperatura"
-              value={lead.temperature}
-              emptyLabel="Sin temperatura"
-              options={LEAD_TEMPERATURES.map((t) => ({ value: t, label: LEAD_TEMPERATURE_LABELS[t] }))}
-              disabled={!canWrite}
-              size="sm"
-              className="w-auto border-transparent bg-transparent px-1 hover:border-input dark:bg-transparent"
-              renderValue={() =>
-                lead.temperature ? (
-                  <StatusBadge tone={LEAD_TEMPERATURE_TONE[lead.temperature]} dot>
-                    {LEAD_TEMPERATURE_LABELS[lead.temperature]}
-                  </StatusBadge>
-                ) : (
-                  <span className="text-xs text-muted-foreground">Sin temperatura</span>
-                )
-              }
-              onValueChange={(v) => void persist({ temperature: v as LeadTemperature | null }, "Temperatura actualizada")}
-            />
-            <StatusBadge tone="outline">{lead.source}</StatusBadge>
-            <span className="text-xs text-muted-foreground">Creado {dateText(lead.createdAt)}</span>
-          </div>
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="min-w-0 space-y-5">
+          <Panel title="Datos comerciales">
+            <div className="grid gap-x-4 gap-y-4 sm:grid-cols-2">
+              <Field label="Estado">
+                <Select
+                  label="Estado del lead"
+                  value={lead.status}
+                  options={LEAD_STATUSES.map((st) => ({ value: st, label: LEAD_STATUS_LABELS[st] }))}
+                  disabled={!canWrite}
+                  onValueChange={(v) => v && v !== lead.status && void persist({ status: v as LeadStatus }, `Estado: ${LEAD_STATUS_LABELS[v as LeadStatus]}`)}
+                />
+              </Field>
+              <Field label="Temperatura">
+                <Select
+                  label="Temperatura"
+                  value={lead.temperature}
+                  emptyLabel="Sin definir"
+                  options={LEAD_TEMPERATURES.map((t) => ({ value: t, label: LEAD_TEMPERATURE_LABELS[t] }))}
+                  disabled={!canWrite}
+                  onValueChange={(v) => void persist({ temperature: v as LeadTemperature | null }, v ? `Temperatura cambiada a ${LEAD_TEMPERATURE_LABELS[v as LeadTemperature]}` : "Temperatura borrada")}
+                />
+              </Field>
+              <Field label="Funnel">
+                <Select
+                  label="Funnel"
+                  value={lead.funnel}
+                  emptyLabel="Sin definir"
+                  options={LEAD_FUNNELS.map((f) => ({ value: f, label: LEAD_FUNNEL_LABELS[f] }))}
+                  disabled={!canWrite}
+                  onValueChange={(v) => void persist({ funnel: v as LeadFunnel | null }, "Funnel actualizado")}
+                />
+              </Field>
+              <Field label="Source" htmlFor="lead-source">
+                <EditableText id="lead-source" label="Origen" className={boxed} value={lead.source} minLength={2} disabled={!canWrite} onSave={(v) => persist({ source: v ?? "Manual" }, "Origen guardado")} />
+              </Field>
+              <Field label="Setter">
+                <Select label="Setter" value={lead.setter?.id ?? null} emptyLabel="Sin asignar" options={people} disabled={!canWrite} placeholder={lead.setter?.name ?? "Sin asignar"} onValueChange={(v) => void persist({ setterUserId: v }, "Setter actualizado")} />
+              </Field>
+              <Field label="Closer">
+                <Select label="Closer" value={lead.closer?.id ?? null} emptyLabel="Sin asignar" options={people} disabled={!canWrite} placeholder={lead.closer?.name ?? "Sin asignar"} onValueChange={(v) => void persist({ closerUserId: v }, "Closer actualizado")} />
+              </Field>
+              <Field label="Submission" htmlFor="lead-submission">
+                <DatePicker id="lead-submission" label="Fecha de submission" disabled={!canWrite} value={lead.submittedAt} onValueChange={(v) => void persist({ submittedAt: v }, v ? `Submission: ${formatDate(v)}` : "Submission borrada")} />
+              </Field>
+              <Field label="Reunión" htmlFor="lead-reunion">
+                <DatePicker id="lead-reunion" label="Fecha de reunión" placeholder="Elegir fecha" disabled={!canWrite} value={lead.meetingAt} onValueChange={(v) => void persist({ meetingAt: v }, v ? `Reunión: ${formatDate(v)}` : "Reunión borrada")} />
+              </Field>
+              <Field label="Propuesta (web)" htmlFor="lead-proposal-url">
+                <EditableText id="lead-proposal-url" label="Enlace de la propuesta" className={boxed} type="url" value={lead.proposalUrl} placeholder="https://…" disabled={!canWrite} onSave={(v) => persist({ proposalUrl: v }, "Enlace guardado")} />
+              </Field>
+              {project ? (
+                <Field label="Proyecto">
+                  <Link to={`/operativa/${project.id}`} className="flex h-control items-center text-sm font-medium text-primary hover:underline">
+                    {project.name} ({STAGE_LABELS[project.stage]})
+                  </Link>
+                </Field>
+              ) : (
+                <div className="max-sm:hidden" />
+              )}
+              {lead.status === "lost" && (
+                <Field label="Motivo de pérdida" htmlFor="lead-lost" className="sm:col-span-2">
+                  <EditableText id="lead-lost" label="Motivo de la pérdida" className={boxed} value={lead.lostReason} placeholder="Sin presupuesto, eligió otra opción…" disabled={!canWrite} onSave={(v) => persist({ lostReason: v }, "Motivo guardado")} />
+                </Field>
+              )}
+            </div>
+          </Panel>
+
+          <Panel title="Contacto">
+            <div className="grid gap-x-4 gap-y-4 sm:grid-cols-2">
+              <Field label="Correo">
+                <ContactLink kind="email" value={lead.email} canWrite={canWrite} onEdit={(v) => persist({ email: v }, "Correo guardado")} />
+              </Field>
+              <Field label="Teléfono">
+                <ContactLink kind="phone" value={lead.phone} canWrite={canWrite} onEdit={(v) => persist({ phone: v }, "Teléfono guardado")} />
+              </Field>
+              <Field label="Empresa" htmlFor="lead-company">
+                <EditableText id="lead-company" label="Empresa" className="-ml-2 font-semibold" value={lead.company || null} placeholder="Agregar empresa" disabled={!canWrite} onSave={(v) => persist({ company: v ?? "" }, "Empresa guardada")} />
+              </Field>
+              <Field label="Contacto" htmlFor="lead-contact">
+                <div className="flex min-w-0 items-center gap-2">
+                  <EditableText id="lead-contact" label="Persona de contacto" className="-ml-2 font-semibold" value={lead.contactName || null} placeholder="Agregar nombre" disabled={!canWrite} onSave={(v) => persist({ contactName: v ?? "" }, "Contacto guardado")} />
+                  {lead.contactRef ? (
+                    <Link to={`/comercial/contactos/${lead.contactRef.id}`} className="shrink-0 text-sm font-semibold text-primary underline underline-offset-4 hover:opacity-80">
+                      Ver ficha
+                    </Link>
+                  ) : null}
+                </div>
+              </Field>
+              {canWrite && (
+                <Field label="Contacto enlazado" className="sm:col-span-2">
+                  <Select
+                    label="Contacto enlazado"
+                    value={lead.contactRef?.id ?? null}
+                    emptyLabel="Sin enlazar"
+                    searchable
+                    options={contacts.map((c) => ({ value: c.id, label: c.name, description: c.company ?? undefined }))}
+                    onValueChange={(v) => void persist({ contactId: v }, v ? "Contacto enlazado" : "Contacto desenlazado")}
+                  />
+                </Field>
+              )}
+            </div>
+          </Panel>
+
+          <Card ref={tabsRef} className="scroll-mt-20 gap-0 pt-2 pb-0">
+            <div role="tablist" aria-label="Secciones del lead" className="flex gap-1 overflow-x-auto border-b border-border px-3">
+              {tabs.map((t) => (
+                <button
+                  key={t.id}
+                  role="tab"
+                  type="button"
+                  aria-selected={tab === t.id}
+                  onClick={() => setTab(t.id)}
+                  className={cn(
+                    "-mb-px inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-3 text-sm font-semibold whitespace-nowrap transition-colors",
+                    tab === t.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {t.label}
+                  {t.count !== undefined && <span className="text-xs font-medium text-muted-foreground tabular-nums">{t.count}</span>}
+                </button>
+              ))}
+            </div>
+            <div role="tabpanel" className="min-h-64 p-5">
+              {tab === "updates" && <UpdatesPanel base={leadBase(lead.id)} canWork={canWrite} onPosted={refresh} />}
+              {tab === "activities" && <ActivitiesTable leadId={lead.id} prefix="a." />}
+              {tab === "demos" && <DemosTab key={`demos-${adding?.n ?? 0}`} leadId={lead.id} demos={demos} canWrite={canWrite} startAdding={startAdding("demos")} />}
+              {tab === "proposals" && <ProposalsTab key={`proposals-${adding?.n ?? 0}`} leadId={lead.id} proposals={proposals} canWrite={canWrite} startAdding={startAdding("proposals")} />}
+              {tab === "deals" && <DealsTab data={data} canWrite={canWrite} />}
+              {tab === "meetings" && <MeetingsPanel base={leadBase(lead.id)} canWork={canWrite} deals={deals.map((d) => ({ id: d.id, dealCode: d.dealCode, title: d.title }))} />}
+              {tab === "data" && <SourceDataTab lead={lead} />}
+            </div>
+          </Card>
         </div>
-        {canWrite && (
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => open("updates")}>
-              <MessageSquarePlus />
-              Nota
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => open("activities")}>
-              <ListPlus />
-              Actividad
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => open("demos")}>
-              <CalendarPlus />
-              Demo
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => open("proposals")}>
-              <FilePlus2 />
-              Propuesta
-            </Button>
-            <Button size="sm" onClick={() => open("deals")}>
-              <Handshake />
-              Deal
-            </Button>
-          </div>
-        )}
-      </header>
 
-      <Kpis data={data} onOpen={open} onFixDates={() => datesRef.current?.querySelector<HTMLButtonElement>("button")?.focus()} />
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Section title="Contacto">
-          <FieldRow label="Empresa">
-            <EditableText label="Empresa" value={lead.company || null} placeholder="Agregar empresa" disabled={!canWrite} onSave={(v) => persist({ company: v ?? "" }, "Empresa guardada")} />
-          </FieldRow>
-          <FieldRow label="Persona">
-            <EditableText label="Persona de contacto" value={lead.contactName || null} placeholder="Agregar nombre" disabled={!canWrite} onSave={(v) => persist({ contactName: v ?? "" }, "Contacto guardado")} />
-          </FieldRow>
-          <FieldRow label="Correo">
-            <ContactLink kind="email" value={lead.email} canWrite={canWrite} onEdit={(v) => persist({ email: v }, "Correo guardado")} />
-          </FieldRow>
-          <FieldRow label="Teléfono">
-            <ContactLink kind="phone" value={lead.phone} canWrite={canWrite} onEdit={(v) => persist({ phone: v }, "Teléfono guardado")} />
-          </FieldRow>
-          <FieldRow label="Contacto enlazado" hint={lead.contactRef ? <Link to={`/comercial/contactos/${lead.contactRef.id}`} className="text-xs text-primary hover:underline">Ver contacto</Link> : undefined}>
-            {canWrite ? (
-              <Select
-                label="Contacto enlazado"
-                value={lead.contactRef?.id ?? null}
-                emptyLabel="Sin enlazar"
-                searchable
-                options={contacts.map((c) => ({ value: c.id, label: c.name, description: c.company ?? undefined }))}
-                onValueChange={(v) => void persist({ contactId: v }, v ? "Contacto enlazado" : "Contacto desenlazado")}
-              />
-            ) : (
-              <span className="px-2 text-sm">{lead.contactRef?.name ?? "—"}</span>
-            )}
-          </FieldRow>
-        </Section>
-
-        <Section title="Comercial">
-          <FieldRow label="Setter">
-            <Select label="Setter" value={lead.setter?.id ?? null} emptyLabel="Sin asignar" options={people} disabled={!canWrite} placeholder={lead.setter?.name ?? "Sin asignar"} onValueChange={(v) => void persist({ setterUserId: v }, "Setter actualizado")} />
-          </FieldRow>
-          <FieldRow label="Closer">
-            <Select label="Closer" value={lead.closer?.id ?? null} emptyLabel="Sin asignar" options={people} disabled={!canWrite} placeholder={lead.closer?.name ?? "Sin asignar"} onValueChange={(v) => void persist({ closerUserId: v }, "Closer actualizado")} />
-          </FieldRow>
-          <FieldRow label="Funnel">
-            <Select
-              label="Funnel"
-              value={lead.funnel}
-              emptyLabel="Sin definir"
-              options={LEAD_FUNNELS.map((f) => ({ value: f, label: LEAD_FUNNEL_LABELS[f] }))}
-              disabled={!canWrite}
-              onValueChange={(v) => void persist({ funnel: v as LeadFunnel | null }, "Funnel actualizado")}
-            />
-          </FieldRow>
-          <FieldRow label="Origen">
-            <EditableText label="Origen" value={lead.source} minLength={2} disabled={!canWrite} onSave={(v) => persist({ source: v ?? "Manual" }, "Origen guardado")} />
-          </FieldRow>
-          <FieldRow label="Propuesta (web)">
-            <EditableText label="Enlace de la propuesta" type="url" value={lead.proposalUrl} placeholder="https://…" disabled={!canWrite} onSave={(v) => persist({ proposalUrl: v }, "Enlace guardado")} />
-          </FieldRow>
-          {lead.status === "lost" && (
-            <FieldRow label="Motivo de pérdida">
-              <EditableText label="Motivo de la pérdida" value={lead.lostReason} placeholder="Sin presupuesto, eligió otra opción…" disabled={!canWrite} onSave={(v) => persist({ lostReason: v }, "Motivo guardado")} />
-            </FieldRow>
-          )}
-          {project && (
-            <FieldRow label="Proyecto">
-              <Link to={`/operativa/${project.id}`} className="px-2 text-sm text-primary hover:underline">
-                {project.name} ({STAGE_LABELS[project.stage]})
-              </Link>
-            </FieldRow>
-          )}
-        </Section>
-
-        <Section title="Fechas">
-          <div ref={datesRef} className="space-y-1.5">
-            <FieldRow label="Submission">
-              <DatePicker label="Fecha de submission" disabled={!canWrite} value={lead.submittedAt} onValueChange={(v) => void persist({ submittedAt: v }, v ? `Submission: ${formatDate(v)}` : "Submission borrada")} />
-            </FieldRow>
-            <FieldRow label="Reunión">
-              <DatePicker label="Fecha de reunión" disabled={!canWrite} value={lead.meetingAt} onValueChange={(v) => void persist({ meetingAt: v }, v ? `Reunión: ${formatDate(v)}` : "Reunión borrada")} />
-            </FieldRow>
-          </div>
-        </Section>
-
-        <Section title="Notas">
-          <EditableText label="Notas del lead" multiline value={lead.notes || null} placeholder="Qué necesita, contexto, próximos pasos…" disabled={!canWrite} onSave={(v) => persist({ notes: v ?? "" }, "Notas guardadas")} />
-        </Section>
-      </div>
-
-      <div ref={tabsRef} role="tablist" aria-label="Secciones del lead" className="-mx-4 flex scroll-mt-4 gap-1 overflow-x-auto border-b border-foreground/10 px-4 sm:mx-0 sm:px-0">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            type="button"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              "-mb-px inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm whitespace-nowrap transition-colors",
-              tab === t.id ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {t.label}
-            {t.count !== undefined && <span className="rounded-full bg-foreground/10 px-1.5 text-[11px] tabular-nums">{t.count}</span>}
-          </button>
-        ))}
-      </div>
-
-      <div role="tabpanel" className="min-h-64">
-        {tab === "updates" && <UpdatesPanel base={leadBase(lead.id)} canWork={canWrite} onPosted={refresh} />}
-        {tab === "activities" && <ActivitiesTable leadId={lead.id} prefix="a." />}
-        {tab === "demos" && <DemosTab leadId={lead.id} demos={demos} canWrite={canWrite} />}
-        {tab === "proposals" && <ProposalsTab leadId={lead.id} proposals={proposals} canWrite={canWrite} />}
-        {tab === "deals" && <DealsTab data={data} canWrite={canWrite} />}
-        {tab === "meetings" && <MeetingsPanel base={leadBase(lead.id)} canWork={canWrite} deals={deals.map((d) => ({ id: d.id, dealCode: d.dealCode, title: d.title }))} />}
-        {tab === "data" && <SourceDataTab lead={lead} />}
+        <aside className="space-y-5" aria-label="Siguiente paso">
+          <DealCard data={data} canWrite={canWrite} onOpenProposals={() => open("proposals", canWrite)} />
+          <ResponseCard lead={lead} onFixDates={() => focusDate(lead.submittedAt ? "reunion" : "submission")} />
+          <Panel title="Notas">
+            <EditableText label="Notas del lead" multiline className="-mx-2 w-[calc(100%+1rem)]" value={lead.notes || null} placeholder="Qué necesita, contexto, próximos pasos…" disabled={!canWrite} onSave={(v) => persist({ notes: v ?? "" }, "Notas guardadas")} />
+          </Panel>
+        </aside>
       </div>
     </div>
   );

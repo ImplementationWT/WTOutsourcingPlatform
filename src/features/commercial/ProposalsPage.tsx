@@ -4,6 +4,7 @@ import { useTableState } from "@/components/data-table/table-state";
 import { dateText } from "@/features/activity/api";
 import { PROPOSAL_STATUS_LABELS, PROPOSAL_STATUSES } from "@/features/ops/api";
 import { PROPOSAL_FILTERS, useProposals, type ProposalRow } from "./api";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 /** Cotizaciones de Comercial y de Operativa, con sus montos sumados al pie. Se crean desde el lead, el deal o el proyecto. */
 export default function ProposalsPage() {
@@ -33,10 +34,7 @@ export default function ProposalsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Propuestas</h1>
-        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Cotizaciones de Comercial y de Operativa. Con líneas, el monto es la suma de producto × horas × tarifa.</p>
-      </div>
+      <PageHeader title="Propuestas" description="Cotizaciones de Comercial y de Operativa. Con líneas, el monto es la suma de producto × horas × tarifa." />
       <DataTable
         label="Propuestas"
         columns={columns}

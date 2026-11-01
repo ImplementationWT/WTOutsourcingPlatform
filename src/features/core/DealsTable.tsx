@@ -267,9 +267,9 @@ export function DealsTable({ projectId, prefix = "" }: { projectId?: string; pre
         grouping={{ label: "Agrupar por estado", value: (d) => d.status, order: DEAL_STATUSES, labels: DEAL_STATUS_LABELS }}
         actions={
           data?.canCreate && !creating ? (
-            <Button size="sm" onClick={() => setCreating(true)}>
+            <Button size="lg" className="h-11" onClick={() => setCreating(true)}>
               <Plus />
-              Nuevo deal
+              <span className="max-sm:sr-only">Nuevo deal</span>
             </Button>
           ) : undefined
         }

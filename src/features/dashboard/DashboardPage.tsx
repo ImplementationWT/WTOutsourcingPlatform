@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import type { DashboardData, DashboardProject } from "@/types/project";
 import { useCanOperate } from "@/features/auth/auth";
 import CostsSection from "@/features/costs/CostsSection";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 const relative = new Intl.RelativeTimeFormat("es", { numeric: "auto" });
 
@@ -81,18 +82,16 @@ export default function DashboardPage() {
 
   return (
     <section className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Dashboard</h1>
-          <p className="mt-1 text-sm text-muted-foreground sm:text-base">
-            Estado real de los proyectos (aprovisionamiento, salud de cada app y actividad reciente) y costos del AI Developer.
-          </p>
-        </div>
-        <Button variant="ghost" onClick={() => refetch()} disabled={isFetching}>
-          <RefreshCw className={cn(isFetching && "animate-spin")} />
-          Actualizar
-        </Button>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        description="Estado real de los proyectos (aprovisionamiento, salud de cada app y actividad reciente) y costos del AI Developer."
+        actions={
+          <Button size="lg" variant="outline" onClick={() => refetch()} disabled={isFetching} aria-label="Actualizar">
+            <RefreshCw className={cn(isFetching && "animate-spin")} />
+            <span className="max-sm:hidden">Actualizar</span>
+          </Button>
+        }
+      />
 
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

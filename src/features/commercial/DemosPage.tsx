@@ -4,6 +4,7 @@ import { useTableState } from "@/components/data-table/table-state";
 import { dateText } from "@/features/activity/api";
 import { DEMO_STATUS_LABELS, DEMO_STATUSES } from "@/features/sales/api";
 import { DEMO_FILTERS, useDemos, type DemoRow } from "./api";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 /** Demos de todos los leads, con sus aprendizajes (se agendan desde el lead). */
 export default function DemosPage() {
@@ -40,10 +41,7 @@ export default function DemosPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Demos</h1>
-        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Las demos de cada lead y lo que se aprendió en ellas. Se agendan desde el lead.</p>
-      </div>
+      <PageHeader title="Demos" description="Las demos de cada lead y lo que se aprendió en ellas. Se agendan desde el lead." />
       <DataTable
         label="Demos"
         columns={columns}

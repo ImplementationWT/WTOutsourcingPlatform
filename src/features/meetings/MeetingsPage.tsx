@@ -29,6 +29,7 @@ import {
 } from "@/features/activity/api";
 import { useSession } from "@/features/auth/auth";
 import { errorText, toast } from "@/lib/toast";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 /** Sin equipo: la clave del grupo en los contadores del servidor. */
 const NO_TEAM = "";
@@ -301,12 +302,7 @@ export default function MeetingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-page-title">Meetings</h1>
-        <p className="mt-1 text-sm text-muted-foreground sm:text-base">
-          Las reuniones de Read.ai de todos los equipos. El equipo sale del correo del Team Leader que participó; el engagement lo evalúa Claude.
-        </p>
-      </div>
+      <PageHeader title="Meetings" description="Las reuniones de Read.ai de todos los equipos. El equipo sale del correo del Team Leader que participó; el engagement lo evalúa Claude." />
       <DataTable
         label="Meetings"
         columns={columns}

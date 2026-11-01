@@ -40,6 +40,7 @@ import {
 } from "./api";
 import { DealStatusBadge } from "./DealsTable";
 import { dealLocked, useDealRefresh, useDealStatusOptions } from "./hooks";
+import { useCrumbs } from "@/components/layout/crumbs";
 
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
@@ -339,8 +340,9 @@ export default function DealDetailPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const { data, isLoading, error } = useDeal(id);
+  useCrumbs([data && { label: data.deal.dealCode }]);
   const back = (
-    <button type="button" onClick={() => navigate(-1)} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+    <button type="button" onClick={() => navigate(-1)} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground lg:hidden">
       <ArrowLeft className="size-4" /> Volver
     </button>
   );
@@ -369,9 +371,9 @@ export default function DealDetailPage() {
     <div className="space-y-6">
       <div>
         {back}
-        <div className="mt-2 flex flex-wrap items-center gap-3">
+        <div className="mt-2 flex flex-wrap items-center gap-3 lg:mt-0">
           <span className="rounded-md border border-foreground/15 px-2 py-0.5 text-sm tabular-nums text-muted-foreground">{deal.dealCode}</span>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{deal.title}</h1>
+          <h1 className="text-page-title">{deal.title}</h1>
           <DealStatusBadge value={deal.status} />
         </div>
         <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">

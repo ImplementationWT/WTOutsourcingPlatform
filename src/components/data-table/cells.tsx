@@ -76,7 +76,7 @@ export function InlineSelect<V extends string>({
         emptyLabel={allowEmpty}
         disabled={busy}
         size="sm"
-        className="w-auto max-w-56 border-transparent bg-transparent px-1.5 hover:border-input dark:bg-transparent"
+        className="-ml-1.5 w-auto max-w-56 gap-1 border-transparent bg-transparent px-1.5 shadow-none hover:border-input dark:bg-transparent [&_svg]:opacity-0 hover:[&_svg]:opacity-100 focus-visible:[&_svg]:opacity-100 data-popup-open:[&_svg]:opacity-100"
         renderValue={() => display ?? text(value)}
         onValueChange={async (next) => {
           const before = value;

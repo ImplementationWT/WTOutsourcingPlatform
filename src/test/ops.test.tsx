@@ -81,9 +81,9 @@ describe("menú por áreas", () => {
       .queryAllByText(/^(Comercial|Operativa|Financiera|Infraestructura)$/)
       .map((n) => n.textContent);
 
-  it("CEO/CCO ve las cuatro áreas", () => {
+  it("CEO/CCO ve las cuatro áreas (Financiera, que aún no existe, al pie con «Pronto»)", () => {
     renderAt("/operativa", BOSS, (async () => json(page([]))) as typeof fetch);
-    expect(sections()).toEqual(["Comercial", "Operativa", "Financiera", "Infraestructura"]);
+    expect(sections()).toEqual(["Comercial", "Operativa", "Infraestructura", "Financiera"]);
   });
 
   it("Comercial: Comercial y Operativa, sin Infraestructura", () => {
@@ -146,6 +146,7 @@ describe("tabla de proyectos (DataTable)", () => {
       return json(page([], { total: 80 }));
     }) as typeof fetch);
     await waitFor(() => expect(urls.some((u) => u.includes("page=3"))).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: /^Filtros/ }));
     await pick("Filtrar por health", "At Risk");
     await waitFor(() => expect(urls.some((u) => u.includes("health=at_risk") && u.includes("page=1"))).toBe(true));
     fireEvent.change(screen.getByLabelText("Buscar"), { target: { value: "manpersa" } });

@@ -32,6 +32,7 @@ import {
   type ProjectInput,
 } from "./api";
 import { HealthBadge, PriorityBadge, SentimentBar, StageBadge } from "./OpsBadges";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 function NewProjectForm({ onClose }: { onClose: () => void }) {
   const session = useSession().data;
@@ -226,10 +227,18 @@ export default function OpsProjectsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Proyectos del cliente</h1>
-        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Etapa, health, horas vendidas y facturables, y avance de cada proyecto.</p>
-      </div>
+      <PageHeader
+        title="Proyectos del cliente"
+        description="Etapa, health, horas vendidas y facturables, y avance de cada proyecto."
+        actions={
+          data?.canCreate && !creating ? (
+            <Button size="lg" onClick={() => setCreating(true)}>
+              <Plus />
+              Nuevo <span className="max-sm:hidden">proyecto</span>
+            </Button>
+          ) : undefined
+        }
+      />
 
       {creating && <NewProjectForm onClose={() => setCreating(false)} />}
 
@@ -251,14 +260,6 @@ export default function OpsProjectsPage() {
           { key: "priority", label: "Filtrar por prioridad", all: "Todas las prioridades", options: PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABELS[p] })) },
         ]}
         grouping={{ label: "Agrupar por etapa", value: (p) => p.stage, order: STAGES, labels: STAGE_LABELS }}
-        actions={
-          data?.canCreate && !creating ? (
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus />
-              Nuevo proyecto
-            </Button>
-          ) : undefined
-        }
       />
     </div>
   );

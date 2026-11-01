@@ -96,25 +96,42 @@ describe("leads", () => {
   const page = (extra: Record<string, unknown> = {}) => ({ rows: [listed], total: 1, page: 1, pageSize: 25, facets: { demo: 1 }, totals: {}, counts, canWrite: true, ...extra });
   const route = (url: string) => (url.startsWith("/api/sales/owners") ? json({ owners: [{ id: "u-com", name: "Marta", role: "commercial" }] }) : json(page()));
 
-  it("tabla de leads: funnel, temperatura, Setter, días de respuesta; el embudo filtra por estado", async () => {
+  it("tabla de leads: funnel y temperatura a la vista; las píldoras del embudo cuentan y filtran por estado", async () => {
+    localStorage.clear();
     const { calls } = renderAt("/comercial", COMMERCIAL, route);
     const table = await screen.findByRole("table", { name: "Leads" });
     const row = within(within(table).getByText("Manpersa SAC").closest("tr")!);
-    expect(row.getByText("Meta Ads")).toBeTruthy();
     expect(row.getByText("Upwork")).toBeTruthy();
-    expect(row.getByText("3 d")).toBeTruthy();
     expect(row.getByRole("combobox", { name: "Temperatura de Manpersa SAC" }).textContent).toContain("Hot");
     const funnel = within(screen.getByRole("group", { name: "Embudo" }));
+    expect(funnel.getByRole("button", { name: /Todos/ }).textContent).toContain("11");
     fireEvent.click(funnel.getByRole("button", { name: /Ganado/ }));
     await waitFor(() => expect(calls.some((c) => c.url.includes("status=won"))).toBe(true));
   });
 
-  it("vista de leads fríos: el embudo muestra solo sus estados y la vista va a la API", async () => {
+  it("«Columnas» muestra las ocultas (origen, respuesta) y un clic en la fila abre la vista rápida", async () => {
+    localStorage.clear();
+    renderAt("/comercial", COMMERCIAL, route);
+    const table = await screen.findByRole("table", { name: "Leads" });
+    expect(within(table).queryByText("Meta Ads")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Columnas" }));
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Origen" }));
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Respuesta" }));
+    await waitFor(() => expect(within(table).getByText("Meta Ads")).toBeTruthy());
+    expect(within(table).getByText("3 d")).toBeTruthy();
+    fireEvent.click(within(table).getByText("Upwork"));
+    const open = await screen.findByRole("link", { name: "Abrir completo" });
+    expect(open.getAttribute("href")).toBe(`/comercial/leads/${lead.id}`);
+  });
+
+  it("filtros en el panel «Filtros»: la vista va a la API y queda como chip que se puede quitar", async () => {
     const { calls } = renderAt("/comercial", COMMERCIAL, route);
-    fireEvent.click(await screen.findByRole("tab", { name: "Fríos" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Filtros/ }));
+    await pick("Filtrar por vista", "Fríos");
     await waitFor(() => expect(calls.some((c) => c.url.includes("view=cold"))).toBe(true));
-    const funnel = within(screen.getByRole("group", { name: "Embudo" }));
-    expect(funnel.getAllByRole("button").map((b) => b.textContent?.replace(/\d+$/, ""))).toEqual(["Nurturing", "No calificado", "Perdido"]);
+    expect(screen.getByRole("button", { name: /^Filtros · 1/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Vista" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Quitar filtro Vista" })).toBeNull());
   });
 
   it("editar el Closer en la celda guarda solo ese campo", async () => {
@@ -143,14 +160,14 @@ describe("leads", () => {
   };
   const patches = (calls: Call[]) => calls.filter((c) => c.init?.method === "PATCH").map((c) => JSON.parse(String(c.init?.body)));
 
-  it("detalle: indicadores, «Ganado» se elige a mano, sin «Convertir en cliente», y los datos del source tal cual", async () => {
+  it("detalle: respuesta y pendientes, «Ganado» se elige a mano, sin «Convertir en cliente», y los datos del source tal cual", async () => {
     renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, detailRoute());
     expect(await screen.findByRole("heading", { name: "Manpersa SAC" })).toBeTruthy();
     expect(screen.getByText("3 d")).toBeTruthy();
-    expect(within(screen.getByRole("button", { name: /Actividades pendientes/ })).getByText("2")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /Actividades/ }).textContent).toContain("2");
     expect(screen.queryByRole("button", { name: /Convertir en cliente/ })).toBeNull();
     expect(await optionLabels("Estado del lead")).toContain("Ganado");
-    fireEvent.click(screen.getByRole("tab", { name: "Datos de origen" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Datos del source" }));
     expect(screen.getByText("form.campaign")).toBeTruthy();
     expect(screen.getByText("octubre")).toBeTruthy();
   });
@@ -172,10 +189,10 @@ describe("leads", () => {
     expect(screen.getByRole("button", { name: "Copiar Correo" })).toBeTruthy();
   });
 
-  it("«Deal» lleva a la pestaña de deals y crear uno lo liga al lead y lo abre", async () => {
+  it("«Crear deal» del encabezado lo liga al lead y lo abre", async () => {
     const { calls } = renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, detailRoute());
-    fireEvent.click(await screen.findByRole("button", { name: /^Deal$/ }));
-    fireEvent.click(await screen.findByRole("button", { name: /Crear deal/ }));
+    await screen.findByRole("heading", { name: "Manpersa SAC" });
+    fireEvent.click(screen.getAllByRole("button", { name: /Crear deal/ })[0]);
     expect(await screen.findByText("Deal abierto")).toBeTruthy();
     const post = calls.find((c) => c.init?.method === "POST" && c.url === "/api/deals")!;
     expect(JSON.parse(String(post.init?.body))).toMatchObject({ leadId: lead.id, title: "Manpersa SAC" });
@@ -185,7 +202,8 @@ describe("leads", () => {
     const FINANCE: SessionUser = { id: "u-fin", username: "fede", name: "Fede", role: "finance", teamId: null, mustChangeCredentials: false };
     renderAt(`/comercial/leads/${lead.id}`, FINANCE, detailRoute({ canWrite: false }));
     await screen.findByRole("heading", { name: "Manpersa SAC" });
-    expect(screen.queryByRole("button", { name: /^Nota$/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Más acciones" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Crear deal/ })).toBeNull();
     expect((screen.getByLabelText("Empresa") as HTMLInputElement).disabled).toBe(true);
   });
 });

@@ -11,6 +11,7 @@ import { useContact } from "./api";
 import { canWriteCore } from "./hooks";
 import { ContactForm } from "./ContactsPage";
 import { DealStatusBadge } from "./DealsTable";
+import { useCrumbs } from "@/components/layout/crumbs";
 
 function Related({ title, empty, children, count }: { title: string; empty: string; count: number; children: ReactNode }) {
   return (
@@ -31,9 +32,10 @@ export default function ContactDetailPage() {
   const { id = "" } = useParams();
   const role = useSession().data?.role;
   const { data, isLoading, error } = useContact(id);
+  useCrumbs([data && { label: data.contact.name }]);
   const [editing, setEditing] = useState(false);
   const back = (
-    <Link to="/comercial/contactos" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+    <Link to="/comercial/contactos" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground lg:hidden">
       <ArrowLeft className="size-4" /> Contactos
     </Link>
   );
@@ -55,8 +57,8 @@ export default function ContactDetailPage() {
     <div className="space-y-6">
       <div>
         {back}
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{contact.name}</h1>
+        <div className="mt-2 flex flex-wrap items-center gap-3 lg:mt-0">
+          <h1 className="text-page-title">{contact.name}</h1>
           {canWriteCore(role) && !editing && (
             <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
               <Pencil />

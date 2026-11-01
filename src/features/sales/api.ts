@@ -36,12 +36,12 @@ export const LEAD_TEMPERATURE_LABELS: Record<LeadTemperature, string> = { hot: "
 export const LEAD_TEMPERATURE_TONE: Record<LeadTemperature, Tone> = { hot: "danger", warm: "warn", nurturing: "info" };
 export const LEAD_STATUS_TONE: Record<LeadStatus, Tone> = {
   new: "info",
-  contacted: "accent",
-  demo: "primary",
-  proposal_sent: "warn",
+  contacted: "warn",
+  demo: "accent",
+  proposal_sent: "ok",
   won: "ok",
   lost: "neutral",
-  nurturing: "info",
+  nurturing: "outline",
   unqualified: "neutral",
 };
 export const DEMO_STATUS_LABELS: Record<DemoStatus, string> = { scheduled: "Agendada", done: "Realizada", cancelled: "Cancelada", no_show: "No asistió" };

@@ -7,30 +7,34 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Marca Whatever Tech (whatever.tech): rojo #ff3054 sobre negro #0d0d12, Work Sans. */
-  --background: #f7f7fa;
-  --foreground: #0d0d12;
+  /*
+   * Marca Whatever Tech (whatever.tech): rojo sobre negro, Work Sans. Estilo limpio: superficies
+   * planas (tarjetas blancas sobre gris muy claro en claro; grafito sobre negro en oscuro), bordes
+   * finos y el rojo solo en la acción principal y en lo activo.
+   */
+  --background: #f5f5f7;
+  --foreground: #111116;
   --card: #ffffff;
-  --card-foreground: #0d0d12;
+  --card-foreground: #111116;
   --popover: #ffffff;
-  --popover-foreground: #0d0d12;
-  --primary: #d81f43;
+  --popover-foreground: #111116;
+  --primary: #dc2440;
   --primary-foreground: #ffffff;
-  --secondary: #eeeef3;
-  --secondary-foreground: #0d0d12;
-  --muted: #eeeef3;
-  --muted-foreground: #5b5d68;
-  --accent: #eeeef3;
-  --accent-foreground: #0d0d12;
+  --secondary: #f0f0f3;
+  --secondary-foreground: #111116;
+  --muted: #f0f0f3;
+  --muted-foreground: #62636e;
+  --accent: #f0f0f3;
+  --accent-foreground: #111116;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: #e3e3ea;
-  --input: #d9d9e2;
+  --border: #e6e6eb;
+  --input: #dedee5;
   --ring: #ff3054;
   --chart-1: #ff3054;
-  --chart-2: #4f75ff;
-  --chart-3: #ffc549;
-  --chart-4: #87c45c;
-  --chart-5: #3fc8d8;
+  --chart-2: #4f86ff;
+  --chart-3: #f5b83d;
+  --chart-4: #34c38f;
+  --chart-5: #8b7cf6;
   --radius: 0.625rem;
   /*
    * Sistema de diseño (docs: src/components/ui). Espaciado en la escala de 4 px de Tailwind
@@ -45,16 +49,19 @@
   --status-info: var(--chart-2);
   --status-accent: var(--chart-5);
   --status-neutral: var(--muted-foreground);
-  --shadow-popover: 0 8px 24px -8px rgb(0 0 0 / 28%), 0 2px 6px -2px rgb(0 0 0 / 16%);
-  --shadow-overlay: 0 24px 64px -16px rgb(0 0 0 / 45%);
-  --overlay: rgb(5 5 8 / 60%);
+  /* Mezcla del texto de estado con el color de texto: en claro se oscurece más para leerse. */
+  --status-fg-mix: 52%;
+  --shadow-popover: 0 8px 24px -8px rgb(17 17 22 / 18%), 0 2px 6px -2px rgb(17 17 22 / 10%);
+  --shadow-overlay: 0 24px 64px -16px rgb(17 17 22 / 30%);
+  --shadow-card: 0 1px 2px rgb(17 17 22 / 4%);
+  --overlay: rgb(5 5 8 / 45%);
   --sidebar: #ffffff;
-  --sidebar-foreground: #0d0d12;
-  --sidebar-primary: #d81f43;
+  --sidebar-foreground: #111116;
+  --sidebar-primary: #dc2440;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f1f1f5;
-  --sidebar-accent-foreground: #0d0d12;
-  --sidebar-border: #e3e3ea;
+  --sidebar-accent: #fdeef0;
+  --sidebar-accent-foreground: #111116;
+  --sidebar-border: #e6e6eb;
   --sidebar-ring: #ff3054;
 }
 
@@ -73,11 +80,12 @@
   --color-danger: var(--status-danger);
   --color-info: var(--status-info);
   --color-accent-2: var(--status-accent);
-  --color-ok-fg: color-mix(in oklch, var(--status-ok) 62%, var(--foreground));
-  --color-warn-fg: color-mix(in oklch, var(--status-warn) 62%, var(--foreground));
-  --color-danger-fg: color-mix(in oklch, var(--status-danger) 70%, var(--foreground));
-  --color-info-fg: color-mix(in oklch, var(--status-info) 62%, var(--foreground));
-  --color-accent-2-fg: color-mix(in oklch, var(--status-accent) 62%, var(--foreground));
+  --color-ok-fg: color-mix(in oklch, var(--status-ok) var(--status-fg-mix), var(--foreground));
+  --color-warn-fg: color-mix(in oklch, var(--status-warn) var(--status-fg-mix), var(--foreground));
+  --color-danger-fg: color-mix(in oklch, var(--status-danger) calc(var(--status-fg-mix) + 8%), var(--foreground));
+  --color-info-fg: color-mix(in oklch, var(--status-info) var(--status-fg-mix), var(--foreground));
+  --color-accent-2-fg: color-mix(in oklch, var(--status-accent) var(--status-fg-mix), var(--foreground));
+  --shadow-card: var(--shadow-card);
   --font-heading: var(--font-sans);
   --font-sans: 'Work Sans Variable', -apple-system, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
@@ -134,36 +142,41 @@
 
 .dark {
   /* La misma paleta que whatever.tech: negro, superficies grafito y rojo de acento. */
-  --background: #0d0d12;
-  --foreground: #edf1ff;
-  --card: #141418;
-  --card-foreground: #edf1ff;
-  --popover: #1b1b21;
-  --popover-foreground: #edf1ff;
-  --primary: #ff3054;
+  --background: #0b0b0f;
+  --foreground: #eeeff4;
+  --card: #131317;
+  --card-foreground: #eeeff4;
+  --popover: #18181d;
+  --popover-foreground: #eeeff4;
+  --primary: #f23d58;
   --primary-foreground: #ffffff;
-  --secondary: #1b1b21;
-  --secondary-foreground: #edf1ff;
-  --muted: #1b1b21;
-  --muted-foreground: #9a9caa;
-  --accent: #23232b;
-  --accent-foreground: #edf1ff;
+  --secondary: #1a1a20;
+  --secondary-foreground: #eeeff4;
+  --muted: #1a1a20;
+  --muted-foreground: #9b9ca8;
+  --accent: #1f1f26;
+  --accent-foreground: #eeeff4;
   --destructive: oklch(0.704 0.191 22.216);
-  --border: rgb(237 241 255 / 9%);
-  --input: rgb(237 241 255 / 14%);
+  --border: rgb(238 239 244 / 8%);
+  --input: rgb(238 239 244 / 11%);
   --ring: #ff3054;
-  --chart-1: #ff3054;
-  --chart-2: #4f75ff;
-  --chart-3: #ffc549;
-  --chart-4: #87c45c;
-  --chart-5: #3fc8d8;
-  --sidebar: #101015;
-  --sidebar-foreground: #edf1ff;
-  --sidebar-primary: #ff3054;
+  --chart-1: #ff4560;
+  --chart-2: #5b8cff;
+  --chart-3: #f7c04f;
+  --chart-4: #3ccf95;
+  --chart-5: #a193ff;
+  --status-fg-mix: 72%;
+  --shadow-popover: 0 8px 24px -8px rgb(0 0 0 / 50%), 0 2px 6px -2px rgb(0 0 0 / 30%);
+  --shadow-overlay: 0 24px 64px -16px rgb(0 0 0 / 60%);
+  --shadow-card: none;
+  --overlay: rgb(5 5 8 / 60%);
+  --sidebar: #0e0e12;
+  --sidebar-foreground: #eeeff4;
+  --sidebar-primary: #f23d58;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #1b1b21;
-  --sidebar-accent-foreground: #edf1ff;
-  --sidebar-border: rgb(237 241 255 / 8%);
+  --sidebar-accent: #1a1a20;
+  --sidebar-accent-foreground: #eeeff4;
+  --sidebar-border: rgb(238 239 244 / 7%);
   --sidebar-ring: #ff3054;
 }
 
@@ -199,7 +212,7 @@ html:not(.dark) {
 
 /* Escala tipográfica única: título de página, subtítulo de sección, cuerpo y etiqueta. */
 @utility text-page-title {
-  @apply text-2xl font-semibold tracking-tight sm:text-3xl;
+  @apply text-[1.75rem] leading-tight font-bold tracking-tight sm:text-[2rem];
 }
 @utility text-section-title {
   @apply text-base font-semibold tracking-tight;
@@ -209,6 +222,10 @@ html:not(.dark) {
 }
 @utility text-field-label {
   @apply text-xs font-medium text-muted-foreground;
+}
+/* Etiqueta de campo en mayúsculas (formularios de detalle y encabezados de tabla). */
+@utility text-caps-label {
+  @apply text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase;
 }
 
 /* Transiciones de 150–200 ms; con "reducir movimiento", sin animaciones. */

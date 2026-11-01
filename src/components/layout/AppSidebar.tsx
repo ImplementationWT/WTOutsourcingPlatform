@@ -1,137 +1,142 @@
+import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import {
-  Activity,
-  BriefcaseBusiness,
-  Contact,
-  FileText,
-  FolderKanban,
-  Handshake,
-  Landmark,
-  ListTodo,
-  Megaphone,
-  MessagesSquare,
-  MonitorPlay,
-  Plug,
-  type LucideIcon,
-} from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import { BrandLockup } from "@/components/brand/Brand";
-import { useSession, type UserRole } from "@/features/auth/auth";
+import { useSession } from "@/features/auth/auth";
 import { cn } from "@/lib/utils";
+import { isActive, navFor } from "./nav";
 
-interface Item {
-  to: string;
-  label: string;
-  icon: LucideIcon;
-  /** Áreas que aún no existen: se muestran, pero sin enlace. */
-  soon?: boolean;
-  /** Rutas que también lo marcan como activo (p. ej. el detalle de un lead). */
-  also?: RegExp;
-  /** Solo activo en la ruta exacta (o en `also`), no en el resto de sus subrutas. */
-  end?: boolean;
-  /** Si solo algunos roles del grupo la ven. */
-  roles?: UserRole[];
+const COLLAPSED_KEY = "sidebar.collapsed";
+
+function readCollapsed(): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "[]");
+    return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
-interface Group {
-  title: string;
-  roles: UserRole[];
-  items: Item[];
+function writeCollapsed(titles: string[]) {
+  try {
+    localStorage.setItem(COLLAPSED_KEY, JSON.stringify(titles));
+  } catch {
+    // Sin almacenamiento: los grupos plegados duran hasta recargar.
+  }
 }
-
-// Costos está dentro del Dashboard y Usuarios en el menú del usuario.
-const groups: Group[] = [
-  {
-    // Tableros generales: los usan Comercial y Operativa por igual.
-    title: "General",
-    roles: ["boss", "commercial", "finance", "lead", "developer"],
-    items: [
-      { to: "/deals", label: "Deals", icon: Handshake, also: /^\/deals\// },
-      { to: "/meetings", label: "Meetings", icon: MessagesSquare },
-    ],
-  },
-  {
-    title: "Comercial",
-    roles: ["boss", "commercial", "finance"],
-    items: [
-      { to: "/comercial", label: "Leads", icon: Megaphone, end: true, also: /^\/comercial\/leads\// },
-      { to: "/comercial/actividades", label: "Actividades", icon: ListTodo },
-      { to: "/comercial/demos", label: "Demos", icon: MonitorPlay },
-      { to: "/comercial/propuestas", label: "Propuestas", icon: FileText },
-      { to: "/comercial/contactos", label: "Contactos", icon: Contact },
-    ],
-  },
-  {
-    title: "Operativa",
-    roles: ["boss", "commercial", "finance", "lead", "developer"],
-    items: [
-      { to: "/operativa", label: "Proyectos del cliente", icon: BriefcaseBusiness, end: true, also: /^\/operativa\/[^/]+$/ },
-    ],
-  },
-  {
-    title: "Financiera",
-    roles: ["boss", "finance"],
-    items: [{ to: "/financiera", label: "Cobros y comisiones", icon: Landmark, soon: true }],
-  },
-  {
-    title: "Infraestructura",
-    roles: ["boss", "lead", "developer"],
-    items: [
-      { to: "/dashboard", label: "Dashboard", icon: Activity },
-      { to: "/projects", label: "Apps y repositorios", icon: FolderKanban },
-      { to: "/integrations", label: "Integraciones", icon: Plug },
-    ],
-  },
-];
 
 const itemClass = (active: boolean) =>
   cn(
-    "relative flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-    active
-      ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-sidebar-primary"
-      : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+    "group/item flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+    active ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground" : "text-sidebar-foreground/80 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground",
   );
 
-/** Navegación por áreas según el rol. `onNavigate` cierra el panel en el celular. */
+/** Punto a la izquierda de cada opción: rojo en la activa. */
+function Dot({ active }: { active: boolean }) {
+  return <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full transition-colors", active ? "bg-sidebar-primary" : "bg-foreground/25 group-hover/item:bg-foreground/45")} />;
+}
+
+/** Botón «Buscar o ir a…» (abre el buscador; también con Ctrl K). */
+export function SearchTrigger({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-control w-full items-center gap-2 rounded-lg border border-sidebar-border bg-background/60 px-3 text-sm text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground"
+    >
+      <Search className="size-4 shrink-0" aria-hidden />
+      <span className="flex-1 truncate text-left">Buscar o ir a…</span>
+      <kbd className="rounded-md border border-sidebar-border px-1.5 py-px font-sans text-[11px]">Ctrl K</kbd>
+    </button>
+  );
+}
+
+/**
+ * Navegación por áreas según el rol: cada área se pliega (se recuerda en este navegador) y las
+ * que aún no existen quedan al pie con «Pronto». `onNavigate` cierra el panel en el celular.
+ */
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const role = useSession().data?.role;
   const { pathname } = useLocation();
-  const visible = groups.filter((g) => role && g.roles.includes(role));
+  const groups = navFor(role);
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const live = groups.filter((g) => g.items.some((i) => !i.soon));
+  const soon = groups.flatMap((g) => (g.items.every((i) => i.soon) ? [g] : []));
+
+  const toggle = (title: string) => {
+    const next = collapsed.includes(title) ? collapsed.filter((t) => t !== title) : [...collapsed, title];
+    setCollapsed(next);
+    writeCollapsed(next);
+  };
 
   return (
-    <nav className="flex-1 space-y-5 overflow-y-auto p-3 pt-5" aria-label="Áreas">
-      {visible.map((group) => (
-        <div key={group.title} className="space-y-0.5">
-          <p className="flex items-center gap-2 px-3 pb-1.5 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-            <span>{group.title}</span>
-            {/* Un área que aún no existe se avisa en su título: el nombre de la opción entra completo. */}
-            {group.items.every((i) => i.soon) && <span className="rounded-full border border-foreground/15 px-1.5 py-px text-[9px] tracking-wide">Pronto</span>}
-          </p>
-          {group.items.filter((i) => !i.roles || (role && i.roles.includes(role))).map(({ to, label, icon: Icon, soon, end, also }) =>
-            soon ? (
-              <span key={to} aria-disabled="true" className="flex cursor-not-allowed items-center gap-3 rounded-md px-3 py-2 text-sm whitespace-nowrap text-muted-foreground/60">
-                <Icon className="size-4 shrink-0" />
-                <span className="truncate">{label}</span>
-              </span>
-            ) : (
-              <NavLink key={to} to={to} end={end} onClick={onNavigate} className={({ isActive }) => itemClass(isActive || Boolean(also?.test(pathname)))}>
-                <Icon className="size-4 shrink-0" />
-                <span className="truncate">{label}</span>
-              </NavLink>
-            ),
-          )}
+    <nav className="flex min-h-0 flex-1 flex-col" aria-label="Áreas">
+      <div className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+        {live.map((group) => {
+          // El área de la pantalla abierta nunca queda plegada.
+          const here = group.items.some((i) => !i.soon && isActive(i, pathname));
+          const open = here || !collapsed.includes(group.title);
+          const id = `nav-${group.title.toLowerCase()}`;
+          return (
+            <div key={group.title}>
+              <button
+                type="button"
+                aria-expanded={open}
+                aria-controls={id}
+                disabled={here}
+                onClick={() => toggle(group.title)}
+                className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-[11px] font-bold tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-foreground disabled:cursor-default disabled:hover:text-muted-foreground"
+              >
+                {group.title}
+                <ChevronDown aria-hidden className={cn("size-3.5 transition-transform", !open && "-rotate-90")} />
+              </button>
+              {open && (
+                <div id={id} className="mt-1 space-y-0.5">
+                  {group.items
+                    .filter((i) => !i.soon)
+                    .map((item) => (
+                      <NavLink key={item.to} to={item.to} end={item.end} onClick={onNavigate} className={({ isActive: exact }) => itemClass(exact || Boolean(item.also?.test(pathname)))}>
+                        {({ isActive: exact }) => (
+                          <>
+                            <Dot active={exact || Boolean(item.also?.test(pathname))} />
+                            <span className="truncate">{item.label}</span>
+                          </>
+                        )}
+                      </NavLink>
+                    ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {soon.length > 0 && (
+        <div className="space-y-0.5 border-t border-sidebar-border px-3 py-3">
+          {soon.map((g) => (
+            <span key={g.title} aria-disabled="true" title={g.items.map((i) => i.label).join(", ")} className="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground">
+              <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-foreground/20" />
+              <span className="flex-1 truncate">{g.title}</span>
+              <span className="rounded-full border border-sidebar-border px-2 py-px text-[11px]">Pronto</span>
+            </span>
+          ))}
         </div>
-      ))}
+      )}
     </nav>
   );
 }
 
 /** Barra lateral fija en pantallas grandes; en el celular la navegación vive en un panel (AppLayout). */
-export default function AppSidebar() {
+export default function AppSidebar({ onSearch }: { onSearch?: () => void }) {
   return (
     <aside className="sticky top-0 z-20 hidden h-svh w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex">
-      <div className="flex h-16 items-center border-b border-sidebar-border px-5">
+      <div className="px-5 pt-5 pb-4">
         <BrandLockup subtitle="Plataforma de la empresa" />
       </div>
+      {onSearch && (
+        <div className="px-3">
+          <SearchTrigger onClick={onSearch} />
+        </div>
+      )}
       <SidebarNav />
     </aside>
   );

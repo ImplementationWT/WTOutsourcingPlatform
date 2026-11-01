@@ -32,6 +32,7 @@ import { Code } from "./new-project/parts";
 import { isFinished, retryJob, useJobStream } from "./provisioning";
 import { useCanOperate, useIsBoss } from "@/features/auth/auth";
 import TeamAssignCard from "@/features/admin/TeamAssignCard";
+import { useCrumbs } from "@/components/layout/crumbs";
 
 function ResourceRow({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
   return (
@@ -51,6 +52,7 @@ export default function ProjectDetailPage() {
   const { slug = "" } = useParams();
   const queryClient = useQueryClient();
   const { data, isLoading, isError, error } = useClient(slug);
+  useCrumbs([data && { label: data.client.name }]);
   const canOperate = useCanOperate();
   const isBoss = useIsBoss();
   const [generation, setGeneration] = useState(0);
@@ -79,7 +81,7 @@ export default function ProjectDetailPage() {
 
   return (
     <section className="mx-auto max-w-4xl space-y-6">
-      <Link to="/projects" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+      <Link to="/projects" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground lg:hidden">
         <ArrowLeft className="size-4" />
         Proyectos
       </Link>
@@ -100,7 +102,7 @@ export default function ProjectDetailPage() {
         <>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{data.client.name}</h1>
+              <h1 className="text-page-title">{data.client.name}</h1>
               <p className="mt-1 text-sm text-muted-foreground sm:text-base">{data.client.description}</p>
               <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground">
                 <Users className="size-4" />

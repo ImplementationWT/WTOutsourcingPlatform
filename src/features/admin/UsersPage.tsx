@@ -24,6 +24,8 @@ import {
   useAdminTeams,
   useAdminUsers,
 } from "./api";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { useCrumbs } from "@/components/layout/crumbs";
 
 const ROLES: UserRole[] = ["developer", "lead", "commercial", "finance", "boss"];
 
@@ -317,6 +319,7 @@ function UserRow({ user, teams, self, onPassword }: { user: AdminUser; teams: Ad
 
 /** Administración de usuarios y equipos (solo CEO/CCO). */
 export default function UsersPage() {
+  useCrumbs([{ label: "Usuarios y equipos" }], { replace: true });
   const me = useSession().data;
   const users = useAdminUsers();
   const teams = useAdminTeams();
@@ -329,10 +332,7 @@ export default function UsersPage() {
 
   return (
     <section className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Usuarios y equipos</h1>
-        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Cuentas individuales, roles y equipos. Cada persona entra con su usuario y contraseña.</p>
-      </div>
+      <PageHeader title="Usuarios y equipos" description="Cuentas individuales, roles y equipos. Cada persona entra con su usuario y contraseña." />
 
       {users.isLoading || teams.isLoading ? (
         <Skeleton className="h-64 rounded-xl" />

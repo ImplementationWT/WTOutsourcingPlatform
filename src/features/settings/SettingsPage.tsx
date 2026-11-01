@@ -2,18 +2,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ROLE_LABELS, useSession } from "@/features/auth/auth";
 import { ChangePasswordForm } from "@/features/auth/ChangePasswordPage";
 import { useTeams } from "@/features/admin/api";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { useCrumbs } from "@/components/layout/crumbs";
 
 export default function SettingsPage() {
+  useCrumbs([{ label: "Configuración" }], { replace: true });
   const user = useSession().data;
   const teams = useTeams();
   const team = teams.data?.find((t) => t.id === user?.teamId);
 
   return (
     <section className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Configuración</h1>
-        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Tu cuenta en la plataforma.</p>
-      </div>
+      <PageHeader title="Configuración" description="Tu cuenta en la plataforma." />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

@@ -21,14 +21,12 @@ export function EmptyState({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-foreground/15 px-6 py-10 text-center", className)}>
-      <div aria-hidden className="relative flex size-16 items-center justify-center">
-        <span className="absolute inset-0 rounded-full bg-primary/10" />
-        <span className="absolute inset-2.5 rounded-full bg-primary/15" />
-        <Icon className="relative size-6 text-primary" />
+    <div className={cn("flex flex-col items-center justify-center gap-3 rounded-xl px-6 py-12 text-center", className)}>
+      <div aria-hidden className="flex size-10 items-center justify-center rounded-xl border border-border bg-muted/60">
+        <Icon className="size-4.5 text-muted-foreground" />
       </div>
       <div className="max-w-sm space-y-1">
-        <p className="text-sm font-medium">{title}</p>
+        <p className="text-sm font-semibold">{title}</p>
         {description && <p className="text-sm text-muted-foreground">{description}</p>}
       </div>
       {action}

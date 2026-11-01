@@ -80,14 +80,17 @@ export function EditableText({
 }
 
 /** Copia un texto (correo, teléfono) y lo confirma. */
-export function CopyButton({ value, label }: { value: string; label: string }) {
+export function CopyButton({ value, label, text }: { value: string; label: string; /** Muestra «Copiar» junto al icono. */ text?: boolean }) {
   const [done, setDone] = useState(false);
   return (
     <button
       type="button"
       aria-label={`Copiar ${label}`}
       title={`Copiar ${label}`}
-      className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground pointer-coarse:size-10"
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+        text ? "h-6 gap-1 rounded-md border border-border px-2 text-xs font-medium pointer-coarse:h-9" : "size-7 rounded-md pointer-coarse:size-10",
+      )}
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(value);
@@ -99,7 +102,7 @@ export function CopyButton({ value, label }: { value: string; label: string }) {
         }
       }}
     >
-      {done ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+      {text ? (done ? "Copiado" : "Copiar") : done ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
     </button>
   );
 }

@@ -29,6 +29,7 @@ import {
 } from "./api";
 import { HealthBadge, PriorityBadge, SentimentBar, StageTrack } from "./OpsBadges";
 import { AccountsTab, DealsTab, MeetingsTab, ProposalsTab, TasksTab, UpdatesTab } from "./OpsTabs";
+import { useCrumbs } from "@/components/layout/crumbs";
 
 type TabId = "deals" | "tasks" | "proposals" | "accounts" | "meetings" | "updates";
 
@@ -213,6 +214,7 @@ export default function OpsProjectDetailPage() {
   const { id = "" } = useParams();
   const session = useSession().data;
   const { data, isLoading, error } = useOpsProject(id);
+  useCrumbs([data && { label: data.project.name }]);
   const [tab, setTab] = useState<TabId>("deals");
 
   if (isLoading) {
@@ -226,7 +228,7 @@ export default function OpsProjectDetailPage() {
   if (error || !data) {
     return (
       <div className="space-y-4">
-        <Link to="/operativa" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <Link to="/operativa" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground lg:hidden">
           <ArrowLeft className="size-4" /> Proyectos del cliente
         </Link>
         <p role="alert" className="text-sm text-destructive">
@@ -257,11 +259,11 @@ export default function OpsProjectDetailPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link to="/operativa" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <Link to="/operativa" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground lg:hidden">
           <ArrowLeft className="size-4" /> Proyectos del cliente
         </Link>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{project.name}</h1>
+        <div className="mt-2 flex flex-wrap items-center gap-3 lg:mt-0">
+          <h1 className="text-page-title">{project.name}</h1>
           <HealthBadge value={project.health} />
           <PriorityBadge value={project.priority} />
         </div>

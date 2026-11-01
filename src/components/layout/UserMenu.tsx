@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, LogOut, Moon, Settings, Sun, Users } from "lucide-react";
+import { LogOut, Moon, Settings, Sun, Users } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,12 +32,12 @@ export default function UserMenu() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors outline-none hover:bg-foreground/5 focus-visible:ring-3 focus-visible:ring-ring/50 data-[popup-open]:bg-foreground/5">
-        <span className="flex size-8 items-center justify-center rounded-full border border-foreground/15 bg-foreground/10 text-xs font-semibold">
-          {username.slice(0, 2).toUpperCase()}
-        </span>
-        <span className="hidden max-w-40 truncate text-sm font-medium sm:inline">{username}</span>
-        <ChevronDown className="size-4 text-muted-foreground" />
+      <DropdownMenuTrigger
+        aria-label={`Cuenta de ${username}`}
+        className="flex h-10 items-center gap-2 rounded-full border border-border bg-card p-1 transition-colors outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 data-[popup-open]:bg-accent sm:pr-3.5"
+      >
+        <span className="flex size-8 items-center justify-center rounded-full bg-muted text-[11px] font-bold">{username.slice(0, 2).toUpperCase()}</span>
+        <span className="hidden max-w-40 truncate text-sm font-semibold sm:inline">{username}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="w-52">
         <DropdownMenuGroup>

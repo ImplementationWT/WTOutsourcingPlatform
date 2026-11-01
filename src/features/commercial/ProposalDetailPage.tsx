@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { dateText } from "@/features/activity/api";
 import { PROPOSAL_STATUS_LABELS, PROPOSAL_STATUSES, type ProposalStatus } from "@/features/ops/api";
 import { updateProposal, useProposal, type ProposalDetail } from "./api";
+import { useCrumbs } from "@/components/layout/crumbs";
 
 type Draft = { key: string; description: string; hours: string; rate: string };
 const toDraft = (p: ProposalDetail): Draft[] => p.lines.map((l) => ({ key: l.id, description: l.description, hours: String(l.hours), rate: String(l.rateCents / 100) }));
@@ -104,9 +105,10 @@ export default function ProposalDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data, isLoading, error } = useProposal(id);
+  useCrumbs([data && { label: data.proposal.title }]);
   const [statusError, setStatusError] = useState<string | null>(null);
   const back = (
-    <button type="button" onClick={() => navigate(-1)} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+    <button type="button" onClick={() => navigate(-1)} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground lg:hidden">
       <ArrowLeft className="size-4" /> Volver
     </button>
   );
@@ -127,8 +129,8 @@ export default function ProposalDetailPage() {
     <div className="space-y-6">
       <div>
         {back}
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{proposal.title}</h1>
+        <div className="mt-2 flex flex-wrap items-center gap-3 lg:mt-0">
+          <h1 className="text-page-title">{proposal.title}</h1>
           {canWrite ? (
             <Select
               label="Estado de la propuesta"

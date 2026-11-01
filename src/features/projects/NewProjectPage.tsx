@@ -14,6 +14,7 @@ import Stepper from "./new-project/Stepper";
 import SummaryStep from "./new-project/SummaryStep";
 import { useProvisioning } from "./provisioning";
 import { useIsBoss } from "@/features/auth/auth";
+import { useCrumbs } from "@/components/layout/crumbs";
 
 const STEPS = ["Información", "Integraciones y despliegue", "Resumen", "Creación"];
 const FORM_STEPS = 3;
@@ -22,6 +23,7 @@ const FORM_STEPS = 3;
 export default function NewProjectPage() {
   const isBoss = useIsBoss();
   const { data: projects } = useProjects();
+  useCrumbs([{ label: "Nueva app" }]);
   const { data: catalog } = useIntegrationCatalog();
   const provisioning = useProvisioning();
   const [step, setStep] = useState(0);
@@ -88,12 +90,12 @@ export default function NewProjectPage() {
       <div>
         <Link
           to="/projects"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground lg:hidden"
         >
           <ArrowLeft className="size-4" />
           Apps y repositorios
         </Link>
-        <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">Nueva app</h1>
+        <h1 className="text-page-title mt-3 lg:mt-0">Nueva app</h1>
         <p className="mt-1 text-sm text-muted-foreground sm:text-base">
           Define el proyecto y la plataforma creará su repositorio y lo conectará a su base de datos.
         </p>
