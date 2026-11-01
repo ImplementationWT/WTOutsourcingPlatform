@@ -63,7 +63,7 @@ function List({ items, empty }: { items: string[]; empty: string }) {
   );
 }
 
-/** Pop-up de la reunión: resumen de Claude y lo que mandó Read.ai; ligar, equipo y descartar. */
+/** Pop-up de la reunión: el informe de Read.ai; ligar, equipo y descartar. */
 function MeetingDialog({ id, onClose }: { id: string; onClose: () => void }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -128,38 +128,23 @@ function MeetingDialog({ id, onClose }: { id: string; onClose: () => void }) {
             )}
           </div>
 
-          {(meeting.status === "pending" || meeting.status === "processing") && (
-            <p className="rounded-lg bg-info/10 px-3 py-2 text-sm text-info-fg">Claude está procesando la transcripción: el resumen y el engagement aparecen en unos segundos.</p>
-          )}
-
+          {/* Solo el informe de Read.ai (sin el resumen propio, que lo repetía). */}
           <Section title="Resumen">
-            <p className="text-sm whitespace-pre-wrap">{meeting.summary || meeting.readAi?.summary || "Sin resumen."}</p>
+            <p className="text-sm whitespace-pre-wrap">{meeting.readAi?.summary || meeting.summary || "Sin resumen."}</p>
           </Section>
 
           {meeting.readAi && (
-            <div className="space-y-4 rounded-xl border border-border bg-muted/40 p-4">
-              <p className="text-section-title">Read.ai</p>
-              {meeting.readAi.summary && meeting.readAi.summary !== meeting.summary && (
-                <Section title="Resumen de Read.ai">
-                  <p className="text-sm whitespace-pre-wrap text-muted-foreground">{meeting.readAi.summary}</p>
-                </Section>
-              )}
+            <>
               <Section title="Temas">
                 <List items={meeting.readAi.topics} empty="Sin temas." />
               </Section>
               <Section title="Preguntas clave">
                 <List items={meeting.readAi.keyQuestions} empty="Sin preguntas clave." />
               </Section>
-              <Section title="Action items de Read.ai">
+              <Section title="Action items">
                 <List items={meeting.readAi.actionItems} empty="Sin action items." />
               </Section>
-            </div>
-          )}
-
-          {meeting.feedback.length > 0 && (
-            <Section title="Feedback del cliente">
-              <List items={meeting.feedback} empty="" />
-            </Section>
+            </>
           )}
 
           <Section title="Participantes">

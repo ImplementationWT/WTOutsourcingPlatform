@@ -155,11 +155,13 @@ describe("Meetings", () => {
     expect(within(table).getByRole("columnheader", { name: /^Sin equipo/ })).toBeTruthy();
   });
 
-  it("clic en la fila abre el pop-up con el resumen y lo de Read.ai; el CEO/CCO liga la reunión", async () => {
+  it("clic en la fila abre el pop-up solo con el informe de Read.ai; el CEO/CCO liga la reunión", async () => {
     const { calls } = renderAt("/meetings", BOSS, route({ assign: true, team: true, discard: true }));
     fireEvent.click(await screen.findByText("Sprint review Acme"));
     const dialog = await screen.findByRole("dialog", { name: "Sprint review Acme" });
-    expect(await within(dialog).findByText(/el cliente aprobó la demo/)).toBeTruthy();
+    expect(await within(dialog).findByText("Resumen de Read.ai.")).toBeTruthy();
+    expect(within(dialog).queryByText(/el cliente aprobó la demo/)).toBeNull();
+    expect(within(dialog).queryByText(/procesando/)).toBeNull();
     expect(within(dialog).getByText("Sprint 4")).toBeTruthy();
     expect(within(dialog).getByText("¿Cuándo sale?")).toBeTruthy();
     expect(within(dialog).getByText(/lucia@acme\.pe/)).toBeTruthy();
