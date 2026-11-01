@@ -26,8 +26,7 @@ const project: OpsProject = {
   developer: { id: "u-dev", name: "Diego" },
   contacts: [],
   clientSlug: null,
-  proposalUrl: "https://demo.example.com/manpersa",
-  projectPlanUrl: null,
+  client: null,
   sowUrl: null,
   kickoffDate: null,
   leadId: null,
@@ -109,7 +108,7 @@ describe("menú por áreas", () => {
     renderAt("/operativa", BOSS, (async () => json(page([]))) as typeof fetch);
     expect(screen.getByRole("link", { name: /^Leads$/ })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /Cobros y comisiones/ })).toBeNull();
-    expect(screen.getByRole("link", { name: /Proyectos del cliente/ })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /^Proyectos$/ }).getAttribute("href")).toBe("/operativa");
   });
 
   it("Deals y Meetings son generales (un solo tablero); Contactos sigue en Comercial", () => {
@@ -123,16 +122,17 @@ describe("menú por áreas", () => {
 });
 
 describe("tabla de proyectos (DataTable)", () => {
-  it("muestra etapa, health, prioridad, sentiment derivado y los campos calculados", async () => {
+  it("muestra etapa, health, prioridad y los campos calculados; sin «Siguiente acción»", async () => {
+    localStorage.clear();
     renderAt("/operativa", LEAD, (async () => json(page([listItem]))) as typeof fetch);
     const table = await screen.findByRole("table", { name: "Proyectos" });
     const row = within(within(table).getByText("Automatización Manpersa").closest("tr")!);
     expect(row.getByText("Estructura")).toBeTruthy();
     expect(row.getByText("At Risk")).toBeTruthy();
     expect(row.getByText("Critical")).toBeTruthy();
-    expect(row.getByTitle("Sentiment score: 20/100")).toBeTruthy();
     expect(row.getByText("60 h")).toBeTruthy();
-    expect(row.getByText("-60 h")).toBeTruthy();
+    expect(within(table).queryByRole("columnheader", { name: /Siguiente acción/ })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Proyectos" })).toBeTruthy();
     expect(row.getByText("25%")).toBeTruthy();
     // Totales al pie, del conjunto filtrado.
     const foot = within(table.querySelector("tfoot")!);
@@ -191,6 +191,28 @@ describe("tabla de proyectos (DataTable)", () => {
     expect(await screen.findByRole("heading", { name: "Automatización Manpersa" })).toBeTruthy();
   });
 
+  it("nuevo proyecto: el cliente es un contacto y elegir el equipo trae su Team Leader", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    renderAt("/operativa", BOSS, (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, init });
+      if (init?.method === "POST") return json({ project: { ...project, id: "p-new" } }, 201);
+      if (url.startsWith("/api/teams")) return json({ teams: [{ id: "t-1", name: "Equipo A", leadUserId: "u-lead" }] });
+      if (url.includes("/members")) return json({ members: [{ id: "u-lead", name: "Ana", role: "lead" }, { id: "u-dev", name: "Diego", role: "developer" }] });
+      if (url.startsWith("/api/ops/contact-options")) return json({ contacts: [{ id: "c-1", name: "Francisco Wong", company: "Manpersa SAC" }] });
+      return json(page([], { canCreate: true }));
+    }) as typeof fetch);
+    fireEvent.click(await screen.findByRole("button", { name: /Nuevo proyecto/ }));
+    expect(screen.queryByLabelText(/Propuesta/)).toBeNull();
+    fireEvent.change(screen.getByLabelText("Nombre del proyecto"), { target: { value: "Portal de pedidos" } });
+    await pick("Cliente", /^Francisco Wong/);
+    await pick("Equipo", "Equipo A");
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Team Leader" }).textContent).toContain("Ana"));
+    fireEvent.click(screen.getByRole("button", { name: /Crear proyecto/ }));
+    await waitFor(() => expect(calls.some((c) => c.init?.method === "POST")).toBe(true));
+    expect(JSON.parse(String(calls.find((c) => c.init?.method === "POST")!.init?.body))).toMatchObject({ name: "Portal de pedidos", contactIds: ["c-1"], teamId: "t-1", leadUserId: "u-lead" });
+  });
+
   it("solo quien puede crear ve el botón (lo indica la API)", async () => {
     renderAt("/operativa", LEAD, (async () => json(page([], { canCreate: true }))) as typeof fetch);
     expect(await screen.findByRole("button", { name: /Nuevo proyecto/ })).toBeTruthy();
@@ -218,7 +240,9 @@ describe("detalle del proyecto", () => {
     expect(screen.getByLabelText("Health")).toBeTruthy();
     expect(screen.queryByLabelText("Sentiment score")).toBeNull();
     expect(screen.getByText("Sentiment (del Health)")).toBeTruthy();
-    for (const label of ["Kickoff", "Tipo de pago", "Siguiente acción", "Project Plan", "SOW"]) expect(screen.getByLabelText(label)).toBeTruthy();
+    for (const label of ["Cliente", "Kickoff", "Tipo de pago", "SOW"]) expect(screen.getByLabelText(label)).toBeTruthy();
+    // Del proyecto solo queda el SOW: sin propuesta ni Project Plan.
+    for (const label of ["Project Plan", "Propuesta"]) expect(screen.queryByLabelText(label)).toBeNull();
     expect(screen.getByText("Horas vendidas")).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Cuentas" })).toBeTruthy();
   });

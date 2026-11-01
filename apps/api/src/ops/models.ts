@@ -79,8 +79,8 @@ export interface OpsProjectDoc {
   developerUserId: string | null;
   /** Slug de la app aprovisionada en Infraestructura, si ya se creó. */
   clientSlug: string | null;
-  /** Propuesta (web) con la que arrancó el proyecto. */
-  proposalUrl: string | null;
+  /** Ya no se usa (solo queda el SOW); puede seguir en documentos viejos. */
+  proposalUrl?: string | null;
   leadId?: string | null;
   contactIds?: string[];
   stage: ProjectStage;
@@ -89,8 +89,9 @@ export interface OpsProjectDoc {
   sentimentScore?: number;
   priority: Priority;
   kickoffDate?: string | null; // YYYY-MM-DD
-  /** Project Plan y SOW: enlaces a los archivos (no hay almacenamiento de archivos aún). */
+  /** Ya no se usa (solo queda el SOW); puede seguir en documentos viejos. */
   projectPlanUrl?: string | null;
+  /** SOW: enlace al archivo (no hay almacenamiento de archivos aún). */
   sowUrl?: string | null;
   paymentType?: PaymentType | null;
   nextAction?: NextAction | null;

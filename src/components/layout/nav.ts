@@ -61,7 +61,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: "Operativa",
     roles: ["boss", "commercial", "finance", "lead", "developer"],
     items: [
-      { to: "/operativa", label: "Proyectos del cliente", icon: BriefcaseBusiness, end: true, also: /^\/operativa\/[^/]+$/ },
+      { to: "/operativa", label: "Proyectos", icon: BriefcaseBusiness, end: true, also: /^\/operativa\/[^/]+$/ },
     ],
   },
   {

@@ -5,6 +5,8 @@ import { useSession, type UserRole } from "@/features/auth/auth";
 export interface Team {
   id: string;
   name: string;
+  /** Team Leader del equipo (se propone al crear un proyecto). */
+  leadUserId?: string | null;
 }
 
 export interface AdminTeam extends Team {

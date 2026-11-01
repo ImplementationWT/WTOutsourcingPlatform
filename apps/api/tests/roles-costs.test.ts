@@ -186,7 +186,8 @@ describe("roles", () => {
   it("solo los CEO/CCO administran usuarios y equipos", async () => {
     const { as } = await world();
     const lead = await as("admin");
-    expect((await lead("GET", "/api/teams")).body.teams).toEqual([{ id: TEST_TEAM_ID, name: "Equipo A" }]);
+    // Cada equipo con su Team Leader (se propone al crear un proyecto).
+    expect((await lead("GET", "/api/teams")).body.teams).toEqual([{ id: TEST_TEAM_ID, name: "Equipo A", leadUserId: expect.toSatisfy((v: unknown) => v === null || typeof v === "string") }]);
     const dev = await as("dev");
     for (const api of [lead, dev]) {
       expect((await api("GET", "/api/admin/users")).status).toBe(403);

@@ -119,9 +119,9 @@ export interface OpsProject {
   lead: Ref | null;
   developer: Ref | null;
   contacts: Ref[];
+  /** El cliente es el contacto del proyecto (con su empresa); `customerName` sale de él. */
+  client: { id: string; name: string | null; company: string | null } | null;
   clientSlug: string | null;
-  proposalUrl: string | null;
-  projectPlanUrl: string | null;
   sowUrl: string | null;
   kickoffDate: string | null;
   leadId: string | null;
@@ -137,6 +137,10 @@ export interface OpsProject {
   createdAt: string;
   updatedAt: string;
 }
+
+/** Cliente del proyecto: su contacto con la empresa al lado (o el nombre guardado, en proyectos viejos). */
+export const clientLabel = (p: Pick<OpsProject, "client" | "customerName">) =>
+  p.client?.name ? [p.client.name, p.client.company].filter(Boolean).join(" · ") : p.customerName;
 
 export interface OpsProjectRow extends OpsProject {
   canManage: boolean;
@@ -252,8 +256,6 @@ export interface ProjectInput {
   leadUserId: string | null;
   developerUserId: string | null;
   clientSlug: string | null;
-  proposalUrl: string | null;
-  projectPlanUrl: string | null;
   sowUrl: string | null;
   kickoffDate: string | null;
   stage: Stage;
@@ -262,6 +264,20 @@ export interface ProjectInput {
   paymentType: PaymentType | null;
   nextAction: NextAction | null;
 }
+
+/** Contactos para elegir el cliente de un proyecto (CEO/CCO y Team Leader). */
+export interface ClientOption {
+  id: string;
+  name: string;
+  company: string | null;
+}
+export const useClientOptions = (enabled = true) =>
+  useQuery({
+    queryKey: ["ops", "contact-options"],
+    queryFn: async () => (await apiFetch<{ contacts: ClientOption[] }>("/api/ops/contact-options")).contacts,
+    enabled,
+    staleTime: 60_000,
+  });
 
 export const createProject = (input: Partial<ProjectInput> & { name: string; teamId?: string }) => apiFetch<{ project: OpsProject }>("/api/ops/projects", send("POST", input));
 

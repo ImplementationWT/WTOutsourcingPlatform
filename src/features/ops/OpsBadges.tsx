@@ -34,14 +34,14 @@ export function SentimentBar({ value }: { value: number }) {
 export function StageTrack({ stage, onChange, disabled }: { stage: Stage; onChange?: (stage: Stage) => void; disabled?: boolean }) {
   const current = STAGES.indexOf(stage);
   return (
-    <ol className="flex flex-wrap gap-1.5" aria-label="Etapas del proyecto">
+    <ol className="flex flex-wrap gap-2" aria-label="Etapas del proyecto">
       {STAGES.map((s, i) => {
         const tone =
           i === current
-            ? "border-primary bg-primary/10 font-medium text-foreground"
+            ? "border-primary/40 bg-primary/10 text-foreground"
             : i < current
-              ? "border-foreground/15 text-muted-foreground"
-              : "border-dashed border-foreground/15 text-muted-foreground/80";
+              ? "border-border bg-card text-muted-foreground"
+              : "border-dashed border-border text-muted-foreground/80";
         return (
           <li key={s} aria-current={i === current ? "step" : undefined}>
             {onChange ? (
@@ -49,12 +49,12 @@ export function StageTrack({ stage, onChange, disabled }: { stage: Stage; onChan
                 type="button"
                 disabled={disabled || i === current}
                 onClick={() => onChange(s)}
-                className={cn("rounded-md border px-2.5 py-1 text-xs transition-colors enabled:hover:border-primary/60 enabled:hover:text-foreground disabled:cursor-default", tone)}
+                className={cn("inline-flex h-9 items-center rounded-full border px-3.5 text-sm font-semibold transition-colors enabled:hover:border-primary/50 enabled:hover:text-foreground disabled:cursor-default", tone)}
               >
                 {STAGE_LABELS[s]}
               </button>
             ) : (
-              <span className={cn("block rounded-md border px-2.5 py-1 text-xs", tone)}>{STAGE_LABELS[s]}</span>
+              <span className={cn("inline-flex h-9 items-center rounded-full border px-3.5 text-sm font-semibold", tone)}>{STAGE_LABELS[s]}</span>
             )}
           </li>
         );

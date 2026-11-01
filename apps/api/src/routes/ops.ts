@@ -48,14 +48,15 @@ const userId = z.string().uuid().nullable();
 
 const projectFields = {
   name: text(80).min(3),
+  /** Nombre del cliente: si llega `contactIds`, sale del contacto (su empresa o su nombre). */
   customerName: text(80).min(2),
   leadUserId: userId,
   developerUserId: userId,
   clientSlug: z.string().regex(/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/).nullable(),
-  proposalUrl: optionalUrl,
-  projectPlanUrl: optionalUrl,
+  // Del proyecto solo queda el SOW (sin propuesta ni Project Plan).
   sowUrl: optionalUrl,
   kickoffDate: isoDate.nullable(),
+  /** El cliente del proyecto es su contacto (el primero). */
   contactIds: z.array(z.string().uuid()).max(50),
   stage: z.enum(PROJECT_STAGES),
   health: z.enum(HEALTH_SCORES),
@@ -70,7 +71,7 @@ const createProjectSchema = z
   .partial()
   .required({ name: true })
   .strict()
-  .refine((v) => Boolean(v.customerName), "Indica el cliente.");
+  .refine((v) => Boolean(v.customerName || v.contactIds?.length), "Indica el cliente.");
 
 const updateProjectSchema = z
   .object(projectFields)
@@ -188,13 +189,14 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
             ])
             .toArray()
         : [],
-      contactIds.length ? store.contacts.find({ _id: { $in: contactIds } }, { projection: { name: 1 } }).toArray() : []
+      contactIds.length ? store.contacts.find({ _id: { $in: contactIds } }, { projection: { name: 1, company: 1 } }).toArray() : []
     ]);
     const userName = new Map(users.map((u) => [u._id, u.name]));
     const teamName = new Map(teams.map((t) => [t._id, t.name]));
     const dealsOf = new Map(deals.map((d) => [d._id, d]));
     const tasksOf = new Map(tasks.map((t) => [t._id, t]));
     const contactName = new Map(contacts.map((c) => [c._id, c.name]));
+    const contactCompany = new Map(contacts.map((c) => [c._id, c.company ?? null]));
     return (project: OpsProjectDoc) => {
       const d = dealsOf.get(project._id);
       const t = tasksOf.get(project._id);
@@ -208,9 +210,9 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
         lead: project.leadUserId ? { id: project.leadUserId, name: userName.get(project.leadUserId) ?? null } : null,
         developer: project.developerUserId ? { id: project.developerUserId, name: userName.get(project.developerUserId) ?? null } : null,
         contacts: (project.contactIds ?? []).map((id) => ({ id, name: contactName.get(id) ?? null })),
+        /** El cliente: el contacto del proyecto (con su empresa). */
+        client: project.contactIds?.[0] ? { id: project.contactIds[0], name: contactName.get(project.contactIds[0]) ?? null, company: contactCompany.get(project.contactIds[0]) ?? null } : null,
         clientSlug: project.clientSlug,
-        proposalUrl: project.proposalUrl,
-        projectPlanUrl: project.projectPlanUrl ?? null,
         sowUrl: project.sowUrl ?? null,
         kickoffDate: project.kickoffDate ?? null,
         leadId: project.leadId ?? null,
@@ -287,6 +289,24 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
     return true;
   }
 
+  /** Nombre del cliente a partir de su contacto: la empresa o, si no tiene, el nombre. */
+  async function customerOf(contactIds: string[] | undefined) {
+    if (!contactIds?.length) return null;
+    const contact = await store.contacts.findOne({ _id: contactIds[0] }, { projection: { name: 1, company: 1 } });
+    return contact ? (contact.company?.trim() || contact.name).slice(0, 80) : null;
+  }
+
+  /**
+   * Contactos para elegir el cliente de un proyecto: solo nombre y empresa, para quien crea o
+   * gestiona proyectos (el Team Leader no ve la lista completa de Contactos).
+   */
+  app.get("/api/ops/contact-options", { preHandler: requireAuth }, async (request, reply) => {
+    const user = request.user!;
+    if (user.role !== "boss" && user.role !== "lead") return forbidden(reply);
+    const contacts = await store.contacts.find({}, { projection: { name: 1, company: 1 } }).sort({ name: 1 }).limit(500).toArray();
+    return { contacts: contacts.map((c) => ({ id: c._id, name: c.name, company: c.company ?? null })) };
+  });
+
   /** Tabla de proyectos: paginada, ordenada y filtrada en el servidor, con contadores por etapa y totales. */
   app.get("/api/ops/projects", { preHandler: requireAuth }, async (request, reply) => {
     const query = listQuery.safeParse(request.query);
@@ -341,7 +361,8 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
     const input = body.data;
     const teamId = user.role === "boss" ? input.teamId : user.teamId;
     if (!teamId) return reply.code(400).send({ error: user.role === "boss" ? "Elige el equipo del proyecto." : "Tu usuario no tiene equipo." });
-    if (!(await store.teams.findOne({ _id: teamId }))) return reply.code(400).send({ error: "El equipo no existe." });
+    const team = await store.teams.findOne({ _id: teamId });
+    if (!team) return reply.code(400).send({ error: "El equipo no existe." });
     if (!(await teamMember(input.leadUserId, teamId, ["lead"]))) return reply.code(400).send({ error: "El Team Leader debe ser un team leader activo de ese equipo." });
     if (!(await teamMember(input.developerUserId, teamId, ["developer"]))) return reply.code(400).send({ error: "El Developer debe ser un developer activo de ese equipo." });
     if (!(await checkContacts(input.contactIds, reply))) return reply;
@@ -350,18 +371,20 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
       if (!app_ || !canSeeClient(user, app_)) return reply.code(400).send({ error: "La app de Infraestructura no existe." });
       if (await store.opsProjects.findOne({ clientSlug: input.clientSlug })) return reply.code(409).send({ error: "Esa app ya está enlazada a otro proyecto." });
     }
+    const customerName = (await customerOf(input.contactIds)) ?? input.customerName;
+    if (!customerName) return reply.code(400).send({ error: "Indica el cliente." });
+    // Sin Team Leader elegido: el del equipo (si sigue activo en él); si no, quien lo crea.
+    const teamLead = team.leadUserId && (await teamMember(team.leadUserId, teamId, ["lead"])) ? team.leadUserId : null;
     const at = new Date();
     const project: OpsProjectDoc = {
       _id: randomUUID(),
       name: input.name,
-      customerName: input.customerName!,
+      customerName,
       contactIds: [...new Set(input.contactIds ?? [])],
       teamId,
-      leadUserId: input.leadUserId ?? (user.role === "lead" ? user.id : null),
+      leadUserId: input.leadUserId ?? teamLead ?? (user.role === "lead" ? user.id : null),
       developerUserId: input.developerUserId ?? null,
       clientSlug: input.clientSlug ?? null,
-      proposalUrl: input.proposalUrl ?? null,
-      projectPlanUrl: input.projectPlanUrl ?? null,
       sowUrl: input.sowUrl ?? null,
       kickoffDate: input.kickoffDate ?? null,
       stage: input.stage ?? "kickoff",
@@ -421,9 +444,12 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
     if (patch.developerUserId !== undefined && patch.developerUserId !== project.developerUserId) changes.push("Cambió el Developer.");
 
     const updatedAt = new Date();
+    const customerName = await customerOf(patch.contactIds);
+    if (customerName && customerName !== project.customerName) changes.push(`Cliente: ${project.customerName} → ${customerName}`);
     const set = {
       ...patch,
       ...(patch.contactIds ? { contactIds: [...new Set(patch.contactIds)] } : {}),
+      ...(customerName ? { customerName } : {}),
       updatedAt
     };
     await store.opsProjects.updateOne({ _id: project._id }, { $set: set });

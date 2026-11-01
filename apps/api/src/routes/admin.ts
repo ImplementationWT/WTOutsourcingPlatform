@@ -53,7 +53,8 @@ export async function registerAdminRoutes(app: FastifyInstance, { users }: { use
   app.get("/api/teams", { preHandler: requireAuth }, async (request) => {
     const user = request.user!;
     const teams = (await users.listTeams()).filter((team) => user.role === "boss" || user.role === "commercial" || team.id === user.teamId);
-    return { teams: teams.map(({ id, name }) => ({ id, name })) };
+    // Con su Team Leader: al elegir el equipo de un proyecto se propone el suyo.
+    return { teams: teams.map(({ id, name, leadUserId }) => ({ id, name, leadUserId })) };
   });
 
   app.get("/api/admin/users", { preHandler: requireBoss }, async () => ({ users: await users.listUsers() }));

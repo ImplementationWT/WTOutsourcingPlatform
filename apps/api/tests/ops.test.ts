@@ -127,6 +127,40 @@ describe("proyectos operativos", () => {
     expect((await boss("POST", "/api/ops/projects", { name: "Nuevo proyecto", customerName: "Cliente", teamId: TEST_TEAM_ID })).status).toBe(201);
   });
 
+  it("el cliente es el contacto: el nombre sale de su empresa y cambiarlo lo recalcula", async () => {
+    const { as, store } = await world();
+    const at = new Date();
+    await store.contacts.insertMany([
+      { _id: "11111111-1111-4111-8111-111111111111", name: "Francisco Wong", emails: [], phone: null, title: null, company: "Manpersa SAC", linkedinUrl: null, createdBy: "jefe", createdAt: at, updatedAt: at },
+      { _id: "22222222-2222-4222-8222-222222222222", name: "Rosa Medina", emails: [], phone: null, title: null, company: null, linkedinUrl: null, createdBy: "jefe", createdAt: at, updatedAt: at }
+    ]);
+    const ana = await as("ana");
+    // El Team Leader elige el cliente de la lista mínima de contactos (nombre y empresa).
+    const options = await ana("GET", "/api/ops/contact-options");
+    expect(options.body.contacts).toEqual([
+      { id: "11111111-1111-4111-8111-111111111111", name: "Francisco Wong", company: "Manpersa SAC" },
+      { id: "22222222-2222-4222-8222-222222222222", name: "Rosa Medina", company: null }
+    ]);
+    expect((await (await as("dev"))("GET", "/api/ops/contact-options")).status).toBe(403);
+    const created = await ana("POST", "/api/ops/projects", { name: "Portal de pedidos", contactIds: ["11111111-1111-4111-8111-111111111111"] });
+    expect(created.status).toBe(201);
+    expect(created.body.project).toMatchObject({ customerName: "Manpersa SAC", client: { name: "Francisco Wong", company: "Manpersa SAC" } });
+    expect(created.body.project).not.toHaveProperty("proposalUrl");
+    expect(created.body.project).not.toHaveProperty("projectPlanUrl");
+    const changed = await ana("PATCH", `/api/ops/projects/${created.body.project.id}`, { contactIds: ["22222222-2222-4222-8222-222222222222"] });
+    expect(changed.body.project).toMatchObject({ customerName: "Rosa Medina", client: { name: "Rosa Medina", company: null } });
+    // Del proyecto solo queda el SOW.
+    expect((await ana("PATCH", `/api/ops/projects/${created.body.project.id}`, { projectPlanUrl: "https://plan.example.com" })).status).toBe(400);
+    expect((await ana("PATCH", `/api/ops/projects/${created.body.project.id}`, { sowUrl: "https://sow.example.com" })).body.project.sowUrl).toBe("https://sow.example.com");
+  });
+
+  it("sin Team Leader elegido, el proyecto toma el del equipo", async () => {
+    const { as, store, lead } = await world();
+    await store.teams.updateOne({ _id: TEST_TEAM_ID }, { $set: { leadUserId: lead._id } });
+    const created = await (await as("jefe"))("POST", "/api/ops/projects", { name: "Proyecto del equipo", customerName: "Cliente", teamId: TEST_TEAM_ID });
+    expect(created.body.project.lead).toMatchObject({ id: lead._id, name: "Ana Líder" });
+  });
+
   it("rechaza responsables de otro equipo o con otro rol", async () => {
     const { as, store } = await world();
     const ana = await as("ana");

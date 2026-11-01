@@ -17,14 +17,15 @@ import {
   createProject,
   HEALTH,
   HEALTH_LABELS,
-  NEXT_ACTION_LABELS,
   opsKeys,
   PRIORITIES,
   PRIORITY_LABELS,
   PROJECT_FILTERS,
   STAGE_LABELS,
   STAGES,
+  clientLabel,
   updateProject,
+  useClientOptions,
   useOpsProjects,
   useTeamMembers,
   type OpsProjectRow,
@@ -40,19 +41,20 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const teams = useTeams().data ?? [];
+  const clients = useClientOptions().data ?? [];
   const [name, setName] = useState("");
-  const [customerName, setCustomerName] = useState("");
+  const [contactId, setContactId] = useState("");
   const [teamId, setTeamId] = useState("");
   const [leadId, setLeadId] = useState("");
   const [developerId, setDeveloperId] = useState("");
-  const [proposalUrl, setProposalUrl] = useState("");
   const [priority, setPriority] = useState<Priority>("medium");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const effectiveTeam = isBoss ? teamId : (session?.teamId ?? "");
   const members = useTeamMembers(effectiveTeam || null, Boolean(effectiveTeam)).data ?? [];
-  const valid = name.trim().length >= 3 && customerName.trim().length >= 2 && Boolean(effectiveTeam);
+  const leaders = members.filter((m) => m.role === "lead");
+  const valid = name.trim().length >= 3 && Boolean(contactId) && Boolean(effectiveTeam);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -62,11 +64,10 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
     try {
       const { project } = await createProject({
         name: name.trim(),
-        customerName: customerName.trim(),
+        contactIds: [contactId],
         ...(isBoss ? { teamId } : {}),
         leadUserId: leadId || null,
         developerUserId: developerId || null,
-        proposalUrl: proposalUrl.trim() || null,
         priority,
       });
       await queryClient.invalidateQueries({ queryKey: opsKeys.allProjects });
@@ -87,66 +88,72 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
         </Button>
       </CardHeader>
       <CardContent>
-        <form onSubmit={submit} className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
+        <form onSubmit={submit} className="space-y-5">
+          <div className="grid gap-x-4 gap-y-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="op-name">Nombre del proyecto</Label>
+              <Label htmlFor="op-name" className="text-caps-label">Nombre del proyecto</Label>
               <Input id="op-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Automatización de pedidos" />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="op-customer">Cliente</Label>
-              <Input id="op-customer" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Manpersa SAC" />
+              <Label htmlFor="op-client" className="text-caps-label">Cliente</Label>
+              <Select
+                id="op-client"
+                label="Cliente"
+                value={contactId || null}
+                placeholder="Elige el contacto"
+                searchable
+                options={clients.map((c) => ({ value: c.id, label: c.name, description: c.company ?? undefined }))}
+                onValueChange={(v) => setContactId(v ?? "")}
+              />
             </div>
             {isBoss && (
               <div className="space-y-1.5">
-                <Label htmlFor="op-team">Equipo</Label>
+                <Label htmlFor="op-team" className="text-caps-label">Equipo</Label>
                 <Select
                   id="op-team"
                   value={teamId || null}
                   emptyLabel="Elige un equipo"
                   options={teams.map((t) => ({ value: t.id, label: t.name }))}
                   onValueChange={(v) => {
-                    setTeamId((v ?? ""));
-                    setLeadId("");
+                    const next = v ?? "";
+                    setTeamId(next);
+                    // El Team Leader del equipo queda elegido (se puede cambiar).
+                    setLeadId(teams.find((t) => t.id === next)?.leadUserId ?? "");
                     setDeveloperId("");
                   }}
                 />
               </div>
             )}
             <div className="space-y-1.5">
-              <Label htmlFor="op-priority">Prioridad</Label>
-              <Select
-                id="op-priority"
-                value={priority}
-                options={PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABELS[p] }))}
-                onValueChange={(v) => setPriority((v ?? "") as Priority)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="op-lead">Team Leader</Label>
+              <Label htmlFor="op-lead" className="text-caps-label">Team Leader</Label>
               <Select
                 id="op-lead"
                 value={leadId || null}
                 emptyLabel={isBoss ? "Sin asignar" : "Yo"}
-                options={members.filter((m) => m.role === "lead").map((m) => ({ value: m.id, label: m.name }))}
+                options={leaders.map((m) => ({ value: m.id, label: m.name }))}
                 disabled={!effectiveTeam}
-                onValueChange={(v) => setLeadId((v ?? ""))}
+                onValueChange={(v) => setLeadId(v ?? "")}
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="op-dev">Developer</Label>
+              <Label htmlFor="op-dev" className="text-caps-label">Developer</Label>
               <Select
                 id="op-dev"
                 value={developerId || null}
                 emptyLabel="Sin asignar"
                 options={members.filter((m) => m.role === "developer").map((m) => ({ value: m.id, label: m.name }))}
                 disabled={!effectiveTeam}
-                onValueChange={(v) => setDeveloperId((v ?? ""))}
+                onValueChange={(v) => setDeveloperId(v ?? "")}
               />
             </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="op-proposal">Propuesta (enlace, opcional)</Label>
-              <Input id="op-proposal" value={proposalUrl} onChange={(e) => setProposalUrl(e.target.value)} placeholder="https://…" />
+            <div className="space-y-1.5">
+              <Label htmlFor="op-priority" className="text-caps-label">Prioridad</Label>
+              <Select
+                id="op-priority"
+                value={priority}
+                options={PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABELS[p] }))}
+                onValueChange={(v) => setPriority((v ?? "") as Priority)}
+              />
             </div>
           </div>
           {error && (
@@ -188,9 +195,9 @@ export default function OpsProjectsPage() {
       card: "title",
       cell: (p) => (
         <span className="flex min-w-0 flex-col">
-          <span className="font-medium">{p.name}</span>
-          <span className="text-xs text-muted-foreground">
-            {p.customerName} · {p.team.name ?? "Sin equipo"}
+          <span className="truncate font-semibold">{p.name}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            {clientLabel(p)} · {p.team.name ?? "Sin equipo"}
           </span>
         </span>
       ),
@@ -199,37 +206,42 @@ export default function OpsProjectsPage() {
       id: "stage",
       header: "Etapa",
       sortKey: "stage",
+      card: "badge",
+      cardCell: (p) => <StageBadge value={p.stage} />,
       cell: (p) => <InlineSelect label={`Etapa de ${p.name}`} value={p.stage} options={STAGES} labels={STAGE_LABELS} disabled={!p.canManage} display={<StageBadge value={p.stage} />} onSave={(v) => save(p, { stage: v ?? p.stage })} />,
     },
     {
       id: "health",
       header: "Health",
       sortKey: "health",
+      card: "badge",
+      cardCell: (p) => <HealthBadge value={p.health} />,
       cell: (p) => <InlineSelect label={`Health de ${p.name}`} value={p.health} options={HEALTH} labels={HEALTH_LABELS} disabled={!p.canManage} display={<HealthBadge value={p.health} />} onSave={(v) => save(p, { health: v ?? p.health })} />,
     },
-    { id: "sentiment", header: "Sentiment", cell: (p) => <SentimentBar value={p.sentimentScore} /> },
+    { id: "sentiment", header: "Sentiment", card: false, hidden: true, cell: (p) => <SentimentBar value={p.sentimentScore} /> },
     {
       id: "priority",
       header: "Prioridad",
       sortKey: "priority",
+      card: "badge",
+      cardCell: (p) => <PriorityBadge value={p.priority} />,
       cell: (p) => (
         <InlineSelect label={`Prioridad de ${p.name}`} value={p.priority} options={PRIORITIES} labels={PRIORITY_LABELS} disabled={!p.canManage} display={<PriorityBadge value={p.priority} />} onSave={(v) => save(p, { priority: v ?? p.priority })} />
       ),
     },
     { id: "soldHours", header: "Horas vendidas", align: "right", footer: <TotalCell hours={totals.soldHours ?? 0} strong />, cell: (p) => <TotalCell hours={p.summary.soldHours} /> },
     { id: "billableHours", header: "Horas facturables", align: "right", footer: <TotalCell hours={totals.billableHours ?? 0} strong />, cell: (p) => <TotalCell hours={p.summary.billableHours} /> },
-    { id: "billableVsSold", header: "Facturable vs deals", align: "right", cell: (p) => <TotalCell hours={p.summary.billableVsSold} /> },
-    { id: "progress", header: "Avance", align: "right", cell: (p) => <span title={`${p.summary.tasksDone}/${p.summary.tasks} tareas`}>{p.summary.progress}%</span> },
+    { id: "billableVsSold", header: "Facturable vs deals", align: "right", card: false, hidden: true, cell: (p) => <TotalCell hours={p.summary.billableVsSold} /> },
+    { id: "progress", header: "Avance", align: "right", card: "meta", cardCell: (p) => `${p.summary.progress}% avance`, cell: (p) => <span title={`${p.summary.tasksDone}/${p.summary.tasks} tareas`}>{p.summary.progress}%</span> },
     { id: "amount", header: "Valor vendido", align: "right", footer: <TotalCell cents={totals.amountCents ?? 0} strong />, cell: (p) => <TotalCell cents={p.summary.amountCents} /> },
-    { id: "kickoff", header: "Kickoff", sortKey: "kickoffDate", card: false, cell: (p) => (p.kickoffDate ? formatDate(p.kickoffDate) : <span className="text-muted-foreground">—</span>) },
-    { id: "nextAction", header: "Siguiente acción", card: false, cell: (p) => (p.nextAction ? NEXT_ACTION_LABELS[p.nextAction] : <span className="text-muted-foreground">—</span>) },
+    { id: "kickoff", header: "Kickoff", sortKey: "kickoffDate", card: false, hidden: true, className: "whitespace-nowrap", cell: (p) => (p.kickoffDate ? formatDate(p.kickoffDate) : <span className="text-muted-foreground">—</span>) },
   ];
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Proyectos del cliente"
-        description="Etapa, health, horas vendidas y facturables, y avance de cada proyecto."
+        title="Proyectos"
+        description={<span className="max-sm:hidden">Etapa, health, horas vendidas y facturables, y avance de cada proyecto.</span>}
         actions={
           data?.canCreate && !creating ? (
             <Button size="lg" onClick={() => setCreating(true)}>
@@ -252,7 +264,7 @@ export default function OpsProjectsPage() {
         error={error}
         rowKey={(p) => p.id}
         rowHref={(p) => `/operativa/${p.id}`}
-        empty="Aún no hay proyectos operativos."
+        empty="Aún no hay proyectos."
         searchPlaceholder="Buscar por proyecto o cliente"
         filters={[
           { key: "stage", label: "Filtrar por etapa", all: "Todas las etapas", options: STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] })) },
