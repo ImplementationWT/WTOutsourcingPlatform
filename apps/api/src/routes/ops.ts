@@ -29,6 +29,7 @@ import {
   type VaultAccountDoc
 } from "../ops/models.js";
 import type { MeetingProcessing } from "../meetings/processing.js";
+import { deriveTask, subtasksByParent } from "../ops/tasks.js";
 import { type ConvertInput, registerMeetingRoutes } from "../meetings/routes.js";
 import { canEditDeal } from "../core/access.js";
 import type { ProposalDoc } from "../sales/models.js";
@@ -162,6 +163,15 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
   /** Developers del proyecto: la lista nueva o, en proyectos viejos, el único developer. */
   const developersOf = (project: Pick<OpsProjectDoc, "developerUserId" | "developerUserIds">) => project.developerUserIds ?? (project.developerUserId ? [project.developerUserId] : []);
 
+  /** Horas facturables de un conjunto de proyectos (subtareas, o la tarea si no tiene). */
+  async function billableOf(projectIds: string[]) {
+    if (!projectIds.length) return 0;
+    const tasks = await store.opsTasks.find({ projectId: { $in: projectIds }, $or: [{ deletedAt: { $exists: false } }, { deletedAt: null }] }).toArray();
+    const subs = subtasksByParent(tasks);
+    const total = tasks.filter((t) => !t.parentTaskId).reduce((n, t) => n + deriveTask(t, subs.get(t._id) ?? []).billableHours, 0);
+    return Math.round(total * 100) / 100;
+  }
+
   /** Plazos por etapa: los guardados en Settings o los iniciales. */
   async function loadSla() {
     const doc = await store.stageSla.findOne({ _id: "stage-sla" });
@@ -210,27 +220,30 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
             ])
             .toArray()
         : [],
-      projectIds.length
-        ? store.opsTasks
-            .aggregate<{ _id: string; tasks: number; done: number }>([
-              { $match: { projectId: { $in: projectIds } } },
-              { $group: { _id: "$projectId", tasks: { $sum: 1 }, done: { $sum: { $cond: [{ $eq: ["$status", "done"] }, 1, 0] } } } }
-            ])
-            .toArray()
-        : [],
+      projectIds.length ? store.opsTasks.find({ projectId: { $in: projectIds }, $or: [{ deletedAt: { $exists: false } }, { deletedAt: null }] }).toArray() : [],
       contactIds.length ? store.contacts.find({ _id: { $in: contactIds } }, { projection: { name: 1, company: 1 } }).toArray() : []
     ]);
     const userName = new Map(users.map((u) => [u._id, u.name]));
     const teamName = new Map(teams.map((t) => [t._id, t.name]));
     const dealsOf = new Map(deals.map((d) => [d._id, d]));
-    const tasksOf = new Map(tasks.map((t) => [t._id, t]));
+    // Avance: tareas (no subtareas) completadas según sus subtareas; horas facturables de lo que se trabaja.
+    const subs = subtasksByParent(tasks);
+    const tasksOf = new Map<string, { tasks: number; done: number; billable: number }>();
+    for (const task of tasks.filter((t) => !t.parentTaskId)) {
+      const d = deriveTask(task, subs.get(task._id) ?? []);
+      const entry = tasksOf.get(task.projectId) ?? { tasks: 0, done: 0, billable: 0 };
+      entry.tasks += 1;
+      if ((d.status ?? task.status) === "done") entry.done += 1;
+      entry.billable += d.billableHours;
+      tasksOf.set(task.projectId, entry);
+    }
     const contactName = new Map(contacts.map((c) => [c._id, c.name]));
     const contactCompany = new Map(contacts.map((c) => [c._id, c.company ?? null]));
     return (project: OpsProjectDoc) => {
       const d = dealsOf.get(project._id);
       const t = tasksOf.get(project._id);
       const soldHours = d?.soldHours ?? 0;
-      const billableHours = 0;
+      const billableHours = Math.round((t?.billable ?? 0) * 100) / 100;
       return {
         id: project._id,
         name: project.name,
@@ -393,7 +406,7 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
       rows: result.rows.map((p) => ({ ...present(p), canManage: canManageProject(user, p) })),
       stuck,
       sla,
-      totals: { soldHours: sold?.soldHours ?? 0, billableHours: 0, amountCents: sold?.amountCents ?? 0 },
+      totals: { soldHours: sold?.soldHours ?? 0, billableHours: await billableOf(ids), amountCents: sold?.amountCents ?? 0 },
       canCreate: user.role === "boss" || user.role === "lead"
     };
   });
@@ -542,7 +555,7 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
     if (!params.success) return reply.code(400).send({ error: "Id inválido." });
     const project = await readableProject(store, request, reply, params.data.id);
     if (!project) return reply;
-    const tasks = await store.opsTasks.find({ projectId: project._id }).sort({ createdAt: -1 }).toArray();
+    const tasks = await store.opsTasks.find({ projectId: project._id, parentTaskId: null, deletedAt: null }).sort({ createdAt: -1 }).toArray();
     const ids = [...new Set(tasks.map((t) => t.assigneeUserId).filter((v): v is string => Boolean(v)))];
     const users = ids.length ? await store.users.find({ _id: { $in: ids } }, { projection: { name: 1 } }).toArray() : [];
     const names = new Map(users.map((u) => [u._id, u.name]));

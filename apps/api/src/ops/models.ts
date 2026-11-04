@@ -8,7 +8,8 @@ export const PROJECT_STAGES = ["kickoff", "structure", "automation_layer", "stab
 export const HEALTH_SCORES = ["champion", "very_happy", "happy", "mixed", "neutral", "concerned", "escalated", "at_risk"] as const;
 export const PRIORITIES = ["critical", "high", "medium", "low"] as const;
 export const DEAL_STATUSES = ["draft", "proposed", "approved", "in_progress", "delivered", "invoiced", "paid", "cancelled"] as const;
-export const TASK_STATUSES = ["todo", "in_progress", "review", "done"] as const;
+/** Pending, Working on it, In Review, Stuck y Completed (`stuck` se sumó con el prototipo). */
+export const TASK_STATUSES = ["todo", "in_progress", "review", "stuck", "done"] as const;
 export const ACCOUNT_KINDS = ["web", "email", "api", "database", "server", "social", "other"] as const;
 export const MEETING_SOURCES = ["read_ai", "manual"] as const;
 /** Estado técnico del procesamiento con Claude. */
@@ -209,11 +210,50 @@ export interface OpsTaskDoc {
   assigneeUserId: string | null;
   estimatedHours: number;
   status: TaskStatus;
-  dueDate: string | null; // YYYY-MM-DD
+  dueDate: string | null; // YYYY-MM-DD: fin del timeline
   completedAt?: Date;
+  /** Subtarea de otra tarea (un solo nivel). La tarea padre se calcula desde sus subtareas. */
+  parentTaskId?: string | null;
+  sprintId?: string | null;
+  /** Inicio del timeline (AAAA-MM-DD). */
+  startDate?: string | null;
+  /** `estimatedHours` son las horas proyectadas. */
+  investedHours?: number;
+  billableHours?: number;
+  details?: string;
+  /** Borrada (se puede deshacer). Las subtareas de una tarea borrada guardan quién las borró. */
+  deletedAt?: Date | null;
+  deletedWith?: string | null;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** Sprint de un proyecto. El nombre se muestra como «Sprint N: nombre» y N no se edita. */
+export interface SprintDoc {
+  _id: string;
+  projectId: string;
+  number: number;
+  name: string;
+  startDate: string;
+  endDate: string;
+  deletedAt?: Date | null;
+  /** Tareas que quedaron sin sprint al borrarlo (para deshacer). */
+  detachedTaskIds?: string[];
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** Actualización escrita en una tarea o subtarea. */
+export interface TaskUpdateDoc {
+  _id: string;
+  taskId: string;
+  projectId: string;
+  body: string;
+  authorUsername: string;
+  authorName: string;
+  createdAt: Date;
 }
 
 /** Cuenta de un servicio del cliente. El valor secreto solo existe cifrado. */

@@ -71,7 +71,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/operativa/mi-trabajo", label: "Mi trabajo", icon: UserCheck, module: "myWork", soon: true },
       { to: "/operativa", label: "Proyectos", icon: BriefcaseBusiness, module: "projects", end: true, also: /^\/operativa\/(?!mi-trabajo$|tasks$|backlog$)[^/]+$/ },
-      { to: "/operativa/tasks", label: "Tasks", icon: ClipboardList, module: "tasks", soon: true },
+      { to: "/operativa/tasks", label: "Tasks", icon: ClipboardList, module: "tasks" },
     ],
   },
   {
