@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { MongoServerError } from "mongodb";
 import type { AdminStore } from "../store/admin-store.js";
-import { TEAMLESS_ROLES, type TeamDoc, type UserDoc, type UserRole } from "../store/models.js";
+import { type Seniority, TEAMLESS_ROLES, type TeamDoc, type UserDoc, type UserRole } from "../store/models.js";
 import { hashPassword, verifyPassword } from "./password.js";
 
 export const MIN_PASSWORD_LENGTH = 10;
@@ -63,6 +63,7 @@ const publicUser = (user: UserDoc) => {
     name: user.name,
     email: user.email ?? null,
     role: user.role,
+    seniority: user.seniority ?? null,
     teamId: user.teamId,
     active: user.active,
     mustChangeCredentials: user.mustChangePassword,
@@ -216,7 +217,7 @@ export class UserDirectory {
     return { user: publicUser(user), temporaryPassword: password };
   }
 
-  async updateUser(id: string, patch: { name?: string; email?: string | null; role?: UserRole; teamId?: string | null; active?: boolean }, actor: { id: string; username: string }) {
+  async updateUser(id: string, patch: { name?: string; email?: string | null; role?: UserRole; teamId?: string | null; active?: boolean; seniority?: Seniority | null }, actor: { id: string; username: string }) {
     const user = await this.findById(id);
     if (!user) throw new UserDirectoryError(404, "Usuario no encontrado.");
     if (id === actor.id && (patch.active === false || (patch.role && patch.role !== "boss"))) {
@@ -235,7 +236,8 @@ export class UserDirectory {
       updatedAt: this.now(),
       ...(patch.name ? { name: patch.name.trim() } : {}),
       ...(patch.email === undefined ? {} : { email: patch.email }),
-      ...(patch.active === undefined ? {} : { active: patch.active })
+      ...(patch.active === undefined ? {} : { active: patch.active }),
+      ...(patch.seniority === undefined ? {} : { seniority: patch.seniority })
     };
     try {
       await this.store.users.updateOne({ _id: id }, { $set: set });

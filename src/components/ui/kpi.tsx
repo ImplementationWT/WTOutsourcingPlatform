@@ -7,7 +7,7 @@ export function Kpi({ label, value, sub, className }: { label: string; value: Re
     <div className={cn("flex min-w-0 flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-4 shadow-card", className)}>
       <p className="text-caps-label leading-snug">{label}</p>
       <div className="space-y-1">
-        <p className="text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+        <p className="text-lg font-bold tracking-tight whitespace-nowrap tabular-nums sm:text-2xl">{value}</p>
         {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
       </div>
     </div>
