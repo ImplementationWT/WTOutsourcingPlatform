@@ -3,6 +3,7 @@ import { RequireModule } from "@/components/layout/RequireModule";
 import TasksPage from "@/features/tasks/TasksPage";
 import MyWorkPage from "@/features/tasks/MyWorkPage";
 import BacklogPage from "@/features/tasks/BacklogPage";
+import CommsPage from "@/features/communications/CommsPage";
 import Home from "@/app/Home";
 import AppLayout from "@/components/layout/AppLayout";
 import UsersPage from "@/features/admin/UsersPage";
@@ -42,6 +43,7 @@ export const router = createBrowserRouter([
         children: [
           { path: "/comercial", element: <LeadsPage /> },
           { path: "/comercial/leads/:id", element: <LeadDetailPage /> },
+          { path: "/comercial/comunicaciones", element: <RequireModule module="communications"><CommsPage /></RequireModule> },
           { path: "/comercial/actividades", element: <ActivitiesPage /> },
           { path: "/comercial/demos", element: <DemosPage /> },
           { path: "/comercial/propuestas", element: <ProposalsPage /> },

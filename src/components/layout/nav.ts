@@ -30,7 +30,7 @@ export interface NavItem {
   /** Quién la ve: el acceso vive en MODULE_ACCESS (src/lib/access.ts). */
   module: ModuleId;
   /** Contador al lado (lo calcula `useNavBadges`). */
-  badge?: "backlog";
+  badge?: "backlog" | "followUps";
   /** Pantallas que aún no existen: no se muestran como enlace. */
   soon?: boolean;
   /** Rutas que también lo marcan como activo (p. ej. el detalle de un lead). */
@@ -63,7 +63,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/comercial", label: "Leads", icon: Megaphone, module: "leads", end: true, also: /^\/comercial\/leads\// },
       { to: "/comercial/propuestas", label: "Propuestas", icon: FileText, module: "proposals" },
       { to: "/meetings", label: "Meetings", icon: MessagesSquare, module: "meetings" },
-      { to: "/comercial/comunicaciones", label: "Comunicaciones", icon: Mail, module: "communications", soon: true },
+      { to: "/comercial/comunicaciones", label: "Comunicaciones", icon: Mail, module: "communications", badge: "followUps" },
       { to: "/comercial/actividades", label: "Actividades", icon: ListTodo, module: "activities" },
       { to: "/comercial/demos", label: "Demos", icon: MonitorPlay, module: "demos" },
     ],

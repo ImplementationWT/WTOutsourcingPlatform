@@ -44,9 +44,10 @@ import {
 import { HealthBadge, PriorityBadge, SentimentBar, StageTrack } from "./OpsBadges";
 import { AccountsTab, DealsTab, MeetingsTab, ProposalsTab, UpdatesTab } from "./OpsTabs";
 import { ProjectTasksPanel } from "@/features/tasks/TasksPage";
+import { CommsTab } from "@/features/communications/CommsList";
 
-type TabId = "deals" | "tasks" | "proposals" | "accounts" | "meetings" | "updates" | "stages";
-const TAB_IDS: readonly TabId[] = ["deals", "tasks", "proposals", "accounts", "meetings", "updates", "stages"];
+type TabId = "deals" | "tasks" | "proposals" | "accounts" | "meetings" | "comms" | "updates" | "stages";
+const TAB_IDS: readonly TabId[] = ["deals", "tasks", "proposals", "accounts", "meetings", "comms", "updates", "stages"];
 
 /** Tarjeta de sección del detalle. */
 function Panel({ title, children, className }: { title: string; children: ReactNode; className?: string }) {
@@ -363,6 +364,7 @@ export default function OpsProjectDetailPage() {
     // Comercial y Financiera no ven las cuentas: la API tampoco se las da.
     { id: "accounts", label: "Cuentas", visible: permissions.work },
     { id: "meetings", label: "Reuniones", visible: true },
+    { id: "comms", label: "Comunicaciones", visible: true },
     { id: "updates", label: "Updates", visible: true },
     { id: "stages", label: "Etapas", visible: true },
   ];
@@ -427,6 +429,7 @@ export default function OpsProjectDetailPage() {
               {tab === "meetings" && <MeetingsTab projectId={project.id} canWork={permissions.work} />}
               {tab === "updates" && <UpdatesTab projectId={project.id} canWork={permissions.work} />}
               {tab === "stages" && <StagesTab project={project} sla={sla} />}
+              {tab === "comms" && <CommsTab scope={{ projectId: project.id }} defaultContact={project.client?.name ?? ""} />}
             </div>
           </Card>
         </div>

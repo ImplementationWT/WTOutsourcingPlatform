@@ -3,8 +3,8 @@ import { useSession } from "@/features/auth/auth";
 import { apiFetch } from "@/lib/api-client";
 import { canAccess } from "@/lib/access";
 
-/** Contadores del menú: tareas sin sprint (Backlog / Sprints). */
-export function useNavBadges(): Record<"backlog", number> {
+/** Contadores del menú: tareas sin sprint (Backlog / Sprints) y seguimientos vencidos o de hoy (Comunicaciones). */
+export function useNavBadges(): Record<"backlog" | "followUps", number> {
   const role = useSession().data?.role;
   const backlog = useQuery({
     queryKey: ["tasks", "backlog-count"],
@@ -12,5 +12,11 @@ export function useNavBadges(): Record<"backlog", number> {
     enabled: canAccess(role, "backlog"),
     staleTime: 30_000,
   });
-  return { backlog: backlog.data?.count ?? 0 };
+  const comms = useQuery({
+    queryKey: ["communications", "summary"],
+    queryFn: () => apiFetch<{ followUpsDue: number }>("/api/communications/summary"),
+    enabled: canAccess(role, "communications"),
+    staleTime: 30_000,
+  });
+  return { backlog: backlog.data?.count ?? 0, followUps: comms.data?.followUpsDue ?? 0 };
 }
