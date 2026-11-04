@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import { canSeeClient } from "../auth/access.js";
-import { requireAuth } from "../auth/session.js";
+import { requireAuth, requireBoss } from "../auth/session.js";
 import type { SessionUser } from "../auth/users.js";
 import { open, seal } from "../lib/server-cipher.js";
 import { registerSecret } from "../lib/redact.js";
@@ -11,6 +11,8 @@ import { runTableQuery, tableQuerySchema } from "../lib/table-query.js";
 import {
   ACCOUNT_KINDS,
   type ActionItemDoc,
+  DEFAULT_STAGE_SLA,
+  MAX_PROJECT_DEVELOPERS,
   HEALTH_SCORES,
   type MeetingCore,
   newChangeOrder,
@@ -20,6 +22,7 @@ import {
   PAYMENT_TYPES,
   PRIORITIES,
   PROJECT_STAGES,
+  type ProjectStage,
   sentimentOf,
   SOLD_DEAL_STATUSES,
   TASK_STATUSES,
@@ -52,6 +55,8 @@ const projectFields = {
   customerName: text(80).min(2),
   leadUserId: userId,
   developerUserId: userId,
+  /** Hasta 2 developers (D5); el primero queda también como `developerUserId`. */
+  developerUserIds: z.array(z.string().uuid()).max(MAX_PROJECT_DEVELOPERS, `Máximo ${MAX_PROJECT_DEVELOPERS} developers por proyecto.`),
   clientSlug: z.string().regex(/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/).nullable(),
   // Del proyecto solo queda el SOW (sin propuesta ni Project Plan).
   sowUrl: optionalUrl,
@@ -115,6 +120,14 @@ const updateAccountSchema = z
 
 const updateNoteSchema = z.object({ body: text(4000).min(1) }).strict();
 
+const slaSchema = z
+  .object({ days: z.object(Object.fromEntries(PROJECT_STAGES.map((st) => [st, z.number().int().min(1).max(3650).nullable()])) as Record<ProjectStage, z.ZodNullable<z.ZodNumber>>).strict() })
+  .strict();
+
+/** Días entre dos fechas AAAA-MM-DD. */
+const daysBetween = (from: string, to: string) => Math.max(0, Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000));
+const today = () => new Date().toISOString().slice(0, 10);
+
 const listQuery = tableQuerySchema.extend({
   stage: z.enum(PROJECT_STAGES).optional(),
   health: z.enum(HEALTH_SCORES).optional(),
@@ -146,6 +159,22 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
   const note = (user: SessionUser, projectId: string, body: string) =>
     store.projectUpdates.insertOne({ _id: randomUUID(), projectId, kind: "system", body, authorUsername: user.username, authorName: user.name, createdAt: new Date() });
 
+  /** Developers del proyecto: la lista nueva o, en proyectos viejos, el único developer. */
+  const developersOf = (project: Pick<OpsProjectDoc, "developerUserId" | "developerUserIds">) => project.developerUserIds ?? (project.developerUserId ? [project.developerUserId] : []);
+
+  /** Plazos por etapa: los guardados en Settings o los iniciales. */
+  async function loadSla() {
+    const doc = await store.stageSla.findOne({ _id: "stage-sla" });
+    return { ...DEFAULT_STAGE_SLA, ...(doc?.days ?? {}) };
+  }
+
+  /** Todos deben ser developers activos del equipo. */
+  async function teamDevelopers(ids: string[], teamId: string) {
+    if (!ids.length) return true;
+    const unique = [...new Set(ids)];
+    return (await store.users.countDocuments({ _id: { $in: unique }, active: true, teamId, role: "developer" })) === unique.length;
+  }
+
   /** Usuario activo de ese equipo con uno de esos roles (para asignar responsables). */
   async function teamMember(id: string | null | undefined, teamId: string, roles: UserDoc["role"][]) {
     if (!id) return true;
@@ -159,7 +188,7 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
    * 0), facturable vs deals y avance (tareas hechas / totales).
    */
   async function people(projects: OpsProjectDoc[]) {
-    const ids = [...new Set(projects.flatMap((p) => [p.leadUserId, p.developerUserId]).filter((v): v is string => Boolean(v)))];
+    const ids = [...new Set(projects.flatMap((p) => [p.leadUserId, p.developerUserId, ...(p.developerUserIds ?? [])]).filter((v): v is string => Boolean(v)))];
     const teamIds = [...new Set(projects.map((p) => p.teamId))];
     const projectIds = projects.map((p) => p._id);
     const contactIds = [...new Set(projects.flatMap((p) => p.contactIds ?? []))];
@@ -209,6 +238,7 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
         team: { id: project.teamId, name: teamName.get(project.teamId) ?? null },
         lead: project.leadUserId ? { id: project.leadUserId, name: userName.get(project.leadUserId) ?? null } : null,
         developer: project.developerUserId ? { id: project.developerUserId, name: userName.get(project.developerUserId) ?? null } : null,
+        developers: developersOf(project).map((id) => ({ id, name: userName.get(id) ?? null })),
         contacts: (project.contactIds ?? []).map((id) => ({ id, name: contactName.get(id) ?? null })),
         /** El cliente: el contacto del proyecto (con su empresa). */
         client: project.contactIds?.[0] ? { id: project.contactIds[0], name: contactName.get(project.contactIds[0]) ?? null, company: contactCompany.get(project.contactIds[0]) ?? null } : null,
@@ -217,6 +247,8 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
         kickoffDate: project.kickoffDate ?? null,
         leadId: project.leadId ?? null,
         stage: project.stage,
+        stageSince: project.stageSince ?? project.updatedAt.toISOString().slice(0, 10),
+        stageHistory: project.stageHistory ?? [],
         health: project.health,
         sentimentScore: sentimentOf(project.health),
         priority: project.priority,
@@ -345,9 +377,22 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
           ])
           .toArray()
       : [];
+    // Atascados: más días en la etapa que el plazo esperado (de todo el conjunto, no solo la página).
+    const sla = await loadSla();
+    const now = today();
+    const stuck = (await store.opsProjects.find(match, { projection: { name: 1, stage: 1, stageSince: 1, updatedAt: 1 } }).toArray())
+      .map((p) => {
+        const limit = sla[p.stage];
+        const days = daysBetween(p.stageSince ?? p.updatedAt.toISOString().slice(0, 10), now);
+        return { id: p._id, name: p.name, stage: p.stage, days, sla: limit };
+      })
+      .filter((p) => p.sla !== null && p.days > p.sla)
+      .sort((a, b) => b.days - (b.sla ?? 0) - (a.days - (a.sla ?? 0)));
     return {
       ...result,
       rows: result.rows.map((p) => ({ ...present(p), canManage: canManageProject(user, p) })),
+      stuck,
+      sla,
       totals: { soldHours: sold?.soldHours ?? 0, billableHours: 0, amountCents: sold?.amountCents ?? 0 },
       canCreate: user.role === "boss" || user.role === "lead"
     };
@@ -365,6 +410,8 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
     if (!team) return reply.code(400).send({ error: "El equipo no existe." });
     if (!(await teamMember(input.leadUserId, teamId, ["lead"]))) return reply.code(400).send({ error: "El Team Leader debe ser un team leader activo de ese equipo." });
     if (!(await teamMember(input.developerUserId, teamId, ["developer"]))) return reply.code(400).send({ error: "El Developer debe ser un developer activo de ese equipo." });
+    const developerUserIds = [...new Set(input.developerUserIds ?? (input.developerUserId ? [input.developerUserId] : []))];
+    if (!(await teamDevelopers(developerUserIds, teamId))) return reply.code(400).send({ error: "Los developers deben ser developers activos de ese equipo." });
     if (!(await checkContacts(input.contactIds, reply))) return reply;
     if (input.clientSlug) {
       const app_ = await store.getClient(input.clientSlug);
@@ -383,11 +430,14 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
       contactIds: [...new Set(input.contactIds ?? [])],
       teamId,
       leadUserId: input.leadUserId ?? teamLead ?? (user.role === "lead" ? user.id : null),
-      developerUserId: input.developerUserId ?? null,
+      developerUserId: developerUserIds[0] ?? null,
+      developerUserIds,
       clientSlug: input.clientSlug ?? null,
       sowUrl: input.sowUrl ?? null,
       kickoffDate: input.kickoffDate ?? null,
       stage: input.stage ?? "kickoff",
+      stageSince: today(),
+      stageHistory: [{ stage: input.stage ?? "kickoff", at: today(), by: user.username }],
       health: input.health ?? "neutral",
       priority: input.priority ?? "medium",
       paymentType: input.paymentType ?? null,
@@ -425,6 +475,8 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
     const patch = body.data;
     if (patch.leadUserId !== undefined && !(await teamMember(patch.leadUserId, project.teamId, ["lead"]))) return reply.code(400).send({ error: "El Team Leader debe ser un team leader activo del equipo del proyecto." });
     if (patch.developerUserId !== undefined && !(await teamMember(patch.developerUserId, project.teamId, ["developer"]))) return reply.code(400).send({ error: "El Developer debe ser un developer activo del equipo del proyecto." });
+    const developerUserIds = patch.developerUserIds ? [...new Set(patch.developerUserIds)] : patch.developerUserId !== undefined ? (patch.developerUserId ? [patch.developerUserId] : []) : undefined;
+    if (developerUserIds && !(await teamDevelopers(developerUserIds, project.teamId))) return reply.code(400).send({ error: "Los developers deben ser developers activos del equipo del proyecto." });
     if (!(await checkContacts(patch.contactIds, reply))) return reply;
     if (patch.clientSlug) {
       const app_ = await store.getClient(patch.clientSlug);
@@ -441,18 +493,25 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
     }
     if (patch.priority && patch.priority !== project.priority) changes.push(`Prioridad: ${LABELS.priority[project.priority]} → ${LABELS.priority[patch.priority]}`);
     if (patch.leadUserId !== undefined && patch.leadUserId !== project.leadUserId) changes.push("Cambió el Team Leader.");
-    if (patch.developerUserId !== undefined && patch.developerUserId !== project.developerUserId) changes.push("Cambió el Developer.");
+    if (developerUserIds && developerUserIds.join() !== developersOf(project).join()) changes.push(developerUserIds.length > 1 ? "Cambiaron los developers." : "Cambió el Developer.");
 
     const updatedAt = new Date();
     const customerName = await customerOf(patch.contactIds);
     if (customerName && customerName !== project.customerName) changes.push(`Cliente: ${project.customerName} → ${customerName}`);
+    const stageChanged = Boolean(patch.stage && patch.stage !== project.stage);
     const set = {
       ...patch,
+      ...(developerUserIds ? { developerUserIds, developerUserId: developerUserIds[0] ?? null } : {}),
       ...(patch.contactIds ? { contactIds: [...new Set(patch.contactIds)] } : {}),
       ...(customerName ? { customerName } : {}),
+      // Cada cambio de etapa queda en el historial con su fecha.
+      ...(stageChanged ? { stageSince: today() } : {}),
       updatedAt
     };
-    await store.opsProjects.updateOne({ _id: project._id }, { $set: set });
+    await store.opsProjects.updateOne(
+      { _id: project._id },
+      { $set: set, ...(stageChanged ? { $push: { stageHistory: { stage: patch.stage!, at: today(), by: user.username } } } : {}) }
+    );
     if (changes.length) {
       await note(user, project._id, changes.join("\n"));
       await auditOps(user, project, "ops.project_updated", { changes: changes.length });
@@ -460,6 +519,20 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
     const fresh = (await store.opsProjects.findOne({ _id: project._id }))!;
     const present = await people([fresh]);
     return { project: present(fresh) };
+  });
+
+  // ---- plazos por etapa ---------------------------------------------------------
+
+  app.get("/api/ops/stage-sla", { preHandler: requireAuth }, async () => ({ days: await loadSla(), defaults: DEFAULT_STAGE_SLA }));
+
+  /** Settings: solo el CEO/CCO cambia los plazos (D9). */
+  app.put("/api/ops/stage-sla", { preHandler: requireBoss }, async (request, reply) => {
+    const body = slaSchema.safeParse(request.body);
+    if (!body.success) return invalid(reply, body.error);
+    const user = request.user!;
+    await store.stageSla.updateOne({ _id: "stage-sla" }, { $set: { days: body.data.days, updatedBy: user.username, updatedAt: new Date() } }, { upsert: true });
+    await store.audit({ actor: user.username, action: "ops.stage_sla_updated", clientId: "settings", target: "stage-sla" });
+    return { days: await loadSla() };
   });
 
   // ---- tareas -----------------------------------------------------------------

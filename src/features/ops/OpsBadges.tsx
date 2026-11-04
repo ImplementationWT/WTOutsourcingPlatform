@@ -1,6 +1,9 @@
+import { Link } from "react-router-dom";
+import { AlertTriangle } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { HEALTH_LABELS, HEALTH_TONE, PRIORITY_LABELS, PRIORITY_TONE, STAGE_LABELS, STAGES, type Health, type Priority, type Stage } from "./api";
+import { HEALTH_LABELS, HEALTH_TONE, PRIORITY_LABELS, PRIORITY_TONE, STAGE_LABELS, STAGES, stageAge, type Health, type Priority, type Stage, type StuckProject } from "./api";
 
 export function HealthBadge({ value }: { value: Health }) {
   return <StatusBadge tone={HEALTH_TONE[value]}>{HEALTH_LABELS[value]}</StatusBadge>;
@@ -12,6 +15,44 @@ export function PriorityBadge({ value }: { value: Priority }) {
 
 export function StageBadge({ value }: { value: Stage }) {
   return <StatusBadge tone="outline">{STAGE_LABELS[value]}</StatusBadge>;
+}
+
+/** Días en la etapa contra el plazo: verde en plazo, ámbar desde el 75 % y rojo si se pasa. */
+export function StageAgeBadge({ stage, since, sla }: { stage: Stage; since: string; sla: number | null }) {
+  const age = stageAge(since, sla);
+  const title = sla === null ? `En ${STAGE_LABELS[stage]} desde ${formatDate(since)} · sin plazo` : `En ${STAGE_LABELS[stage]} desde ${formatDate(since)} · plazo ${sla} días`;
+  return (
+    <StatusBadge tone={age.tone} title={title}>
+      {age.text}
+    </StatusBadge>
+  );
+}
+
+/** Aviso de proyectos que llevan más tiempo del esperado en su etapa (los de toda la lista filtrada). */
+export function StuckBanner({ projects }: { projects: StuckProject[] }) {
+  if (!projects.length) return null;
+  return (
+    <section aria-label="Proyectos atascados" className="space-y-3 rounded-2xl border border-danger/40 bg-danger/5 p-4">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <p className="flex items-center gap-2 font-semibold text-danger">
+          <AlertTriangle className="size-4" aria-hidden />
+          {projects.length} {projects.length === 1 ? "proyecto atascado" : "proyectos atascados"}
+        </p>
+        <p className="text-sm text-muted-foreground">Llevan más tiempo del esperado en su etapa: los developers se quedan sin tareas y no se facturan horas.</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {projects.map((p) => (
+          <Link key={p.id} to={`/operativa/${p.id}?tab=stages`} className="inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-border bg-card px-3 py-1.5 text-sm transition-colors hover:bg-accent">
+            <span className="font-semibold">{p.name}</span>
+            <span className="whitespace-nowrap text-muted-foreground">{STAGE_LABELS[p.stage]}</span>
+            <StatusBadge tone="danger">
+              {p.days} d · +{p.days - (p.sla ?? 0)} d
+            </StatusBadge>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 /** Sentimiento de 0 a 100: barra fina con el número al lado. */

@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, X } from "lucide-react";
 import { DataTable, type Column } from "@/components/data-table/DataTable";
 import { InlineSelect, TotalCell } from "@/components/data-table/cells";
+import { SavedViews } from "@/components/data-table/SavedViews";
 import { useTableState } from "@/components/data-table/table-state";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -32,7 +33,7 @@ import {
   type Priority,
   type ProjectInput,
 } from "./api";
-import { HealthBadge, PriorityBadge, SentimentBar, StageBadge } from "./OpsBadges";
+import { HealthBadge, PriorityBadge, SentimentBar, StageAgeBadge, StageBadge, StuckBanner } from "./OpsBadges";
 import { PageHeader } from "@/components/layout/PageHeader";
 
 function NewProjectForm({ onClose }: { onClose: () => void }) {
@@ -67,7 +68,7 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
         contactIds: [contactId],
         ...(isBoss ? { teamId } : {}),
         leadUserId: leadId || null,
-        developerUserId: developerId || null,
+        developerUserIds: developerId ? [developerId] : [],
         priority,
       });
       await queryClient.invalidateQueries({ queryKey: opsKeys.allProjects });
@@ -180,6 +181,7 @@ export default function OpsProjectsPage() {
   const queryClient = useQueryClient();
   const table = useTableState({ filterKeys: PROJECT_FILTERS });
   const { data, isLoading, isFetching, error } = useOpsProjects(table.query);
+  const teams = useTeams().data ?? [];
   const [creating, setCreating] = useState(false);
   const save = async (p: OpsProjectRow, patch: Partial<ProjectInput>) => {
     await updateProject(p.id, patch);
@@ -218,6 +220,13 @@ export default function OpsProjectsPage() {
       cardCell: (p) => <HealthBadge value={p.health} />,
       cell: (p) => <InlineSelect label={`Health de ${p.name}`} value={p.health} options={HEALTH} labels={HEALTH_LABELS} disabled={!p.canManage} display={<HealthBadge value={p.health} />} onSave={(v) => save(p, { health: v ?? p.health })} />,
     },
+    {
+      id: "stageAge",
+      header: "Tiempo en etapa",
+      card: "meta",
+      cardCell: (p) => <StageAgeBadge stage={p.stage} since={p.stageSince} sla={data?.sla?.[p.stage] ?? null} />,
+      cell: (p) => <StageAgeBadge stage={p.stage} since={p.stageSince} sla={data?.sla?.[p.stage] ?? null} />,
+    },
     { id: "sentiment", header: "Sentiment", card: false, hidden: true, cell: (p) => <SentimentBar value={p.sentimentScore} /> },
     {
       id: "priority",
@@ -232,7 +241,7 @@ export default function OpsProjectsPage() {
     { id: "soldHours", header: "Horas vendidas", align: "right", footer: <TotalCell hours={totals.soldHours ?? 0} strong />, cell: (p) => <TotalCell hours={p.summary.soldHours} /> },
     { id: "billableHours", header: "Horas facturables", align: "right", footer: <TotalCell hours={totals.billableHours ?? 0} strong />, cell: (p) => <TotalCell hours={p.summary.billableHours} /> },
     { id: "billableVsSold", header: "Facturable vs deals", align: "right", card: false, hidden: true, cell: (p) => <TotalCell hours={p.summary.billableVsSold} /> },
-    { id: "progress", header: "Avance", align: "right", card: "meta", cardCell: (p) => `${p.summary.progress}% avance`, cell: (p) => <span title={`${p.summary.tasksDone}/${p.summary.tasks} tareas`}>{p.summary.progress}%</span> },
+    { id: "progress", header: "Avance", align: "right", card: false, cardCell: (p) => `${p.summary.progress}% avance`, cell: (p) => <span title={`${p.summary.tasksDone}/${p.summary.tasks} tareas`}>{p.summary.progress}%</span> },
     { id: "amount", header: "Valor vendido", align: "right", footer: <TotalCell cents={totals.amountCents ?? 0} strong />, cell: (p) => <TotalCell cents={p.summary.amountCents} /> },
     { id: "kickoff", header: "Kickoff", sortKey: "kickoffDate", card: false, hidden: true, className: "whitespace-nowrap", cell: (p) => (p.kickoffDate ? formatDate(p.kickoffDate) : <span className="text-muted-foreground">—</span>) },
   ];
@@ -254,6 +263,10 @@ export default function OpsProjectsPage() {
 
       {creating && <NewProjectForm onClose={() => setCreating(false)} />}
 
+      <SavedViews screen="projects" />
+
+      <StuckBanner projects={data?.stuck ?? []} />
+
       <DataTable
         label="Proyectos"
         columns={columns}
@@ -270,6 +283,7 @@ export default function OpsProjectsPage() {
           { key: "stage", label: "Filtrar por etapa", all: "Todas las etapas", options: STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] })) },
           { key: "health", label: "Filtrar por health", all: "Todo el health", options: HEALTH.map((h) => ({ value: h, label: HEALTH_LABELS[h] })) },
           { key: "priority", label: "Filtrar por prioridad", all: "Todas las prioridades", options: PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABELS[p] })) },
+          ...(teams.length > 1 ? [{ key: "teamId", label: "Filtrar por team", all: "Todos los teams", options: teams.map((t) => ({ value: t.id, label: t.name })) }] : []),
         ]}
         grouping={{ label: "Agrupar por etapa", value: (p) => p.stage, order: STAGES, labels: STAGE_LABELS }}
       />

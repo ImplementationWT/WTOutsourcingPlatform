@@ -15,12 +15,12 @@ import UserMenu from "./UserMenu";
 const iconButton =
   "inline-flex size-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground transition-colors hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none";
 
-/** Accesos de la barra inferior del celular (los tres que más usa cada rol + «Más»). */
+/** Accesos de la barra inferior del celular (los que más usa cada rol + «Más»). Deals no: va en el proyecto. */
 function bottomItems(role: UserRole | undefined): Pick<NavItem, "to" | "label" | "end" | "also">[] {
   const projects = { to: "/operativa", label: "Proyectos", end: true, also: /^\/operativa\/[^/]+$/ };
-  const deals = { to: "/deals", label: "Deals", also: /^\/deals\// };
-  if (role === "boss" || role === "commercial" || role === "finance") return [{ to: "/comercial", label: "Leads", end: true, also: /^\/comercial\/leads\// }, deals, projects];
-  return [deals, { to: "/meetings", label: "Meetings" }, projects];
+  const meetings = { to: "/meetings", label: "Meetings" };
+  if (role === "boss" || role === "commercial" || role === "finance") return [{ to: "/comercial", label: "Leads", end: true, also: /^\/comercial\/leads\// }, meetings, projects];
+  return [meetings, projects];
 }
 
 function Breadcrumbs({ crumbs }: { crumbs: Crumb[] }) {

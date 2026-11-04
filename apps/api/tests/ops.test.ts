@@ -62,7 +62,7 @@ async function login(app: App, username: string) {
 }
 
 function client(app: App, headers: { cookie: string }) {
-  return async (method: "GET" | "POST" | "PATCH" | "DELETE", url: string, payload?: unknown) => {
+  return async (method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE", url: string, payload?: unknown) => {
     const response = await app.inject({ method, url, headers, payload: payload as never });
     let body: unknown;
     try {
@@ -375,5 +375,73 @@ describe("reuniones y novedades", () => {
     expect(list[0].transcript).toBeUndefined();
     const detail = await ana("GET", `/api/ops/projects/${project.id}/meetings/${pending.body.meeting.id}`);
     expect(detail.body.meeting.transcript).toBe("…transcripción…");
+  });
+});
+
+describe("etapas, plazos y developers (migración del prototipo)", () => {
+  it("cada cambio de etapa queda en el historial con su fecha y reinicia el tiempo en etapa", async () => {
+    const { as, store } = await world();
+    const ana = await as("ana");
+    const project = await newProject(ana);
+    const today = new Date().toISOString().slice(0, 10);
+    const created = (await ana("GET", `/api/ops/projects/${project.id}`)).body.project;
+    expect(created).toMatchObject({ stage: "kickoff", stageSince: today, stageHistory: [{ stage: "kickoff", at: today, by: "ana" }] });
+    // Lleva 40 días en Kick Off (plazo 7): aparece en atascados.
+    await store.opsProjects.updateOne({ _id: project.id }, { $set: { stageSince: "2020-01-01" } });
+    const list = await ana("GET", "/api/ops/projects?page=1&pageSize=25");
+    expect(list.body.stuck.map((p: { id: string }) => p.id)).toEqual([project.id]);
+    expect(list.body.sla).toMatchObject({ kickoff: 7, completed: null });
+    await ana("PATCH", `/api/ops/projects/${project.id}`, { stage: "structure" });
+    const moved = (await ana("GET", `/api/ops/projects/${project.id}`)).body.project;
+    expect(moved.stageSince).toBe(today);
+    expect(moved.stageHistory.map((h: { stage: string }) => h.stage)).toEqual(["kickoff", "structure"]);
+    expect((await ana("GET", "/api/ops/projects?page=1&pageSize=25")).body.stuck).toEqual([]);
+  });
+
+  it("los plazos se leen con valores iniciales y solo el CEO/CCO los cambia", async () => {
+    const { as } = await world();
+    const ana = await as("ana");
+    expect((await ana("GET", "/api/ops/stage-sla")).body.days).toEqual({ kickoff: 7, structure: 30, automation_layer: 21, stabilization: 14, maintenance: 60, no_pending_items: 14, completed: null });
+    const days = { kickoff: 5, structure: 30, automation_layer: 21, stabilization: 14, maintenance: 60, no_pending_items: 14, completed: null };
+    expect((await ana("PUT", "/api/ops/stage-sla", { days })).status).toBe(403);
+    const boss = await as("jefe");
+    expect((await boss("PUT", "/api/ops/stage-sla", { days: { ...days, kickoff: 0 } })).status).toBe(400);
+    expect((await boss("PUT", "/api/ops/stage-sla", { days })).body.days.kickoff).toBe(5);
+    expect((await ana("GET", "/api/ops/stage-sla")).body.days.kickoff).toBe(5);
+  });
+
+  it("hasta 2 developers del equipo; el primero queda como developer principal", async () => {
+    const { as, dev, dev2 } = await world();
+    const ana = await as("ana");
+    const project = await newProject(ana, { developerUserIds: [dev._id, dev2._id] });
+    const read = (await ana("GET", `/api/ops/projects/${project.id}`)).body.project;
+    expect(read.developers.map((d: { name: string }) => d.name)).toEqual(["Diego Dev", "Dora Dev"]);
+    expect(read.developer).toMatchObject({ id: dev._id });
+    expect((await ana("PATCH", `/api/ops/projects/${project.id}`, { developerUserIds: [dev2._id, dev._id] })).body.project.developer).toMatchObject({ id: dev2._id });
+    // Tres es el máximo + 1; un id que no es developer del equipo también se rechaza.
+    expect((await ana("PATCH", `/api/ops/projects/${project.id}`, { developerUserIds: [dev._id, dev2._id, OTHER_DEV] })).status).toBe(400);
+    expect((await ana("PATCH", `/api/ops/projects/${project.id}`, { developerUserIds: [OTHER_DEV] })).status).toBe(400);
+    const single = (await ana("PATCH", `/api/ops/projects/${project.id}`, { developerUserIds: [dev2._id] })).body.project;
+    expect(single.developer).toMatchObject({ id: dev2._id });
+    expect(single.developers).toHaveLength(1);
+  });
+});
+
+const OTHER_DEV = "33333333-3333-4333-8333-333333333333";
+
+describe("vistas guardadas", () => {
+  it("cada persona ve, renombra y borra solo las suyas", async () => {
+    const { as } = await world();
+    const ana = await as("ana");
+    const dev = await as("dev");
+    const created = await ana("POST", "/api/views", { screen: "projects", name: "Por etapa", query: "group=1" });
+    expect(created.status).toBe(201);
+    const id = created.body.view.id;
+    expect((await ana("GET", "/api/views?screen=projects")).body.views).toEqual([{ id, name: "Por etapa", query: "group=1" }]);
+    expect((await dev("GET", "/api/views?screen=projects")).body.views).toEqual([]);
+    expect((await dev("PATCH", `/api/views/${id}`, { name: "Mía" })).status).toBe(404);
+    expect((await ana("PATCH", `/api/views/${id}`, { name: "Kick Off", query: "stage=kickoff" })).body.view).toMatchObject({ name: "Kick Off", query: "stage=kickoff" });
+    expect((await dev("DELETE", `/api/views/${id}`)).status).toBe(404);
+    expect((await ana("DELETE", `/api/views/${id}`)).status).toBe(204);
   });
 });

@@ -3,9 +3,10 @@ import { type Db, MongoServerError } from "mongodb";
 import { OwnershipError } from "../lib/errors.js";
 import { redact } from "../lib/redact.js";
 import type { AiAgentSettingsDoc } from "../ai/anthropic-adapter.js";
-import type { DealDoc, MeetingDoc, OpsProjectDoc, OpsTaskDoc, ProjectUpdateDoc, VaultAccountDoc } from "../ops/models.js";
+import type { DealDoc, MeetingDoc, OpsProjectDoc, OpsTaskDoc, ProjectUpdateDoc, StageSlaDoc, VaultAccountDoc } from "../ops/models.js";
 import type { ContactDoc } from "../core/models.js";
 import { migrateToV2, migrateToV3, migrateToV4 } from "../core/migrate.js";
+import { migratePrototypeProjects } from "../core/migrate-prototype.js";
 import type {
   ActivityDoc,
   DealUpdateDoc,
@@ -57,6 +58,8 @@ export class AdminStore {
   readonly aiSessions;
   /** IDs del agente y del entorno en Anthropic (los crea la plataforma la primera vez). */
   readonly aiAgentSettings;
+  /** Plazos por etapa de los proyectos (documento "stage-sla" en `settings`). */
+  readonly stageSla;
   /** Servidores de despliegue dados de alta desde el panel (los gestiona ServerDirectory). */
   readonly servers;
   /** Usuarios del panel y equipos (los gestiona UserDirectory). */
@@ -93,6 +96,7 @@ export class AdminStore {
     this.provisioningSecrets = db.collection<ProvisioningSecretDoc>("provisioning_secrets");
     this.aiSessions = db.collection<AiSessionDoc>("ai_sessions");
     this.aiAgentSettings = db.collection<AiAgentSettingsDoc>("settings");
+    this.stageSla = db.collection<StageSlaDoc>("settings");
     this.servers = db.collection<ServerDoc>("servers");
     this.users = db.collection<UserDoc>("users");
     this.teams = db.collection<TeamDoc>("teams");
@@ -190,6 +194,7 @@ export class AdminStore {
     await migrateToV2(this);
     await migrateToV4(this);
     await migrateToV3(this);
+    await migratePrototypeProjects(this);
   }
 
   // ---- clientes y trabajos -------------------------------------------------

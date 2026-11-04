@@ -1,13 +1,15 @@
 import { useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ExternalLink } from "lucide-react";
 import { TotalCell } from "@/components/data-table/cells";
 import { useCrumbs } from "@/components/layout/crumbs";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
+import { MultiPicker } from "@/components/ui/multi-picker";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/features/auth/auth";
@@ -18,6 +20,13 @@ import {
   clientLabel,
   HEALTH,
   HEALTH_LABELS,
+  MAX_DEVELOPERS,
+  STAGE_LABELS,
+  daysBetween,
+  money,
+  stageAge,
+  todayIso,
+  useStageSla,
   NEXT_ACTION_LABELS,
   NEXT_ACTIONS,
   opsKeys,
@@ -30,11 +39,13 @@ import {
   useOpsProject,
   useTeamMembers,
   type OpsProject,
+  type StageSla,
 } from "./api";
 import { HealthBadge, PriorityBadge, SentimentBar, StageTrack } from "./OpsBadges";
 import { AccountsTab, DealsTab, MeetingsTab, ProposalsTab, TasksTab, UpdatesTab } from "./OpsTabs";
 
-type TabId = "deals" | "tasks" | "proposals" | "accounts" | "meetings" | "updates";
+type TabId = "deals" | "tasks" | "proposals" | "accounts" | "meetings" | "updates" | "stages";
+const TAB_IDS: readonly TabId[] = ["deals", "tasks", "proposals", "accounts", "meetings", "updates", "stages"];
 
 /** Tarjeta de sección del detalle. */
 function Panel({ title, children, className }: { title: string; children: ReactNode; className?: string }) {
@@ -133,15 +144,15 @@ function ProjectData({ project, canManage }: { project: OpsProject; canManage: b
 
   return (
     <div className="grid gap-x-4 gap-y-4 sm:grid-cols-2">
-      <Field label="Cliente" className="sm:col-span-2">
+      <Field label="Contactos" className="sm:col-span-2">
         {picksClient ? (
-          <Select
-            label="Cliente"
-            value={project.client?.id ?? null}
-            placeholder={project.customerName}
-            searchable
-            options={clients.map((c) => ({ value: c.id, label: c.name, description: c.company ?? undefined }))}
-            onValueChange={(v) => v && v !== project.client?.id && void save({ contactIds: [v] })}
+          <MultiPicker
+            label="Contactos"
+            values={project.contacts.map((c) => c.id)}
+            min={1}
+            addLabel="Agregar contacto"
+            options={[...clients.map((c) => ({ value: c.id, label: c.name, description: c.company ?? undefined })), ...project.contacts.filter((c) => !clients.some((x) => x.id === c.id)).map((c) => ({ value: c.id, label: c.name ?? "—" }))]}
+            onChange={(ids) => void save({ contactIds: ids })}
           />
         ) : (
           <ClientValue project={project} />
@@ -158,7 +169,20 @@ function ProjectData({ project, canManage }: { project: OpsProject; canManage: b
         {canManage ? <DatePicker label="Kickoff" value={project.kickoffDate} onValueChange={(v) => void save({ kickoffDate: v })} /> : <Value>{project.kickoffDate ? formatDate(project.kickoffDate) : "—"}</Value>}
       </Field>
       <Field label="Team Leader">{person("Team Leader", project.lead, "lead", "leadUserId")}</Field>
-      <Field label="Developer">{person("Developer", project.developer, "developer", "developerUserId")}</Field>
+      <Field label={`Developers (máx. ${MAX_DEVELOPERS})`}>
+        {canManage ? (
+          <MultiPicker
+            label="Developers"
+            values={project.developers.map((d) => d.id)}
+            max={MAX_DEVELOPERS}
+            addLabel="Agregar developer"
+            options={[...members.filter((m) => m.role === "developer").map((m) => ({ value: m.id, label: m.name })), ...project.developers.filter((d) => !members.some((m) => m.id === d.id)).map((d) => ({ value: d.id, label: d.name ?? "—" }))]}
+            onChange={(ids) => void save({ developerUserIds: ids })}
+          />
+        ) : (
+          <Value>{project.developers.map((d) => d.name).join(", ") || "Sin asignar"}</Value>
+        )}
+      </Field>
       <Field label="Tipo de pago">{select("Tipo de pago", project.paymentType, PAYMENT_TYPES, PAYMENT_TYPE_LABELS, (v) => void save({ paymentType: v }), "Sin definir")}</Field>
       <Field label="Siguiente acción">{select("Siguiente acción", project.nextAction, NEXT_ACTIONS, NEXT_ACTION_LABELS, (v) => void save({ nextAction: v }), "Sin definir")}</Field>
       <Field label="SOW" className="sm:col-span-2">
@@ -186,6 +210,7 @@ function SummaryCard({ project }: { project: OpsProject }) {
     ["Horas facturables", <TotalCell hours={s.billableHours} strong />],
     ["Facturable vs deals", <TotalCell hours={s.billableVsSold} strong />],
     ["Valor vendido", <TotalCell cents={s.amountCents} strong />],
+    ["Hourly rate", <span className="font-semibold tabular-nums">{s.soldHours ? `${money(Math.round(s.amountCents / s.soldHours))} / h` : "—"}</span>],
   ];
   return (
     <Panel title="Resumen">
@@ -214,13 +239,91 @@ function SummaryCard({ project }: { project: OpsProject }) {
   );
 }
 
+/** Tiempo en la etapa actual contra su plazo, con acceso al historial. */
+function StageAlert({ project, sla, onHistory }: { project: OpsProject; sla: StageSla | undefined; onHistory: () => void }) {
+  if (!sla) return null;
+  const limit = sla[project.stage];
+  const age = stageAge(project.stageSince, limit);
+  const name = STAGE_LABELS[project.stage];
+  const title = limit === null ? `Etapa ${name}` : age.over > 0 ? `Atrasado en ${name}` : age.tone === "warn" ? `Cerca del límite en ${name}` : `En tiempo en ${name}`;
+  const estimated = project.stageHistory.at(-1)?.estimated;
+  return (
+    <div className={cn("flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3", age.tone === "danger" ? "border-danger/40 bg-danger/5" : age.tone === "warn" ? "border-warn/40 bg-warn/5" : "border-border")} aria-label="Tiempo en etapa">
+      {age.tone === "danger" && <AlertTriangle className="size-4 text-danger" aria-hidden />}
+      <StatusBadge tone={age.tone}>{limit === null ? `${age.days} d` : age.text}</StatusBadge>
+      <div className="min-w-52 flex-1 text-sm">
+        <p className="font-semibold">{title}</p>
+        <p className="text-muted-foreground">
+          Desde {formatDate(project.stageSince)}
+          {estimated ? " (estimado)" : ""} · {age.days} días{limit !== null ? ` de ${limit} esperados` : ""}
+          {age.over > 0 ? `, +${age.over} de atraso. Revisa el bloqueo para que los developers tengan trabajo.` : "."}
+        </p>
+      </div>
+      <button type="button" onClick={onHistory} className="text-sm font-semibold text-primary underline-offset-4 hover:underline">
+        Ver histórico
+      </button>
+    </div>
+  );
+}
+
+/** Historial de etapas: cuándo entró a cada una, cuántos días estuvo y si cumplió el plazo. */
+function StagesTab({ project, sla }: { project: OpsProject; sla: StageSla | undefined }) {
+  const history = project.stageHistory.length ? project.stageHistory : [{ stage: project.stage, at: project.stageSince, by: "—" }];
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[36rem] text-sm">
+        <caption className="sr-only">Historial de etapas</caption>
+        <thead>
+          <tr className="text-left">
+            {["Etapa", "Entró", "Días", "Esperado", "Estado"].map((h) => (
+              <th key={h} scope="col" className="text-caps-label border-b border-border px-3 py-2 font-semibold">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {history.map((h, i) => {
+            const current = i === history.length - 1;
+            const days = daysBetween(h.at, history[i + 1]?.at ?? todayIso());
+            const limit = sla?.[h.stage] ?? null;
+            const over = limit === null ? 0 : days - limit;
+            const tone = limit === null ? "neutral" : over > 0 ? "danger" : current && days >= limit * 0.75 ? "warn" : "ok";
+            const status = limit === null ? "Sin límite" : over > 0 ? `+${over} d de atraso` : current ? "En tiempo" : "Cumplida";
+            return (
+              <tr key={`${h.stage}-${h.at}-${i}`} className="border-b border-border last:border-0">
+                <td className="px-3 py-2.5 font-medium">
+                  {STAGE_LABELS[h.stage]}
+                  {current && <span className="ml-1.5 text-xs text-muted-foreground">· actual</span>}
+                </td>
+                <td className="px-3 py-2.5 whitespace-nowrap">
+                  {formatDate(h.at)}
+                  {"estimated" in h && h.estimated ? <span className="ml-1 text-xs text-muted-foreground">(estimado)</span> : null}
+                </td>
+                <td className="px-3 py-2.5 tabular-nums">{days} d</td>
+                <td className="px-3 py-2.5 tabular-nums">{limit === null ? "—" : `${limit} d`}</td>
+                <td className="px-3 py-2.5">
+                  <StatusBadge tone={tone}>{status}</StatusBadge>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function OpsProjectDetailPage() {
   const { id = "" } = useParams();
   const session = useSession().data;
   const { data, isLoading, error } = useOpsProject(id);
   useCrumbs([data && { label: data.project.name }]);
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<TabId>("deals");
+  const [params] = useSearchParams();
+  const asked = params.get("tab") as TabId | null;
+  const [tab, setTab] = useState<TabId>(asked && TAB_IDS.includes(asked) ? asked : "deals");
+  const sla = useStageSla().data?.days;
   const updateStage = async (stage: OpsProject["stage"]) => {
     try {
       await updateProject(id, { stage });
@@ -260,6 +363,7 @@ export default function OpsProjectDetailPage() {
     { id: "accounts", label: "Cuentas", visible: permissions.work },
     { id: "meetings", label: "Reuniones", visible: true },
     { id: "updates", label: "Updates", visible: true },
+    { id: "stages", label: "Etapas", visible: true },
   ];
   const showLead = Boolean(project.leadId) && (session?.role === "boss" || session?.role === "commercial");
   const linkClass = "flex items-center justify-between gap-2 rounded-lg px-1 py-1.5 text-sm font-medium transition-colors hover:bg-accent";
@@ -284,6 +388,7 @@ export default function OpsProjectDetailPage() {
         <CardContent className="space-y-2">
           <p className="text-caps-label">Etapa</p>
           <StageTrack stage={project.stage} onChange={permissions.manage ? (stage) => void updateStage(stage) : undefined} />
+          <StageAlert project={project} sla={sla} onHistory={() => setTab("stages")} />
         </CardContent>
       </Card>
 
@@ -320,6 +425,7 @@ export default function OpsProjectDetailPage() {
               {tab === "proposals" && <ProposalsTab projectId={project.id} canManage={permissions.manage} />}
               {tab === "meetings" && <MeetingsTab projectId={project.id} canWork={permissions.work} />}
               {tab === "updates" && <UpdatesTab projectId={project.id} canWork={permissions.work} />}
+              {tab === "stages" && <StagesTab project={project} sla={sla} />}
             </div>
           </Card>
         </div>

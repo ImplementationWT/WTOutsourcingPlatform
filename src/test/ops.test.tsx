@@ -6,7 +6,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import AppSidebar from "@/components/layout/AppSidebar";
 import OpsProjectDetailPage from "@/features/ops/OpsProjectDetailPage";
 import OpsProjectsPage from "@/features/ops/OpsProjectsPage";
-import type { OpsProject, OpsProjectRow } from "@/features/ops/api";
+import { stageAge, type OpsProject, type OpsProjectRow } from "@/features/ops/api";
 import type { SessionUser } from "@/features/auth/auth";
 import { pick } from "./pick";
 import { BOSS, LEAD, withSession } from "./session";
@@ -24,6 +24,9 @@ const project: OpsProject = {
   team: { id: "t-1", name: "Equipo A" },
   lead: { id: "u-lead", name: "Ana" },
   developer: { id: "u-dev", name: "Diego" },
+  developers: [{ id: "u-dev", name: "Diego" }],
+  stageSince: new Date().toISOString().slice(0, 10),
+  stageHistory: [],
   contacts: [],
   clientSlug: null,
   client: null,
@@ -245,7 +248,8 @@ describe("detalle del proyecto", () => {
     expect(screen.getByLabelText("Health")).toBeTruthy();
     expect(screen.queryByLabelText("Sentiment score")).toBeNull();
     expect(screen.getByText("Sentiment (del Health)")).toBeTruthy();
-    for (const label of ["Cliente", "Kickoff", "Tipo de pago", "SOW"]) expect(screen.getByLabelText(label)).toBeTruthy();
+    for (const label of ["Contactos", "Developers", "Kickoff", "Tipo de pago", "SOW"]) expect(screen.getByLabelText(label)).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Etapas" })).toBeTruthy();
     // Del proyecto solo queda el SOW: sin propuesta ni Project Plan.
     for (const label of ["Project Plan", "Propuesta"]) expect(screen.queryByLabelText(label)).toBeNull();
     expect(screen.getByText("Horas vendidas")).toBeTruthy();
@@ -315,5 +319,52 @@ describe("detalle del proyecto", () => {
     }) as typeof fetch);
     fireEvent.click(await screen.findByRole("tab", { name: "Cuentas" }));
     expect(await screen.findByText(/aún no está activado en el servidor/)).toBeTruthy();
+  });
+});
+
+describe("tiempo en etapa (migración del prototipo)", () => {
+  it("verde en plazo, ámbar desde el 75 % y rojo si se pasa; sin plazo solo los días", () => {
+    expect(stageAge("2026-11-01", 30, "2026-11-10")).toMatchObject({ days: 9, tone: "ok", text: "9 d de 30 d" });
+    expect(stageAge("2026-11-01", 8, "2026-11-07")).toMatchObject({ tone: "warn" });
+    expect(stageAge("2026-10-01", 7, "2026-10-12")).toMatchObject({ over: 4, tone: "danger", text: "11 d · +4 d" });
+    expect(stageAge("2026-10-01", null, "2026-10-12")).toMatchObject({ tone: "neutral", text: "11 d" });
+  });
+
+  it("la lista avisa de los atascados y muestra la columna de tiempo en etapa", async () => {
+    localStorage.clear();
+    const sla = { kickoff: 7, structure: 30, automation_layer: 21, stabilization: 14, maintenance: 60, no_pending_items: 14, completed: null };
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/views")) return json({ views: [] });
+      if (url.startsWith("/api/teams")) return json({ teams: [] });
+      return json(page([listItem], { stuck: [{ id: listItem.id, name: listItem.name, stage: "structure", days: 40, sla: 30 }], sla }));
+    }) as typeof fetch;
+    renderAt("/operativa", LEAD, fetchImpl);
+    const banner = await screen.findByRole("region", { name: "Proyectos atascados" });
+    expect(within(banner).getByText("1 proyecto atascado")).toBeTruthy();
+    expect(within(banner).getByRole("link", { name: /Automatización Manpersa/ }).getAttribute("href")).toBe(`/operativa/${listItem.id}?tab=stages`);
+    expect(within(banner).getByText("40 d · +10 d")).toBeTruthy();
+    const table = await screen.findByRole("table", { name: "Proyectos" });
+    expect(within(table).getByRole("columnheader", { name: /Tiempo en etapa/ })).toBeTruthy();
+    expect(screen.getByRole("tablist", { name: "Vistas guardadas" })).toBeTruthy();
+  });
+
+  it("el detalle abre el historial de etapas con ?tab=stages", async () => {
+    const withHistory = { ...project, stage: "structure" as const, stageSince: "2026-10-01", stageHistory: [{ stage: "kickoff" as const, at: "2026-09-01", by: "ana", estimated: true }, { stage: "structure" as const, at: "2026-10-01", by: "ana" }] };
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/ops/stage-sla")) return json({ days: { kickoff: 7, structure: 30, automation_layer: 21, stabilization: 14, maintenance: 60, no_pending_items: 14, completed: null } });
+      if (url === `/api/ops/projects/${project.id}`) return json({ project: withHistory, permissions: { manage: false, work: false } });
+      return json({ rows: [], total: 0, page: 1, pageSize: 25, facets: {}, totals: {}, tasks: [], proposals: [], updates: [], meetings: [] });
+    }) as typeof fetch;
+    renderAt(`/operativa/${project.id}?tab=stages`, LEAD, fetchImpl);
+    const table = await screen.findByRole("table", { name: "Historial de etapas" });
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]).getByText("30 d")).toBeTruthy();
+    expect(within(rows[0]).getByText("(estimado)")).toBeTruthy();
+    expect(within(rows[0]).getByText("+23 d de atraso")).toBeTruthy();
+    expect(within(rows[1]).getByText(/actual/)).toBeTruthy();
+    expect(screen.getByLabelText("Tiempo en etapa")).toBeTruthy();
   });
 });
