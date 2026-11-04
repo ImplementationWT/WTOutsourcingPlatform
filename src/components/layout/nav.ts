@@ -1,89 +1,104 @@
 import {
   Activity,
+  BarChart3,
   BriefcaseBusiness,
+  ClipboardList,
   Contact,
   FileText,
   FolderKanban,
-  Handshake,
+  Gauge,
+  KanbanSquare,
   Landmark,
   ListTodo,
+  Mail,
   Megaphone,
   MessagesSquare,
   MonitorPlay,
   Plug,
+  Receipt,
+  UserCheck,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 import type { UserRole } from "@/features/auth/auth";
+import { canAccess, type ModuleId } from "@/lib/access";
 
 export interface NavItem {
   to: string;
   label: string;
   icon: LucideIcon;
-  /** Áreas que aún no existen: se muestran, pero sin enlace. */
+  /** Quién la ve: el acceso vive en MODULE_ACCESS (src/lib/access.ts). */
+  module: ModuleId;
+  /** Pantallas que aún no existen: no se muestran como enlace. */
   soon?: boolean;
   /** Rutas que también lo marcan como activo (p. ej. el detalle de un lead). */
   also?: RegExp;
   /** Solo activo en la ruta exacta (o en `also`), no en el resto de sus subrutas. */
   end?: boolean;
-  /** Si solo algunos roles del grupo la ven. */
-  roles?: UserRole[];
 }
 
 export interface NavGroup {
+  /** Sin título: las opciones van sueltas, sin encabezado (Backlog / Sprints al final). */
   title: string;
-  roles: UserRole[];
   items: NavItem[];
 }
 
-// Costos está dentro del Dashboard y Usuarios en el menú del usuario.
+// Costos está dentro del Dashboard de Infraestructura y Usuarios en el menú del usuario.
+// Deals no está en el menú: se gestiona en la pestaña Deals del proyecto (/deals sigue por ruta).
 export const NAV_GROUPS: NavGroup[] = [
   {
-    // Tableros generales: los usan Comercial y Operativa por igual.
-    title: "General",
-    roles: ["boss", "commercial", "finance", "lead", "developer"],
+    title: "Dashboards",
     items: [
-      { to: "/deals", label: "Deals", icon: Handshake, also: /^\/deals\// },
-      { to: "/meetings", label: "Meetings", icon: MessagesSquare },
+      { to: "/tableros/financiero", label: "Financiero", icon: Landmark, module: "dashboards", soon: true },
+      { to: "/tableros/comercial", label: "Comercial", icon: BarChart3, module: "dashboards", soon: true },
+      { to: "/tableros/operativo", label: "Operativo", icon: Gauge, module: "dashboards", soon: true },
     ],
   },
   {
     title: "Comercial",
-    roles: ["boss", "commercial", "finance"],
     items: [
-      { to: "/comercial", label: "Leads", icon: Megaphone, end: true, also: /^\/comercial\/leads\// },
-      { to: "/comercial/actividades", label: "Actividades", icon: ListTodo },
-      { to: "/comercial/demos", label: "Demos", icon: MonitorPlay },
-      { to: "/comercial/propuestas", label: "Propuestas", icon: FileText },
-      { to: "/comercial/contactos", label: "Contactos", icon: Contact },
+      { to: "/comercial/contactos", label: "Contactos", icon: Contact, module: "contacts" },
+      { to: "/comercial", label: "Leads", icon: Megaphone, module: "leads", end: true, also: /^\/comercial\/leads\// },
+      { to: "/comercial/propuestas", label: "Propuestas", icon: FileText, module: "proposals" },
+      { to: "/meetings", label: "Meetings", icon: MessagesSquare, module: "meetings" },
+      { to: "/comercial/comunicaciones", label: "Comunicaciones", icon: Mail, module: "communications", soon: true },
+      { to: "/comercial/actividades", label: "Actividades", icon: ListTodo, module: "activities" },
+      { to: "/comercial/demos", label: "Demos", icon: MonitorPlay, module: "demos" },
     ],
   },
   {
     title: "Operativa",
-    roles: ["boss", "commercial", "finance", "lead", "developer"],
     items: [
-      { to: "/operativa", label: "Proyectos", icon: BriefcaseBusiness, end: true, also: /^\/operativa\/[^/]+$/ },
+      { to: "/operativa/mi-trabajo", label: "Mi trabajo", icon: UserCheck, module: "myWork", soon: true },
+      { to: "/operativa", label: "Proyectos", icon: BriefcaseBusiness, module: "projects", end: true, also: /^\/operativa\/(?!mi-trabajo$|tasks$|backlog$)[^/]+$/ },
+      { to: "/operativa/tasks", label: "Tasks", icon: ClipboardList, module: "tasks", soon: true },
     ],
   },
   {
     title: "Financiera",
-    roles: ["boss", "finance"],
-    items: [{ to: "/financiera", label: "Cobros y comisiones", icon: Landmark, soon: true }],
+    items: [
+      { to: "/financiera/invoices", label: "Invoices", icon: Receipt, module: "invoices", soon: true },
+      { to: "/financiera/pagos", label: "Pagos / Comisiones", icon: Wallet, module: "payouts", soon: true },
+    ],
   },
   {
     title: "Infraestructura",
-    roles: ["boss", "lead", "developer"],
     items: [
-      { to: "/dashboard", label: "Dashboard", icon: Activity },
-      { to: "/projects", label: "Apps y repositorios", icon: FolderKanban },
-      { to: "/integrations", label: "Integraciones", icon: Plug },
+      { to: "/dashboard", label: "Dashboard", icon: Activity, module: "infraDashboard" },
+      { to: "/projects", label: "Apps y repositorios", icon: FolderKanban, module: "apps" },
+      { to: "/integrations", label: "Integraciones", icon: Plug, module: "integrations" },
     ],
+  },
+  {
+    title: "",
+    items: [{ to: "/operativa/backlog", label: "Backlog / Sprints", icon: KanbanSquare, module: "backlog", soon: true }],
   },
 ];
 
-/** Grupos e ítems que ve un rol (sin rol, ninguno). */
+/** Grupos e ítems que ve un rol (sin rol, ninguno). Un grupo sin ítems visibles no aparece. */
 export function navFor(role: UserRole | undefined): NavGroup[] {
   if (!role) return [];
-  return NAV_GROUPS.filter((g) => g.roles.includes(role)).map((g) => ({ ...g, items: g.items.filter((i) => !i.roles || i.roles.includes(role)) }));
+  return NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => canAccess(role, i.module)) })).filter((g) => g.items.length > 0);
 }
 
 /** ¿El ítem corresponde a la ruta? Igual que NavLink: exacta con `end`, o la ruta y sus subrutas. */

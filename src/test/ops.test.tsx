@@ -77,31 +77,33 @@ describe("menú por áreas", () => {
   // Solo los títulos de grupo de la barra lateral (la página tiene su propio encabezado "Operativa").
   const sections = () =>
     within(screen.getByRole("navigation", { name: "Áreas" }))
-      .queryAllByText(/^(Comercial|Operativa|Financiera|Infraestructura)$/)
+      .queryAllByText(/^(Dashboards|Comercial|Operativa|Financiera|Infraestructura)$/)
       .map((n) => n.textContent);
 
-  it("CEO/CCO ve las cuatro áreas (Financiera, que aún no existe, al pie con «Pronto»)", () => {
+  it("CEO/CCO ve todas las áreas (Dashboards y Financiera, que aún no existen, al pie con «Pronto»)", () => {
     renderAt("/operativa", BOSS, (async () => json(page([]))) as typeof fetch);
-    expect(sections()).toEqual(["Comercial", "Operativa", "Infraestructura", "Financiera"]);
+    expect(sections()).toEqual(["Comercial", "Operativa", "Infraestructura", "Dashboards", "Financiera"]);
   });
 
   it("Comercial: Comercial y Operativa, sin Infraestructura", () => {
     renderAt("/operativa", COMMERCIAL, (async () => json(page([]))) as typeof fetch);
-    expect(sections()).toEqual(["Comercial", "Operativa"]);
+    expect(sections()).toEqual(["Comercial", "Operativa", "Dashboards"]);
   });
 
   it("Financiera: Comercial (en lectura), Operativa y Financiera", () => {
     renderAt("/operativa", FINANCE, (async () => json(page([]))) as typeof fetch);
-    expect(sections()).toEqual(["Comercial", "Operativa", "Financiera"]);
+    expect(sections()).toEqual(["Comercial", "Operativa", "Dashboards", "Financiera"]);
     expect(screen.getByRole("link", { name: /^Leads$/ })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /Sources de leads/ })).toBeNull();
     expect(screen.queryByRole("link", { name: /Reuniones por asignar/ })).toBeNull();
     expect(screen.queryByRole("link", { name: /Empresas/ })).toBeNull();
   });
 
-  it("developer: Operativa e Infraestructura", () => {
+  it("developer: Meetings (en Comercial), Operativa e Infraestructura", () => {
     renderAt("/operativa", DEV, (async () => json(page([]))) as typeof fetch);
-    expect(sections()).toEqual(["Operativa", "Infraestructura"]);
+    expect(sections()).toEqual(["Comercial", "Operativa", "Infraestructura", "Dashboards"]);
+    expect(screen.getByRole("link", { name: /^Meetings$/ })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /^Leads$/ })).toBeNull();
   });
 
   it("Comercial ya es un enlace; Financiera, que aún no existe, no", () => {
@@ -111,11 +113,14 @@ describe("menú por áreas", () => {
     expect(screen.getByRole("link", { name: /^Proyectos$/ }).getAttribute("href")).toBe("/operativa");
   });
 
-  it("Deals y Meetings son generales (un solo tablero); Contactos sigue en Comercial", () => {
+  it("orden de Comercial; Deals fuera del menú (se gestiona en el proyecto); Infraestructura igual", () => {
     renderAt("/operativa", BOSS, (async () => json(page([]))) as typeof fetch);
+    const nav = within(screen.getByRole("navigation", { name: "Áreas" }));
+    const links = nav.getAllByRole("link").map((a) => a.textContent);
+    expect(links).toEqual(["Contactos", "Leads", "Propuestas", "Meetings", "Actividades", "Demos", "Proyectos", "Dashboard", "Apps y repositorios", "Integraciones"]);
     expect(screen.getByRole("link", { name: /Contactos/ }).getAttribute("href")).toBe("/comercial/contactos");
     expect(screen.queryByRole("link", { name: /Empresas/ })).toBeNull();
-    expect(screen.getAllByRole("link", { name: /^Deals$/ }).map((a) => a.getAttribute("href"))).toEqual(["/deals"]);
+    expect(screen.queryByRole("link", { name: /^Deals$/ })).toBeNull();
     expect(screen.getByRole("link", { name: /^Meetings$/ }).getAttribute("href")).toBe("/meetings");
     expect(screen.queryByRole("link", { name: /^Clientes$/ })).toBeNull();
   });

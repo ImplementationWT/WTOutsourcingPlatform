@@ -73,6 +73,24 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
     <nav className="flex min-h-0 flex-1 flex-col" aria-label="Áreas">
       <div className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
         {live.map((group) => {
+          const items = (
+            <>
+              {group.items
+                .filter((i) => !i.soon)
+                .map((item) => (
+                  <NavLink key={item.to} to={item.to} end={item.end} onClick={onNavigate} className={({ isActive: exact }) => itemClass(exact || Boolean(item.also?.test(pathname)))}>
+                    {({ isActive: exact }) => (
+                      <>
+                        <Dot active={exact || Boolean(item.also?.test(pathname))} />
+                        <span className="truncate">{item.label}</span>
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+            </>
+          );
+          // Sin título: opciones sueltas al final, sin encabezado ni pliegue.
+          if (!group.title) return <div key="__sueltas" className="space-y-0.5 border-t border-sidebar-border pt-4">{items}</div>;
           // El área de la pantalla abierta nunca queda plegada.
           const here = group.items.some((i) => !i.soon && isActive(i, pathname));
           const open = here || !collapsed.includes(group.title);
@@ -92,18 +110,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
               </button>
               {open && (
                 <div id={id} className="mt-1 space-y-0.5">
-                  {group.items
-                    .filter((i) => !i.soon)
-                    .map((item) => (
-                      <NavLink key={item.to} to={item.to} end={item.end} onClick={onNavigate} className={({ isActive: exact }) => itemClass(exact || Boolean(item.also?.test(pathname)))}>
-                        {({ isActive: exact }) => (
-                          <>
-                            <Dot active={exact || Boolean(item.also?.test(pathname))} />
-                            <span className="truncate">{item.label}</span>
-                          </>
-                        )}
-                      </NavLink>
-                    ))}
+                  {items}
                 </div>
               )}
             </div>
@@ -113,9 +120,9 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
       {soon.length > 0 && (
         <div className="space-y-0.5 border-t border-sidebar-border px-3 py-3">
           {soon.map((g) => (
-            <span key={g.title} aria-disabled="true" title={g.items.map((i) => i.label).join(", ")} className="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground">
+            <span key={g.title || "__sueltas"} aria-disabled="true" title={g.items.map((i) => i.label).join(", ")} className="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground">
               <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-foreground/20" />
-              <span className="flex-1 truncate">{g.title}</span>
+              <span className="flex-1 truncate">{g.title || g.items.map((i) => i.label).join(", ")}</span>
               <span className="rounded-full border border-sidebar-border px-2 py-px text-[11px]">Pronto</span>
             </span>
           ))}

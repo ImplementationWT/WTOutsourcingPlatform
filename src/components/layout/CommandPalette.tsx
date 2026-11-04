@@ -20,7 +20,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
   const [active, setActive] = useState(0);
 
   const items = useMemo(
-    () => navFor(role).flatMap((g) => g.items.filter((i) => !i.soon).map((i) => ({ ...i, group: g.title }))),
+    () => navFor(role).flatMap((g) => g.items.filter((i) => !i.soon).map((i) => ({ ...i, group: g.title || "Operativa" }))),
     [role],
   );
   const results = useMemo(() => {

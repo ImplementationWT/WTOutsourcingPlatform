@@ -79,7 +79,7 @@ export default function AppLayout() {
   const here = locate(role, pathname);
   const crumbs: Crumb[] =
     pageCrumbs?.replace ??
-    (here ? [{ label: here.group.title }, { label: here.item.label, to: here.item.to }, ...(pageCrumbs?.extra ?? [])] : (pageCrumbs?.extra ?? []));
+    (here ? [...(here.group.title ? [{ label: here.group.title }] : []), { label: here.item.label, to: here.item.to },...(pageCrumbs?.extra ?? [])] : (pageCrumbs?.extra ?? []));
 
   return (
     <CrumbsContext.Provider value={crumbsApi}>
