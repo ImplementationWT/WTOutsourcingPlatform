@@ -5,6 +5,7 @@ import MyWorkPage from "@/features/tasks/MyWorkPage";
 import BacklogPage from "@/features/tasks/BacklogPage";
 import CommsPage from "@/features/communications/CommsPage";
 import InvoicesPage from "@/features/finance/InvoicesPage";
+import PayoutsPage from "@/features/finance/PayoutsPage";
 import Home from "@/app/Home";
 import AppLayout from "@/components/layout/AppLayout";
 import UsersPage from "@/features/admin/UsersPage";
@@ -58,6 +59,7 @@ export const router = createBrowserRouter([
           // Rutas de pantallas que ya no existen: van a su reemplazo.
           ...["/comercial/deals", "/operativa/deals"].map((path) => ({ path, element: <Navigate to="/deals" replace /> })),
           { path: "/comercial/reuniones", element: <Navigate to="/meetings" replace /> },
+          { path: "/financiera", element: <Navigate to="/financiera/invoices" replace /> },
           ...["/comercial/clientes", "/comercial/empresas/*", "/comercial/partners/*", "/comercial/catalogo", "/comercial/sources"].map((path) => ({ path, element: <Navigate to="/comercial" replace /> })),
           { path: "/operativa", element: <OpsProjectsPage /> },
           { path: "/operativa/tasks", element: <RequireModule module="tasks"><TasksPage /></RequireModule> },
@@ -65,6 +67,7 @@ export const router = createBrowserRouter([
           { path: "/operativa/backlog", element: <RequireModule module="backlog"><BacklogPage /></RequireModule> },
           { path: "/operativa/:id", element: <OpsProjectDetailPage /> },
           { path: "/financiera/invoices", element: <RequireModule module="invoices"><InvoicesPage /></RequireModule> },
+          { path: "/financiera/pagos", element: <RequireModule module="payouts"><PayoutsPage /></RequireModule> },
           { path: "/dashboard", element: <DashboardPage /> },
           { path: "/projects", element: <ProjectsPage /> },
           { path: "/projects/new", element: <NewProjectPage /> },

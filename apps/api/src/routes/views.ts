@@ -27,7 +27,6 @@ const idParams = z.object({ id: z.string().uuid() });
 /** Vistas guardadas por usuario: cada persona ve y edita solo las suyas. */
 export async function registerViewRoutes(app: FastifyInstance, { store }: { store: AdminStore }) {
   const views = store.db.collection<SavedViewDoc>("ui_views");
-  await views.createIndex({ userId: 1, screen: 1, position: 1 });
   const view = (v: SavedViewDoc) => ({ id: v._id, name: v.name, query: v.query });
 
   app.get("/api/views", { preHandler: requireAuth }, async (request, reply) => {

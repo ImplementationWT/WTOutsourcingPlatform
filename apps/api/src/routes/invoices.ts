@@ -58,7 +58,6 @@ const today = () => new Date().toISOString().slice(0, 10);
  */
 export async function registerInvoiceRoutes(app: FastifyInstance, { store }: { store: AdminStore }) {
   const invoices = store.db.collection<InvoiceDoc>("fin_invoices");
-  await Promise.all([invoices.createIndex({ number: 1 }, { unique: true }), invoices.createIndex({ projectId: 1, month: -1 })]);
   const guard = { preHandler: requireModule("invoices") };
 
   async function present(rows: InvoiceDoc[]) {

@@ -75,7 +75,6 @@ const salesReader = (user: SessionUser) => (SALES_READ_ROLES as readonly string[
  */
 export async function registerCommunicationRoutes(app: FastifyInstance, { store }: { store: AdminStore }) {
   const comms = store.db.collection<CommunicationDoc>("core_communications");
-  await Promise.all([comms.createIndex({ projectId: 1, date: -1 }), comms.createIndex({ leadId: 1, date: -1 }), comms.createIndex({ followUpDate: 1, followUpDone: 1 })]);
 
   /** Proyectos que ve el usuario (ids) y si ve leads. */
   async function scope(user: SessionUser) {

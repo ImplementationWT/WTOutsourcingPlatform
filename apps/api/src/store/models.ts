@@ -228,6 +228,10 @@ export interface AuditDoc {
  */
 export type UserRole = "boss" | "commercial" | "finance" | "lead" | "developer";
 
+/** Nivel de un developer (D3), aparte del rol de permisos. El Team Leader es `role: "lead"`. */
+export const SENIORITIES = ["intern", "junior", "semi_senior", "senior"] as const;
+export type Seniority = (typeof SENIORITIES)[number];
+
 /** Roles que no pertenecen a un equipo. */
 export const TEAMLESS_ROLES: readonly UserRole[] = ["boss", "commercial", "finance"];
 
@@ -242,6 +246,8 @@ export interface UserDoc {
    */
   email?: string | null;
   role: UserRole;
+  /** Nivel (Intern, Junior, Semi Senior, Senior Developer); opcional. */
+  seniority?: Seniority | null;
   /** Equipo (null para los jefes). */
   teamId: string | null;
   /** scrypt (auth/password.ts). Nunca sale de la API. */

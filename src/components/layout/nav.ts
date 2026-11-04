@@ -80,7 +80,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: "Financiera",
     items: [
       { to: "/financiera/invoices", label: "Invoices", icon: Receipt, module: "invoices" },
-      { to: "/financiera/pagos", label: "Pagos / Comisiones", icon: Wallet, module: "payouts", soon: true },
+      { to: "/financiera/pagos", label: "Pagos / Comisiones", icon: Wallet, module: "payouts" },
     ],
   },
   {

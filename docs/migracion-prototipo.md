@@ -153,3 +153,22 @@ usaron valores nuevos de enums, correr el script de reversa de cada paso antes d
   (`invoiced`/`paid`). Queda como decisión pendiente si deben sincronizarse.
 - **Rollback:** volver a la imagen anterior; para limpiar, `db.fin_invoices.drop()` y
   `db.counters.deleteOne({_id: "invoice"})`.
+
+## Paso 7 · Pagos / Comisiones
+
+- **Datos:** `users.seniority` (opcional: intern, junior, semi_senior, senior), aparte del rol de
+  permisos (D3); colección nueva `fin_payouts` (una por persona y mes: básico y comisión en centavos,
+  estado Pendiente o Pagado y fecha de pago). Índice único por persona y mes.
+- **Personas:** los Team Leaders y developers activos reales. Rol (Team Leader o nivel de developer)
+  y team se editan desde Pagos solo por boss (D4) y se guardan en el usuario con la misma lógica de
+  Usuarios y equipos. Si un Team Leader cambia de team, el equipo anterior queda sin líder y el
+  nuevo lo toma; si ese equipo ya tenía otro Team Leader, se reemplaza y se avisa en pantalla.
+- **Comisiones a mano** (D10): no se implementa la regla calculada del doc §5.2.
+- **Horas del mes:** referenciales; cada ítem reparte sus horas por igual entre los días de su
+  timeline (`ops/hours.ts`).
+- **Acceso:** Financiera (boss y finance). Es la pantalla más sensible: muestra básicos y comisiones
+  por persona.
+- **Índices:** los de vistas, comunicaciones, invoices y pagos se crean en `AdminStore.init` junto
+  con los demás (en paralelo), no al registrar cada ruta.
+- **Rollback:** volver a la imagen anterior (ignora `seniority`); para limpiar,
+  `db.fin_payouts.drop()` y `db.users.updateMany({}, {$unset: {seniority: ""}})`.
