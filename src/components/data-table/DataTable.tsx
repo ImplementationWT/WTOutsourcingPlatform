@@ -58,6 +58,8 @@ export interface Grouping<T> {
   chip?: (value: string) => ReactNode;
   /** «1 lead», «3 leads»… junto al chip. */
   countLabel?: (n: number) => string;
+  /** Interruptor «Agrupar…» en el panel de filtros (por defecto sí). */
+  toggle?: boolean;
 }
 
 interface DataTableProps<T> {
@@ -80,6 +82,10 @@ interface DataTableProps<T> {
   /** Menú «⋮» de cada tarjeta del celular. */
   rowMenu?: (row: T) => ReactNode;
   empty: string;
+  /** Mensaje cuando la búsqueda o los filtros no dejan nada (por defecto «Nada coincide con los filtros.»). */
+  emptyFiltered?: string;
+  /** Botón «Columnas» (por defecto, con más de dos columnas). */
+  columnPicker?: boolean;
   searchPlaceholder?: string;
   filters?: FilterDef[];
   grouping?: Grouping<T>;
@@ -184,6 +190,8 @@ export function DataTable<T>({
   selectedKey,
   rowMenu,
   empty,
+  emptyFiltered = "Nada coincide con los filtros.",
+  columnPicker = true,
   searchPlaceholder = "Buscar…",
   filters = [],
   grouping,
@@ -207,7 +215,7 @@ export function DataTable<T>({
   const active = filters.filter((f) => state.filters[f.key]);
   // Agrupar cuenta como filtro, salvo en las tablas que agrupan de inicio (encabezado con chip).
   const activeCount = active.length + (grouping && state.group && !grouping.chip ? 1 : 0);
-  const hasPanel = filters.length > 0 || Boolean(grouping);
+  const hasPanel = filters.length > 0 || Boolean(grouping && grouping.toggle !== false);
 
   // Agrupar: los grupos siguen el orden del catálogo y el contador es del conjunto filtrado.
   const groups =
@@ -280,7 +288,7 @@ export function DataTable<T>({
             <span className={cn(activeCount === 0 && "max-sm:sr-only")}>Filtros{activeCount > 0 && ` · ${activeCount}`}</span>
           </button>
         )}
-        {!cards && columns.length > 2 && (
+        {!cards && columnPicker && columns.length > 2 && (
           <DropdownMenu>
             <DropdownMenuTrigger className={toolbarButton}>Columnas</DropdownMenuTrigger>
             <DropdownMenuContent align="end" sideOffset={6} className="w-56">
@@ -307,7 +315,7 @@ export function DataTable<T>({
               <Select label={f.label} value={state.filters[f.key] ?? null} emptyLabel={f.all} options={f.options} onValueChange={(v) => set({ filters: { [f.key]: v ?? undefined } })} />
             </div>
           ))}
-          {grouping && (
+          {grouping && grouping.toggle !== false && (
             <div className="min-w-0 space-y-1.5">
               <p className="text-caps-label">Vista</p>
               <label className="flex h-control cursor-pointer items-center gap-2.5 rounded-lg border border-input px-3 text-sm dark:bg-white/[0.03]">
@@ -347,7 +355,7 @@ export function DataTable<T>({
           <Skeleton className="h-10 w-full" />
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-2xl border border-border bg-card px-6 py-12 text-center text-sm text-muted-foreground shadow-card">{filtered ? "Nada coincide con los filtros." : empty}</div>
+        <div className="rounded-2xl border border-border bg-card px-6 py-12 text-center text-sm text-muted-foreground shadow-card">{filtered ? emptyFiltered : empty}</div>
       ) : !cards ? (
         <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
           <div className="overflow-x-auto">

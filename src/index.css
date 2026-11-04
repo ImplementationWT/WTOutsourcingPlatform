@@ -281,6 +281,26 @@ html:not(.dark) {
   border-color: var(--line-strong);
 }
 
+/* Flecha de los selects: ▾ en el estilo del prototipo, doble flecha en las pantallas protegidas. */
+.select-caret-legacy {
+  display: none;
+}
+.skin-legacy .select-caret {
+  display: none;
+}
+.skin-legacy .select-caret-legacy {
+  display: block;
+}
+/* Select nativo con forma de chip (team de una reunión, estado de una actividad): flecha propia con aire. */
+.native-caret {
+  appearance: none;
+  padding-right: 1.75rem;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
 /* Chips del prototipo: `chip-red`, `chip-green`… (fondo suave y texto del mismo color). */
 @utility chip-red {
   background-color: var(--chip-red-bg);

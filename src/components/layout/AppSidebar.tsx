@@ -86,7 +86,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                         <Dot active={exact || Boolean(item.also?.test(pathname))} />
                         <span className="flex-1 truncate">{item.label}</span>
                         {item.badge && badges[item.badge] > 0 && (
-                          <span className="text-xs font-medium text-muted-foreground tabular-nums" aria-label={`${badges[item.badge]} ${item.badge === "backlog" ? "sin sprint" : "seguimientos pendientes"}`}>
+                          <span className="text-xs font-medium text-muted-foreground tabular-nums" aria-label={`${badges[item.badge]} ${item.badge === "backlog" ? "sin sprint" : item.badge === "leads" ? "leads" : "seguimientos pendientes"}`}>
                             {badges[item.badge]}
                           </span>
                         )}

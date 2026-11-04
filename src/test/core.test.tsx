@@ -149,11 +149,17 @@ describe("Deals", () => {
 describe("Contactos", () => {
   const contact: Contact = { id: "c-1", name: "Lucía Pérez", emails: ["lucia@manpersa.pe"], phone: null, title: "Gerente", linkedinUrl: null, company: "Manpersa SAC", createdAt: "", updatedAt: "" };
 
-  it("la empresa es un texto del contacto; la búsqueda va a la URL de la API", async () => {
-    const { calls } = renderAt("/comercial/contactos", COMMERCIAL, () => json(page([contact], { canWrite: true })));
-    const row = within((await screen.findByText("Lucía Pérez")).closest("tr")!);
+  it("píldoras Todos / Leads / Clientes, fila con empresa, correo y tipo; la búsqueda y el filtro van a la API", async () => {
+    const { calls } = renderAt("/comercial/contactos", COMMERCIAL, () => json(page([{ ...contact, kind: "lead", leadId: "l-1" }], { canWrite: true, counts: { all: 9, lead: 5, client: 4 } })));
+    const row = within((await screen.findByText("Lucía Pérez")).closest("button")!);
     expect(row.getByText("Manpersa SAC")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Buscar"), { target: { value: "manp" } });
+    expect(row.getByText("lucia@manpersa.pe")).toBeTruthy();
+    expect(row.getByText("Lead")).toBeTruthy();
+    const kinds = within(screen.getByRole("group", { name: "Tipo de contacto" }));
+    expect(kinds.getByRole("button", { name: /Todos/ }).textContent).toContain("9");
+    fireEvent.click(kinds.getByRole("button", { name: /Clientes/ }));
+    await waitFor(() => expect(calls.some((c) => c.url.includes("kind=client"))).toBe(true));
+    fireEvent.change(screen.getByLabelText("Buscar contacto"), { target: { value: "manp" } });
     await waitFor(() => expect(calls.some((c) => c.url.startsWith("/api/contacts?") && c.url.includes("q=manp"))).toBe(true));
   });
 

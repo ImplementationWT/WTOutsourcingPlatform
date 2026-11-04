@@ -1,18 +1,18 @@
 import { useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, MoreVertical, Plus, X } from "lucide-react";
+import { MoreVertical, Plus } from "lucide-react";
 import { DataTable, type Column } from "@/components/data-table/DataTable";
-import { InlineSelect, RelationCell } from "@/components/data-table/cells";
+import { InlineSelect } from "@/components/data-table/cells";
 import { useTableState } from "@/components/data-table/table-state";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Select } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input, Textarea } from "@/components/ui/input";
+import { Drawer } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDate } from "@/lib/format";
+import { errorText, toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import {
   createLead,
@@ -21,134 +21,109 @@ import {
   LEAD_FUNNELS,
   LEAD_STATUS_LABELS,
   LEAD_STATUSES,
+  PIPELINE_LEAD_STATUSES,
   LEAD_TEMPERATURE_LABELS,
   LEAD_TEMPERATURES,
-  LEAD_VIEW_LABELS,
-  LEAD_VIEWS,
   salesKeys,
   updateLead,
   useLeads,
   useOwners,
   type Lead,
-  type LeadFunnel,
   type LeadInput,
   type LeadStatus,
-  type LeadView,
 } from "./api";
 import { LeadDetailModal } from "./LeadDetail";
 import { LeadStatusBadge, TemperatureBadge } from "./SalesBadges";
 
-function NewLeadForm({ onClose }: { onClose: () => void }) {
+/**
+ * «Nuevo lead» (prototipo): panel deslizable con nombre, empresa (obligatoria), contacto, correo y
+ * teléfono. Se crea en Nuevo, Warm, LHT y source Manual, sin Setter ni Closer, y se abre su detalle.
+ */
+function NewLeadPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
+  const { search } = useLocation();
   const queryClient = useQueryClient();
-  const [company, setCompany] = useState("");
-  const [contactName, setContactName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [notes, setNotes] = useState("");
-  const [source, setSource] = useState("");
-  const [funnel, setFunnel] = useState<LeadFunnel | "">("");
+  const empty = { name: "", company: "", contactName: "", email: "", phone: "" };
+  const [form, setForm] = useState(empty);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const valid = Boolean(company.trim() || contactName.trim() || email.trim());
-
+  const set = (k: keyof typeof empty) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const close = () => {
+    setForm(empty);
+    onClose();
+  };
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!valid) return;
+    if (!form.company.trim()) return;
     setBusy(true);
-    setError(null);
     try {
       const { lead } = await createLead({
-        company: company.trim(),
-        contactName: contactName.trim(),
-        email: email.trim() || null,
-        phone: phone.trim() || null,
-        notes: notes.trim(),
-        ...(source.trim() ? { source: source.trim() } : {}),
-        ...(funnel ? { funnel } : {}),
-      });
+        ...(form.name.trim() ? { name: form.name.trim() } : {}),
+        company: form.company.trim(),
+        contactName: form.contactName.trim(),
+        email: form.email.trim() || null,
+        phone: form.phone.trim() || null,
+        status: undefined,
+        temperature: "warm",
+        funnel: "lht",
+        source: "Manual",
+        setterUserId: null,
+        closerUserId: null,
+      } as Parameters<typeof createLead>[0]);
       await queryClient.invalidateQueries({ queryKey: salesKeys.all });
-      navigate(`/comercial/leads/${lead.id}`);
+      toast.success(`Lead creado: ${lead.title}`);
+      close();
+      navigate({ pathname: `/comercial/leads/${lead.id}`, search });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo crear el lead.");
+      toast.error("No se pudo crear el lead.", { description: errorText(err, "Inténtalo de nuevo.") });
     } finally {
       setBusy(false);
     }
   }
-
+  const field = (k: keyof typeof empty, label: string, props: React.InputHTMLAttributes<HTMLInputElement> = {}) => (
+    <div className="space-y-2">
+      <Label htmlFor={`nl-${k}`} className="text-caps-label">
+        {label}
+      </Label>
+      <Input id={`nl-${k}`} value={form[k]} onChange={set(k)} className="h-11 rounded-[10px] border-border bg-muted dark:bg-muted" {...props} />
+    </div>
+  );
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>Nuevo lead</CardTitle>
-        <Button size="icon-sm" variant="ghost" aria-label="Cerrar" onClick={onClose}>
-          <X />
-        </Button>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={submit} className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="lead-company">Empresa</Label>
-              <Input id="lead-company" value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Manpersa SAC" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lead-contact">Contacto</Label>
-              <Input id="lead-contact" value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Francisco Wong" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lead-email">Correo</Label>
-              <Input id="lead-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lead-phone">Teléfono</Label>
-              <Input id="lead-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lead-source">Origen</Label>
-              <Input id="lead-source" value={source} onChange={(e) => setSource(e.target.value)} placeholder="Manual, Referido, Formulario web…" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lead-funnel">Funnel</Label>
-              <Select
-                id="lead-funnel"
-                value={funnel || null}
-                emptyLabel="Sin definir"
-                options={LEAD_FUNNELS.map((f) => ({ value: f, label: LEAD_FUNNEL_LABELS[f] }))}
-                onValueChange={(v) => setFunnel((v ?? "") as LeadFunnel | "")}
-              />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="lead-notes">Notas</Label>
-              <Textarea id="lead-notes" rows={2}  value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </div>
-          </div>
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
-          <div className="flex gap-2">
-            <Button type="submit" disabled={!valid || busy}>
-              {busy ? <Loader2 className="animate-spin" /> : <Plus />}
-              Crear lead
-            </Button>
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Cancelar
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+    <Drawer
+      open={open}
+      onOpenChange={(o) => !o && close()}
+      title="Nuevo lead"
+      description="Se crea en Nuevo, Warm y LHT; después completas el resto en su detalle."
+      className="max-w-md"
+      dirty={Object.values(form).some((v) => v.trim())}
+      footer={
+        <>
+          <Button variant="outline" size="lg" onClick={close}>
+            Cancelar
+          </Button>
+          <Button size="lg" type="submit" form="new-lead" disabled={!form.company.trim()} loading={busy}>
+            Crear lead
+          </Button>
+        </>
+      }
+    >
+      <form id="new-lead" onSubmit={submit} className="space-y-4 py-1">
+        {field("name", "Nombre del lead", { placeholder: "Portal de pedidos Manpersa" })}
+        {field("company", "Empresa", { placeholder: "Manpersa SAC", required: true })}
+        {field("contactName", "Contacto", { placeholder: "Francisco Wong" })}
+        {field("email", "Correo", { type: "email", placeholder: "nombre@empresa.com" })}
+        {field("phone", "Teléfono", { type: "tel" })}
+      </form>
+    </Drawer>
   );
 }
 
-/** Estados con píldora propia aunque estén en cero (los del prototipo); el resto, solo si hay leads. */
-const PILL_STATUSES: readonly LeadStatus[] = ["new", "contacted", "demo", "proposal_sent", "won", "lost", "ghosted"];
+/** Pestañas del prototipo: Todos y estos siete estados (Nurturing y No calificado solo cuentan en «Todos»). */
+const PILL_STATUSES: readonly LeadStatus[] = PIPELINE_LEAD_STATUSES;
 
 /** Píldoras del embudo (prototipo): «Todos» y cada estado con su contador (sobre los demás filtros). */
 function StatusChips({ counts, value, onChange }: { counts: Partial<Record<LeadStatus, number>> | undefined; value: LeadStatus | undefined; onChange: (status: LeadStatus | undefined) => void }) {
   const total = LEAD_STATUSES.reduce((sum, st) => sum + (counts?.[st] ?? 0), 0);
-  const shown = LEAD_STATUSES.filter((st) => PILL_STATUSES.includes(st) || (counts?.[st] ?? 0) > 0 || value === st);
+  const shown = PILL_STATUSES;
   const chip = (key: string, label: string, count: number | undefined, selected: boolean, onClick: () => void) => (
     <button
       key={key}
@@ -238,7 +213,7 @@ export default function LeadsPage() {
         <InlineSelect
           label={`Estado de ${l.title}`}
           value={l.status}
-          options={LEAD_STATUSES}
+          options={PIPELINE_LEAD_STATUSES}
           labels={LEAD_STATUS_LABELS}
           disabled={!canWrite}
           display={<LeadStatusBadge value={l.status} />}
@@ -274,20 +249,7 @@ export default function LeadsPage() {
         <InlineSelect label={`Closer de ${l.title}`} value={l.closer?.id ?? null} options={ownerIds} labels={ownerNames} allowEmpty="Sin asignar" disabled={!canWrite} display={person(l.closer)} onSave={(v) => save(l, { closerUserId: v })} />
       ),
     },
-    {
-      id: "setter",
-      header: "Setter",
-      card: false,
-      hidden: true,
-      cell: (l) => (
-        <InlineSelect label={`Setter de ${l.title}`} value={l.setter?.id ?? null} options={ownerIds} labels={ownerNames} allowEmpty="Sin asignar" disabled={!canWrite} display={person(l.setter)} onSave={(v) => save(l, { setterUserId: v })} />
-      ),
-    },
-    { id: "source", header: "Origen", card: false, hidden: true, cell: (l) => l.source },
     { id: "submittedAt", header: "Submission", sortKey: "submittedAt", card: "meta", className: "whitespace-nowrap", cardCell: (l) => (l.submittedAt ? new Date(`${l.submittedAt.slice(0, 10)}T12:00:00`).toLocaleDateString("es-PE", { day: "numeric", month: "short" }) : null), cell: (l) => date(l.submittedAt) },
-    { id: "meetingAt", header: "Reunión", sortKey: "meetingAt", card: false, hidden: true, className: "whitespace-nowrap", cell: (l) => date(l.meetingAt) },
-    { id: "responseDays", header: "Respuesta", align: "right", card: false, hidden: true, cell: (l) => (l.responseDays === null ? muted : `${l.responseDays} d`) },
-    { id: "deal", header: "Deal", card: false, hidden: true, cell: (l) => <RelationCell to={l.deal ? `/deals/${l.deal.id}` : null}>{l.deal?.dealCode}</RelationCell> },
   ];
 
   return (
@@ -297,7 +259,7 @@ export default function LeadsPage() {
           title="Leads"
           description={<span className="max-sm:hidden">Todos los sources en una sola tabla, con Setter, Closer y conversión en cliente.</span>}
           actions={
-            canWrite && !creating ? (
+            canWrite ? (
               <Button size="lg" onClick={() => setCreating(true)}>
                 <Plus />
                 Nuevo <span className="max-sm:hidden">lead</span>
@@ -306,7 +268,7 @@ export default function LeadsPage() {
           }
         />
 
-        {creating && <NewLeadForm onClose={() => setCreating(false)} />}
+        <NewLeadPanel open={creating} onClose={() => setCreating(false)} />
 
         <StatusChips counts={data?.counts} value={status} onChange={(st) => table.set({ filters: { status: st } })} />
 
@@ -323,14 +285,15 @@ export default function LeadsPage() {
           selectedKey={openId ?? null}
           rowMenu={(l) => <LeadMenu lead={l} />}
           empty="Aún no hay leads. Crea el primero con «Nuevo lead»."
+          emptyFiltered="Sin resultados · Ajusta la búsqueda o limpia los filtros"
+          columnPicker={false}
           searchPlaceholder="Buscar por empresa, contacto o correo"
           filters={[
-            { key: "view", label: "Filtrar por vista", chip: "Vista", all: "Todas las vistas", options: (Object.keys(LEAD_VIEWS) as LeadView[]).map((v) => ({ value: v, label: LEAD_VIEW_LABELS[v] })) },
-            { key: "funnel", label: "Filtrar por funnel", all: "Todos los funnels", options: LEAD_FUNNELS.map((f) => ({ value: f, label: LEAD_FUNNEL_LABELS[f] })) },
-            { key: "temperature", label: "Filtrar por temperatura", all: "Toda temperatura", options: LEAD_TEMPERATURES.map((t) => ({ value: t, label: LEAD_TEMPERATURE_LABELS[t] })) },
-            ...(owners.length ? [{ key: "closerUserId", label: "Filtrar por Closer", all: "Todos los Closers", options: owners.map((o) => ({ value: o.id, label: o.name })) }] : []),
+            // Prototipo: Funnel (solo los que tienen leads) y Temperatura.
+            { key: "funnel", label: "Filtrar por funnel", chip: "Funnel", all: "Todos", options: (data?.funnels ?? LEAD_FUNNELS).map((f) => ({ value: f, label: LEAD_FUNNEL_LABELS[f] })) },
+            { key: "temperature", label: "Filtrar por temperatura", chip: "Temperatura", all: "Todas", options: LEAD_TEMPERATURES.map((t) => ({ value: t, label: LEAD_TEMPERATURE_LABELS[t] })) },
           ]}
-          grouping={{ label: "Agrupar por estado", value: (l) => l.status, order: LEAD_STATUSES, labels: LEAD_STATUS_LABELS, chip: (v) => <LeadStatusBadge value={v as LeadStatus} />, countLabel: (n) => `${n} ${n === 1 ? "lead" : "leads"}` }}
+          grouping={{ label: "Agrupar por estado", value: (l) => l.status, order: LEAD_STATUSES, labels: LEAD_STATUS_LABELS, toggle: false, chip: (v) => <LeadStatusBadge value={v as LeadStatus} />, countLabel: (n) => `${n} ${n === 1 ? "lead" : "leads"}` }}
         />
       </div>
 

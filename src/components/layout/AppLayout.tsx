@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { Menu, Moon, Search, Sun } from "lucide-react";
+import { Menu, Search } from "lucide-react";
 import { BrandLockup, BrandMark } from "@/components/brand/Brand";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useSession, type UserRole } from "@/features/auth/auth";
@@ -59,7 +59,7 @@ function Breadcrumbs({ crumbs }: { crumbs: Crumb[] }) {
 
 export default function AppLayout() {
   // El login fuerza el oscuro: al entrar al panel se aplica el tema elegido.
-  const { theme, toggle: toggleTheme } = useTheme();
+  const { theme } = useTheme();
   useEffect(() => applyTheme(theme), [theme]);
   const role = useSession().data?.role;
   const { pathname } = useLocation();
@@ -104,10 +104,6 @@ export default function AppLayout() {
             <div className="ml-auto flex items-center gap-2">
               <button type="button" className={cn(iconButton, "lg:hidden")} aria-label="Buscar" onClick={() => setPaletteOpen(true)}>
                 <Search className="size-5" />
-              </button>
-              <button type="button" onClick={toggleTheme} className="hidden h-10 items-center gap-2 rounded-xl border border-border bg-card px-3.5 text-sm font-semibold transition-colors hover:border-line-strong hover:bg-muted sm:inline-flex">
-                {theme === "dark" ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
-                {theme === "dark" ? "Claro" : "Oscuro"}
               </button>
               <span className="skin-legacy contents">
                 <UserMenu />

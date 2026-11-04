@@ -126,6 +126,8 @@ export interface ActivityInput {
   leadId: string | null;
   dealId: string | null;
   notes: string;
+  /** Inicio (ISO); sin él, el momento de crearla. */
+  startedAt: string;
 }
 export const createActivity = (input: Partial<ActivityInput> & { title: string }) => apiFetch<{ activity: Activity }>("/api/activities", send("POST", input));
 export const updateActivity = (id: string, patch: Partial<ActivityInput>) => apiFetch<{ activity: Activity }>(`/api/activities/${id}`, send("PATCH", patch));

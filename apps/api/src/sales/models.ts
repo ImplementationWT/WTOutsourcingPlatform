@@ -8,6 +8,8 @@
 export const LEAD_STATUSES = ["new", "contacted", "demo", "proposal_sent", "won", "lost", "ghosted", "nurturing", "unqualified"] as const;
 /** Leads activos y fríos: una sola tabla, dos vistas. */
 export const ACTIVE_LEAD_STATUSES = ["new", "contacted", "demo", "proposal_sent"] as const;
+/** Los estados que se eligen (prototipo). Nurturing y No calificado solo quedan en datos importados. */
+export const PIPELINE_LEAD_STATUSES = ["new", "contacted", "demo", "proposal_sent", "won", "lost", "ghosted"] as const;
 export const COLD_LEAD_STATUSES = ["nurturing", "unqualified", "lost", "ghosted"] as const;
 /** Funnel de origen (§4.1). */
 export const LEAD_FUNNELS = ["lht", "upwork", "guide", "outreach", "aitp", "other"] as const;
@@ -35,10 +37,16 @@ export interface LeadDoc {
   /** Id del lead en el origen (si se mapeó): evita duplicarlo al reenviarlo. */
   externalId: string | null;
   status: LeadStatus;
+  /** Nombre del lead (opcional; si falta, se muestra la empresa). */
+  name?: string;
   company: string;
   contactName: string;
   email: string | null;
   phone: string | null;
+  /** País, correo corporativo y página web de la empresa (opcionales). */
+  country?: string | null;
+  corporateEmail?: string | null;
+  website?: string | null;
   notes: string;
   /** Todos los datos recibidos, ya aplanados (clave con puntos → texto). */
   fields: { key: string; value: string }[];
@@ -94,6 +102,8 @@ export interface ActivityDoc {
   leadId: string | null;
   dealId: string | null;
   notes: string;
+  /** Inicio (por defecto, al crearla); se puede ajustar, nunca después del cierre. */
+  startedAt?: Date;
   completedAt?: Date;
   mondayId?: string;
   createdBy: string;
@@ -179,4 +189,4 @@ export const lineSubtotalCents = (hours: number, rateCents: number) => Math.roun
 export const linesTotalCents = (lines: Pick<ProposalLineDoc, "subtotalCents">[]) => lines.reduce((sum, l) => sum + l.subtotalCents, 0);
 
 /** Nombre a mostrar cuando el lead no trae empresa. */
-export const leadTitle = (lead: Pick<LeadDoc, "company" | "contactName" | "email">) => lead.company || lead.contactName || lead.email || "Lead sin nombre";
+export const leadTitle = (lead: Pick<LeadDoc, "company" | "contactName" | "email"> & { name?: string }) => lead.name || lead.company || lead.contactName || lead.email || "Lead sin nombre";

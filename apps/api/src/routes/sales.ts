@@ -15,6 +15,7 @@ import {
   type DemoDoc,
   LEAD_FUNNELS,
   LEAD_STATUSES,
+  PIPELINE_LEAD_STATUSES,
   LEAD_TEMPERATURES,
   type LeadDoc,
   type LeadStatus,
@@ -64,10 +65,14 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Usa el formato AAAA-MM-
 const uuidOrNull = z.string().uuid().nullable();
 
 const leadFields = {
+  name: text(120),
   company: text(120),
   contactName: text(120),
   email,
   phone: text(40).nullable(),
+  country: text(80).nullable(),
+  corporateEmail: email,
+  website: optionalUrl,
   notes: text(4000),
   setterUserId: uuidOrNull,
   closerUserId: uuidOrNull,
@@ -87,7 +92,7 @@ const createLeadSchema = z
   .strict()
   .refine((v) => Boolean(v.company || v.contactName || v.email), "Indica al menos la empresa, el contacto o el correo.");
 const updateLeadSchema = z
-  .object({ ...leadFields, status: z.enum(LEAD_STATUSES), lostReason: text(500).nullable() })
+  .object({ ...leadFields, status: z.enum(PIPELINE_LEAD_STATUSES), lostReason: text(500).nullable() })
   .partial()
   .strict()
   .refine((patch) => Object.keys(patch).length > 0, "No hay nada que cambiar.");
@@ -188,10 +193,14 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
     return (lead: LeadDoc, full = false) => ({
       id: lead._id,
       title: leadTitle(lead),
+      name: lead.name ?? null,
       company: lead.company,
       contactName: lead.contactName,
       email: lead.email,
       phone: lead.phone,
+      country: lead.country ?? null,
+      corporateEmail: lead.corporateEmail ?? null,
+      website: lead.website ?? null,
       notes: lead.notes,
       status: lead.status,
       source: lead.sourceName,
@@ -240,7 +249,7 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
       ...(closerUserId ? { $or: [{ closerUserId }, { closerUserId: { $exists: false }, ownerUserId: closerUserId }] } : {})
     };
     const match = (status ? { ...base, status: view && !(VIEW_STATUSES[view] as readonly string[]).includes(status) ? "__none__" : status } : base) as Filter<LeadDoc>;
-    const [result, counts] = await Promise.all([
+    const [result, counts, funnels] = await Promise.all([
       runTableQuery(store.leads, {
         match,
         query: query.data,
@@ -256,17 +265,20 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
           updatedAt: "updatedAt"
         },
         defaultSort: { key: "updatedAt", dir: "desc" },
-        search: ["company", "contactName", "email", "phone"],
+        search: ["name", "company", "contactName", "email", "phone"],
         facetField: "status",
         projection: { fields: 0, rawJson: 0 }
       }),
-      store.leads.aggregate<{ _id: LeadStatus; count: number }>([{ $match: base as Filter<LeadDoc> }, { $group: { _id: "$status", count: { $sum: 1 } } }]).toArray()
+      store.leads.aggregate<{ _id: LeadStatus; count: number }>([{ $match: base as Filter<LeadDoc> }, { $group: { _id: "$status", count: { $sum: 1 } } }]).toArray(),
+      store.leads.distinct("funnel")
     ]);
     const present = await leadViews(result.rows);
     return {
       ...result,
       rows: result.rows.map((l) => present(l)),
       counts: Object.fromEntries(LEAD_STATUSES.map((st) => [st, counts.find((c) => c._id === st)?.count ?? 0])),
+      // Funnels con leads, para el filtro (solo los que existen).
+      funnels: LEAD_FUNNELS.filter((f) => (funnels as (string | null)[]).includes(f)),
       canWrite: isSales(request.user!)
     };
   });
@@ -283,14 +295,19 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
       sourceName: body.data.source ?? "Manual",
       externalId: null,
       status: "new",
+      ...(body.data.name ? { name: body.data.name } : {}),
       company: body.data.company ?? "",
       contactName: body.data.contactName ?? "",
       email: body.data.email ?? null,
       phone: body.data.phone || null,
+      country: body.data.country ?? null,
+      corporateEmail: body.data.corporateEmail ?? null,
+      website: body.data.website ?? null,
       notes: body.data.notes ?? "",
       fields: [],
       rawJson: null,
-      setterUserId: body.data.setterUserId ?? (user.role === "commercial" ? user.id : null),
+      // Sin decir nada, el Setter es quien lo crea (Comercial); con null explícito queda sin asignar.
+      setterUserId: body.data.setterUserId !== undefined ? body.data.setterUserId : user.role === "commercial" ? user.id : null,
       closerUserId: body.data.closerUserId ?? null,
       funnel: body.data.funnel ?? null,
       temperature: body.data.temperature ?? null,

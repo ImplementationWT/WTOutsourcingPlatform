@@ -48,7 +48,8 @@ const activityFields = {
   status: z.enum(ACTIVITY_STATUSES),
   leadId: uuidOrNull,
   dealId: uuidOrNull,
-  notes: text(4000)
+  notes: text(4000),
+  startedAt: z.string().datetime({ offset: true })
 };
 const createActivitySchema = z
   .object(activityFields)
@@ -168,8 +169,8 @@ export async function registerCommercialRoutes(app: FastifyInstance, { store }: 
       ...refs(a),
       completedAt: a.completedAt ?? null,
       /** Inicio automático (al crearla) y minutos hasta el cierre (tiempo invertido). */
-      startedAt: a.createdAt,
-      investedMinutes: a.completedAt ? Math.max(0, Math.round((a.completedAt.getTime() - a.createdAt.getTime()) / 60_000)) : null,
+      startedAt: a.startedAt ?? a.createdAt,
+      investedMinutes: a.completedAt ? Math.max(0, Math.round((a.completedAt.getTime() - (a.startedAt ?? a.createdAt).getTime()) / 60_000)) : null,
       updatedAt: a.updatedAt
     });
   }
@@ -223,8 +224,10 @@ export async function registerCommercialRoutes(app: FastifyInstance, { store }: 
       createdBy: user.username,
       createdAt: at,
       updatedAt: at,
+      ...(body.data.startedAt ? { startedAt: new Date(body.data.startedAt) } : {}),
       ...(status === "done" ? { completedAt: at } : {})
     };
+    if (activity.startedAt && activity.startedAt > (activity.completedAt ?? new Date(at.getTime() + 60_000))) return reply.code(400).send({ error: "El inicio no puede ser posterior al fin." });
     await store.activities.insertOne(activity);
     await audit(user, "sales.activity_created", `sales:activity:${activity._id}`, activity.title);
     const view = await activityViews([activity]);
@@ -238,18 +241,22 @@ export async function registerCommercialRoutes(app: FastifyInstance, { store }: 
     if (!body.success) return invalid(reply, body.error);
     const activity = await store.activities.findOne({ _id: params.data.id });
     if (!activity) return reply.code(404).send({ error: "Actividad no encontrada." });
-    const patch = body.data;
+    // Cerrada queda bloqueada (prototipo): su inicio, fin y tiempo invertido ya no cambian.
+    if (activity.status === "done") return reply.code(409).send({ error: "La actividad está cerrada y ya no se edita." });
+    const { startedAt, ...patch } = body.data;
+    if (startedAt !== undefined && new Date(startedAt) > new Date()) return reply.code(400).send({ error: "El inicio no puede ser posterior al fin." });
     if (!(await checkLeadDeal(patch, reply))) return reply;
     if (!(await validOwner(patch.ownerUserId))) return reply.code(400).send({ error: "El responsable debe ser alguien activo de Comercial." });
     const leadId = patch.leadId !== undefined ? patch.leadId : activity.leadId;
     const dealId = patch.dealId !== undefined ? patch.dealId : activity.dealId;
     if (!leadId && !dealId) return reply.code(400).send({ error: "Liga la actividad a un lead o a un deal." });
     const at = new Date();
-    const set: Partial<ActivityDoc> = { ...patch, updatedAt: at };
-    const unset: Record<string, ""> = {};
-    if (patch.status === "done" && activity.status !== "done") set.completedAt = at;
-    if (patch.status && patch.status !== "done" && activity.status === "done") unset.completedAt = "";
-    await store.activities.updateOne({ _id: activity._id }, { $set: set, ...(Object.keys(unset).length ? { $unset: unset } : {}) });
+    const set: Partial<ActivityDoc> = { ...patch, ...(startedAt !== undefined ? { startedAt: new Date(startedAt) } : {}), updatedAt: at };
+    if (patch.status === "done") {
+      set.completedAt = at;
+      if ((set.startedAt ?? activity.startedAt ?? activity.createdAt) > at) return reply.code(400).send({ error: "El inicio no puede ser posterior al fin." });
+    }
+    await store.activities.updateOne({ _id: activity._id }, { $set: set });
     const user = request.user!;
     if (patch.status && patch.status !== activity.status) {
       const body_ = `Actividad «${activity.title}»: ${ACTIVITY_LABELS[activity.status]} → ${ACTIVITY_LABELS[patch.status]}`;

@@ -47,6 +47,9 @@ export interface Contact {
   name: string;
   /** (calc, en la lista) Cliente si está en un proyecto; Lead si solo está en leads. */
   kind?: "client" | "lead" | null;
+  /** (calc, en la lista) Lead más reciente del contacto y su proyecto, para abrirlo al hacer clic. */
+  leadId?: string | null;
+  projectId?: string | null;
   emails: string[];
   phone: string | null;
   title: string | null;
@@ -138,7 +141,7 @@ export const DEAL_FILTERS = ["status", "salesStage", "ownerUserId"] as const;
 
 const useEnabled = () => Boolean(useSession().data);
 
-export const useContacts = (query: string) => useTablePage<Contact>(coreKeys.contacts, "/api/contacts", query, useEnabled());
+export const useContacts = (query: string) => useTablePage<Contact, { counts: { all: number; lead: number; client: number } }>(coreKeys.contacts, "/api/contacts", query, useEnabled());
 export const useDeals = (query: string) => useTablePage<Deal, { canCreate: boolean }>(coreKeys.deals, "/api/deals", query, useEnabled());
 
 export const useContact = (id: string) =>

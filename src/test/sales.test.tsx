@@ -24,6 +24,9 @@ const lead: LeadDetail = {
   contactName: "Francisco Wong",
   email: "francisco@manpersa.pe",
   phone: null,
+  country: null,
+  corporateEmail: null,
+  website: null,
   notes: "",
   status: "demo",
   source: "Meta Ads",
@@ -116,16 +119,14 @@ describe("leads", () => {
     await waitFor(() => expect(calls.some((c) => c.url.includes("status=won"))).toBe(true));
   });
 
-  it("agrupa por estado con grupos plegables; «Columnas» muestra las ocultas y un clic en la fila abre el detalle", async () => {
+  it("agrupa por estado con grupos plegables, las columnas del prototipo y un clic en la fila abre el detalle", async () => {
     localStorage.clear();
     renderAt("/comercial", COMMERCIAL, route);
     const table = await screen.findByRole("table", { name: "Leads" });
-    expect(within(table).queryByText("Meta Ads")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Columnas" }));
-    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Origen" }));
-    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Respuesta" }));
-    await waitFor(() => expect(within(table).getByText("Meta Ads")).toBeTruthy());
-    expect(within(table).getByText("3 d")).toBeTruthy();
+    expect(within(table.querySelector("thead")!).getAllByRole("columnheader").map((h) => h.textContent?.trim())).toEqual(["Lead", "Estado", "Temp.", "Funnel", "Closer", "Submission"]);
+    expect(screen.queryByRole("button", { name: "Columnas" })).toBeNull();
+    // Las pestañas son Todos y los siete estados del prototipo.
+    expect(within(screen.getByRole("group", { name: "Embudo" })).getAllByRole("button").map((b) => b.textContent?.replace(/[\d–]+/g, "").trim())).toEqual(["Todos", "Nuevo", "Contactado", "Demo", "Propuesta enviada", "Ganado", "Perdido", "Ghosted"]);
     expect(within(table).getByText("1 lead")).toBeTruthy();
     fireEvent.click(within(table).getByRole("button", { name: "Plegar Demo" }));
     expect(within(table).queryByText("Upwork")).toBeNull();
@@ -133,18 +134,30 @@ describe("leads", () => {
     fireEvent.click(within(table).getByText("Upwork"));
     const dialog = within(await screen.findByRole("dialog"));
     expect(await dialog.findByRole("heading", { name: "Manpersa SAC" })).toBeTruthy();
-    for (const name of [/Información/, /Actividades/, /Reuniones/, /Propuestas/, /Comunicaciones/]) expect(dialog.getByRole("tab", { name })).toBeTruthy();
+    expect(dialog.getAllByRole("tab").map((t) => t.textContent?.replace(/\d+/g, "").trim())).toEqual(["Información", "Actividades", "Reuniones", "Propuestas", "Comunicaciones"]);
     expect(dialog.getByRole("region", { name: "Updates" })).toBeTruthy();
   });
 
-  it("filtros en el panel «Filtros»: la vista va a la API y queda como chip que se puede quitar", async () => {
+  it("«Filtros» tiene Funnel y Temperatura: van a la API y quedan como chip que se puede quitar", async () => {
     const { calls } = renderAt("/comercial", COMMERCIAL, route);
     fireEvent.click(await screen.findByRole("button", { name: /^Filtros/ }));
-    await pick("Filtrar por vista", "Fríos");
-    await waitFor(() => expect(calls.some((c) => c.url.includes("view=cold"))).toBe(true));
+    expect(screen.queryByRole("combobox", { name: "Filtrar por vista" })).toBeNull();
+    await pick("Filtrar por funnel", "LHT");
+    await waitFor(() => expect(calls.some((c) => c.url.includes("funnel=lht"))).toBe(true));
     expect(screen.getByRole("button", { name: /^Filtros · 1/ })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Vista" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Quitar filtro Vista" })).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Quitar filtro Funnel" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Quitar filtro Funnel" })).toBeNull());
+  });
+
+  it("«Nuevo lead» pide la empresa y crea el lead en Nuevo, Warm, LHT y Manual, sin Setter ni Closer", async () => {
+    const { calls } = renderAt("/comercial", COMMERCIAL, (url, init) => (init?.method === "POST" ? json({ lead }, 201) : route(url)));
+    fireEvent.click(await screen.findByRole("button", { name: /Nuevo lead/ }));
+    const panel = within(await screen.findByRole("dialog", { name: "Nuevo lead" }));
+    expect((panel.getByRole("button", { name: "Crear lead" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(panel.getByLabelText("Empresa"), { target: { value: "Andina SAC" } });
+    fireEvent.click(panel.getByRole("button", { name: "Crear lead" }));
+    await waitFor(() => expect(calls.some((c) => c.init?.method === "POST" && c.url === "/api/sales/leads")).toBe(true));
+    expect(JSON.parse(String(calls.find((c) => c.init?.method === "POST")!.init?.body))).toEqual({ company: "Andina SAC", contactName: "", email: null, phone: null, temperature: "warm", funnel: "lht", source: "Manual", setterUserId: null, closerUserId: null });
   });
 
   it("editar el Closer en la celda guarda solo ese campo", async () => {
@@ -176,39 +189,62 @@ describe("leads", () => {
   it("detalle: respuesta y pendientes, «Ganado» se elige a mano, sin «Convertir en cliente», y las respuestas del formulario tal cual", async () => {
     renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, detailRoute());
     expect(await screen.findByRole("heading", { name: "Manpersa SAC" })).toBeTruthy();
-    expect(screen.getByText("3 d")).toBeTruthy();
+    expect(screen.getByText("Upwork")).toBeTruthy();
     expect(screen.getByRole("tab", { name: /Actividades/ }).textContent).toContain("2");
     expect(screen.queryByRole("button", { name: /Convertir en cliente/ })).toBeNull();
     expect(await optionLabels("Estado del lead")).toContain("Ganado");
     expect(screen.getByRole("heading", { name: "Respuestas del formulario" })).toBeTruthy();
-    expect(screen.getByText("form.campaign")).toBeTruthy();
+    // La clave del source se muestra legible («form.campaign» → Campaign) con su respuesta.
+    expect(screen.getByTitle("form.campaign").textContent).toBe("Campaign");
     expect(screen.getByText("octubre")).toBeTruthy();
   });
 
-  it("se edita en el lugar: guarda al salir del campo y «Deshacer» vuelve al valor anterior", async () => {
+  it("se edita en el lugar: guarda el cambio y «Deshacer» vuelve al valor anterior", async () => {
     const { calls } = renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, detailRoute());
-    const company = await screen.findByLabelText("Empresa");
-    fireEvent.change(company, { target: { value: "Manpersa Perú SAC" } });
-    fireEvent.blur(company);
-    await waitFor(() => expect(patches(calls)).toEqual([{ company: "Manpersa Perú SAC" }]));
+    await screen.findByRole("heading", { name: "Manpersa SAC" });
+    await pick("Temperatura", "Warm");
+    await waitFor(() => expect(patches(calls)).toEqual([{ temperature: "warm" }]));
     fireEvent.click(await screen.findByRole("button", { name: "Deshacer" }));
-    await waitFor(() => expect(patches(calls)).toEqual([{ company: "Manpersa Perú SAC" }, { company: "Manpersa SAC" }]));
+    await waitFor(() => expect(patches(calls)).toEqual([{ temperature: "warm" }, { temperature: "hot" }]));
   });
 
-  it("el correo es un enlace mailto con botón de copiar", async () => {
+  it("Funnel y Submission son de solo lectura; el correo tiene su botón de copiar", async () => {
     renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, detailRoute());
-    const mail = await screen.findByRole("link", { name: "francisco@manpersa.pe" });
-    expect(mail.getAttribute("href")).toBe("mailto:francisco@manpersa.pe");
+    await screen.findByRole("heading", { name: "Manpersa SAC" });
+    expect(screen.queryByRole("combobox", { name: "Funnel" })).toBeNull();
+    expect(screen.getByText("20 oct. 2026")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Copiar Correo" })).toBeTruthy();
   });
 
-  it("«Crear deal» del encabezado lo liga al lead y lo abre", async () => {
-    const { calls } = renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, detailRoute());
+  it("sin «Crear deal» en el detalle; Updates solo muestra notas del equipo, no los registros automáticos", async () => {
+    renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, (url, init) =>
+      url === `/api/sales/leads/${lead.id}/updates`
+        ? json({ updates: [{ id: "u1", kind: "system", body: "Estado: Nuevo → Demo", authorName: "Marta", createdAt: "2026-11-01T10:00:00Z" }, { id: "u2", kind: "manual", body: "Pidió la demo para el jueves", authorName: "Marta", createdAt: "2026-11-02T10:00:00Z" }] })
+        : detailRoute()(url, init),
+    );
     await screen.findByRole("heading", { name: "Manpersa SAC" });
-    fireEvent.click(screen.getAllByRole("button", { name: /Crear deal/ })[0]);
-    expect(await screen.findByText("Deal abierto")).toBeTruthy();
-    const post = calls.find((c) => c.init?.method === "POST" && c.url === "/api/deals")!;
-    expect(JSON.parse(String(post.init?.body))).toMatchObject({ leadId: lead.id, title: "Manpersa SAC" });
+    expect(screen.queryByRole("button", { name: /Crear deal/ })).toBeNull();
+    const updates = within(screen.getByRole("region", { name: "Updates" }));
+    expect(await updates.findByText("Pidió la demo para el jueves")).toBeTruthy();
+    expect(updates.queryByText("Estado: Nuevo → Demo")).toBeNull();
+  });
+
+  it("Empresa y Contacto permiten agregar uno nuevo: la empresa queda en el lead y el contacto se crea y se enlaza", async () => {
+    const { calls } = renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, (url, init) =>
+      init?.method === "POST" && url === "/api/contacts" ? json({ contact: { id: "c-9", name: "Lucía Pérez" } }, 201) : detailRoute()(url, init),
+    );
+    await screen.findByRole("heading", { name: "Manpersa SAC" });
+    await pick("Empresa", "+ Agregar empresa nueva");
+    const company = within(await screen.findByRole("dialog", { name: "Agregar empresa nueva" }));
+    fireEvent.change(company.getByLabelText("Nombre de la empresa"), { target: { value: "Andina SAC" } });
+    fireEvent.click(company.getByRole("button", { name: "Agregar empresa" }));
+    await waitFor(() => expect(patches(calls)).toContainEqual({ company: "Andina SAC" }));
+    await pick("Contacto", "+ Agregar contacto nuevo");
+    const contact = within(await screen.findByRole("dialog", { name: "Agregar contacto nuevo" }));
+    fireEvent.change(contact.getByLabelText("Nombre"), { target: { value: "Lucía Pérez" } });
+    fireEvent.click(contact.getByRole("button", { name: "Agregar contacto" }));
+    await waitFor(() => expect(patches(calls)).toContainEqual({ contactId: "c-9", contactName: "Lucía Pérez" }));
+    expect(JSON.parse(String(calls.find((c) => c.init?.method === "POST" && c.url === "/api/contacts")!.init?.body))).toMatchObject({ name: "Lucía Pérez", company: "Manpersa SAC" });
   });
 
   it("Financiera lee el detalle sin controles", async () => {

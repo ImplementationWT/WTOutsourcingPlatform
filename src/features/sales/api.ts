@@ -17,6 +17,8 @@ export const LEAD_TEMPERATURES = ["hot", "warm", "nurturing"] as const;
 export const DEMO_STATUSES = ["scheduled", "done", "cancelled", "no_show"] as const;
 
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
+/** Estados que se pueden elegir (prototipo): Nurturing y No calificado no son estados. */
+export const PIPELINE_LEAD_STATUSES = ["new", "contacted", "demo", "proposal_sent", "won", "lost", "ghosted"] as const satisfies readonly LeadStatus[];
 export type DemoStatus = (typeof DEMO_STATUSES)[number];
 export type LeadFunnel = (typeof LEAD_FUNNELS)[number];
 export type LeadTemperature = (typeof LEAD_TEMPERATURES)[number];
@@ -58,10 +60,15 @@ export const DEMO_STATUS_LABELS: Record<DemoStatus, string> = { scheduled: "Agen
 export interface Lead {
   id: string;
   title: string;
+  /** Nombre del lead puesto a mano (title lo usa antes que la empresa). */
+  name?: string | null;
   company: string;
   contactName: string;
   email: string | null;
   phone: string | null;
+  country: string | null;
+  corporateEmail: string | null;
+  website: string | null;
   notes: string;
   status: LeadStatus;
   /** De dónde vino ("Manual", "Referido", el formulario…). */
@@ -120,7 +127,7 @@ export const salesKeys = {
 
 /** Tabla de leads (paginada en el servidor), con los conteos del embudo sin el filtro de estado. */
 export const useLeads = (query: string) =>
-  useTablePage<Lead, { counts: Record<LeadStatus, number>; canWrite: boolean }>(salesKeys.leads, "/api/sales/leads", query, Boolean(useSession().data));
+  useTablePage<Lead, { counts: Record<LeadStatus, number>; canWrite: boolean; funnels?: LeadFunnel[] }>(salesKeys.leads, "/api/sales/leads", query, Boolean(useSession().data));
 
 export const useLead = (id: string) =>
   useQuery({
@@ -150,10 +157,15 @@ export const leadBase = base;
 
 /** Campos editables del lead (§4.1). */
 export interface LeadInput {
+  /** Nombre del lead (si falta, se muestra la empresa). */
+  name: string;
   company: string;
   contactName: string;
   email: string | null;
   phone: string | null;
+  country: string | null;
+  corporateEmail: string | null;
+  website: string | null;
   notes: string;
   status: LeadStatus;
   setterUserId: string | null;

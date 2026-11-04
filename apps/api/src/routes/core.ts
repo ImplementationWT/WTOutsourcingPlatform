@@ -33,7 +33,7 @@ const updateContactSchema = z
   .strict()
   .refine((p) => Object.keys(p).length > 0, "No hay nada que cambiar.");
 
-const contactsQuery = tableQuerySchema;
+const contactsQuery = tableQuerySchema.extend({ kind: z.enum(["lead", "client"]).optional() });
 
 const invalid = (reply: FastifyReply, error: z.ZodError) =>
   reply.code(400).send({ error: "Datos inválidos.", issues: error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
@@ -66,21 +66,34 @@ export async function registerCoreRoutes(app: FastifyInstance, { store }: { stor
     if (!gate(request.user!, reply, false)) return reply;
     const query = contactsQuery.safeParse(request.query);
     if (!query.success) return invalid(reply, query.error);
+    // Tipo (calc): Cliente si está en algún proyecto; Lead si solo está en leads.
+    const [inProjects, inLeads] = await Promise.all([store.opsProjects.distinct("contactIds"), store.leads.distinct("contactId")]);
+    const clients = new Set((inProjects as (string | null)[]).filter((v): v is string => Boolean(v)));
+    const leads = new Set((inLeads as (string | null)[]).filter((v): v is string => Boolean(v) && !clients.has(v!)));
+    const { kind, ...table } = query.data;
     const result = await runTableQuery(store.contacts, {
-      match: {},
-      query: query.data,
+      match: kind === "client" ? { _id: { $in: [...clients] } } : kind === "lead" ? { _id: { $in: [...leads] } } : {},
+      query: table,
       sortable: { name: "name", title: "title", company: "company", updatedAt: "updatedAt" },
       defaultSort: { key: "name", dir: "asc" },
       search: ["name", "emails", "phone", "title", "company"]
     });
-    // Tipo (calc): Cliente si está en algún proyecto; Lead si solo está en leads.
+    // Al hacer clic se abre el lead del contacto (el más reciente) o, si no tiene, su proyecto.
     const ids = result.rows.map((c) => c._id);
-    const [inProjects, inLeads] = ids.length
-      ? await Promise.all([store.opsProjects.distinct("contactIds", { contactIds: { $in: ids } }), store.leads.distinct("contactId", { contactId: { $in: ids } })])
-      : [[], []];
-    const clients = new Set(inProjects as string[]);
-    const leads = new Set(inLeads as string[]);
-    return { ...result, rows: result.rows.map((c) => ({ ...contactView(c), kind: clients.has(c._id) ? "client" : leads.has(c._id) ? "lead" : null })) };
+    const [leadRows, projectRows, total] = await Promise.all([
+      ids.length ? store.leads.find({ contactId: { $in: ids } }, { projection: { contactId: 1, createdAt: 1 } }).sort({ createdAt: -1 }).toArray() : [],
+      ids.length ? store.opsProjects.find({ contactIds: { $in: ids } }, { projection: { contactIds: 1 } }).toArray() : [],
+      store.contacts.countDocuments({})
+    ]);
+    const leadOf = new Map<string, string>();
+    for (const l of leadRows) if (l.contactId && !leadOf.has(l.contactId)) leadOf.set(l.contactId, l._id);
+    const projectOf = new Map<string, string>();
+    for (const p of projectRows) for (const c of p.contactIds ?? []) if (!projectOf.has(c)) projectOf.set(c, p._id);
+    return {
+      ...result,
+      rows: result.rows.map((c) => ({ ...contactView(c), kind: clients.has(c._id) ? "client" : leads.has(c._id) ? "lead" : null, leadId: leadOf.get(c._id) ?? null, projectId: projectOf.get(c._id) ?? null })),
+      counts: { all: total, lead: leads.size, client: clients.size }
+    };
   });
 
   app.post("/api/contacts", { preHandler: requireAuth }, async (request, reply) => {

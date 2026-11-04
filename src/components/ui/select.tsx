@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Combobox } from "@base-ui/react/combobox";
 import { Select as SelectPrimitive } from "@base-ui/react/select";
-import { Check, ChevronsUpDown, Search } from "lucide-react";
+import { Check, ChevronDown, ChevronsUpDown, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { itemClass, popupClass, triggerClass, type SelectOption } from "./select-styles";
 
@@ -76,7 +76,9 @@ export function Select({
       >
         <Combobox.Trigger id={id} aria-label={label} aria-invalid={invalid} className={cn(triggerClass(size), className)}>
           <span className={cn("min-w-0 flex-1 truncate", !selected && "text-muted-foreground")}>{shown ?? text}</span>
-          <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          {/* Flecha ▾ del prototipo; las pantallas protegidas (skin-legacy) conservan la doble flecha. */}
+          <ChevronDown className="select-caret size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <ChevronsUpDown className="select-caret-legacy size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         </Combobox.Trigger>
         <Combobox.Portal>
           <Combobox.Positioner align="start" sideOffset={4} className="z-50">
@@ -115,7 +117,9 @@ export function Select({
       <SelectPrimitive.Trigger id={id} aria-label={label} aria-invalid={invalid} className={cn(triggerClass(size), className)}>
         <span className={cn("min-w-0 flex-1 truncate", !selected && "text-muted-foreground")}>{shown ?? text}</span>
         <SelectPrimitive.Icon>
-          <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          {/* Flecha ▾ del prototipo; las pantallas protegidas (skin-legacy) conservan la doble flecha. */}
+          <ChevronDown className="select-caret size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <ChevronsUpDown className="select-caret-legacy size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         </SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>

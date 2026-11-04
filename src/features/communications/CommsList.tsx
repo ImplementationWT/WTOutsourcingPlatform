@@ -201,9 +201,9 @@ export function CommsTab({ scope, defaultContact }: { scope: { projectId: string
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">Registro manual de emails, mensajes y llamadas.</p>
+        <p className="text-sm text-muted-foreground">Registro manual. Más adelante se podrá conectar Gmail para traer los correos automáticamente.</p>
         {data?.canCreate && (
-          <Button size="sm" onClick={() => setAdding(true)}>
+          <Button onClick={() => setAdding(true)}>
             <Plus /> Registrar comunicación
           </Button>
         )}

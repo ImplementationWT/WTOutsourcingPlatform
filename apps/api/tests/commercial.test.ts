@@ -50,9 +50,11 @@ describe("leads (Paso 3)", () => {
     // El contacto muestra su lead.
     expect((await marta("GET", `/api/contacts/${contact.id}`)).body.leads.map((l: { id: string }) => l.id)).toEqual([lead.id]);
 
-    await marta("PATCH", `/api/sales/leads/${lead.id}`, { status: "nurturing" });
+    // Nurturing y No calificado no son estados que se elijan (solo quedan en datos importados).
+    expect((await marta("PATCH", `/api/sales/leads/${lead.id}`, { status: "nurturing" })).status).toBe(400);
+    await marta("PATCH", `/api/sales/leads/${lead.id}`, { status: "ghosted" });
     await marta("POST", `/api/sales/leads/${lead.id}/updates`, { body: "Le escribí, sin respuesta." });
-    expect((await marta("GET", `/api/sales/leads/${lead.id}`)).body.lead.status).toBe("nurturing");
+    expect((await marta("GET", `/api/sales/leads/${lead.id}`)).body.lead.status).toBe("ghosted");
     await marta("POST", `/api/sales/leads/${lead.id}/demos`, { title: "Demo", scheduledAt: "2026-11-03T15:00:00-05:00" });
     expect((await marta("GET", `/api/sales/leads/${lead.id}`)).body.lead.status).toBe("demo");
   });
@@ -90,6 +92,18 @@ describe("actividades comerciales", () => {
     expect(done).toMatchObject({ status: "done", overdue: false });
     expect((await marta("GET", `/api/sales/leads/${lead.id}/updates`)).body.updates.some((u: { body: string }) => u.body.includes("Pendiente → Hecha"))).toBe(true);
     expect((await (await as("fede"))("PATCH", `/api/activities/${overdue.id}`, { status: "pending" })).status).toBe(403);
+    // Lead con nombre propio, país, correo corporativo y web; Setter sin asignar si se pide.
+    const full = (await marta("POST", "/api/sales/leads", { name: "Portal Andina", company: "Andina SAC", country: "Perú", corporateEmail: "ventas@andina.pe", website: "https://andina.pe", setterUserId: null })).body.lead;
+    expect(full).toMatchObject({ title: "Portal Andina", country: "Perú", corporateEmail: "ventas@andina.pe", website: "https://andina.pe", setter: null });
+    expect((await marta("PATCH", `/api/sales/leads/${full.id}`, { website: "andina.pe" })).status).toBe(400);
+    // Cerrada queda bloqueada; el inicio se ajusta mientras está abierta, nunca en el futuro.
+    expect((await marta("PATCH", `/api/activities/${overdue.id}`, { status: "pending" })).status).toBe(409);
+    const open = (await marta("POST", "/api/activities", { title: "Triage", kind: "triage_call", leadId: lead.id })).body.activity;
+    expect((await marta("PATCH", `/api/activities/${open.id}`, { startedAt: new Date(Date.now() + 3_600_000).toISOString() })).status).toBe(400);
+    const earlier = new Date(Date.now() - 90 * 60_000).toISOString();
+    expect((await marta("PATCH", `/api/activities/${open.id}`, { startedAt: earlier })).body.activity.startedAt).toBe(earlier);
+    const closed = (await marta("PATCH", `/api/activities/${open.id}`, { status: "done" })).body.activity;
+    expect(closed.investedMinutes).toBeGreaterThanOrEqual(89);
   });
 });
 

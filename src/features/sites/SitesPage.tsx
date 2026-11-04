@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { Search, Upload } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -72,14 +71,6 @@ export default function SitesPage() {
           )}
         </>
       )}
-
-      <p className="text-sm text-muted-foreground">
-        ¿Buscas las cotizaciones con líneas (producto × horas × tarifa)? Están en{" "}
-        <Link to="/comercial/cotizaciones" className="font-semibold text-accent-text hover:underline">
-          Cotizaciones
-        </Link>
-        .
-      </p>
 
       {uploading && <UploadSiteDialog open onClose={() => setUploading(false)} />}
     </div>
