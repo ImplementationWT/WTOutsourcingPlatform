@@ -172,12 +172,12 @@ function NewDealForm({ projectId, onClose }: { projectId?: string; onClose: () =
  * Tabla de Deals (§4.1). En el proyecto se usa filtrada por `projectId` con su propio prefijo en la
  * URL, así conviven con otros filtros de la página.
  */
-export function DealsTable({ projectId, prefix = "" }: { projectId?: string; prefix?: string }) {
+export function DealsTable({ projectId, prefix = "", startCreating = false }: { projectId?: string; prefix?: string; /** Abre el formulario «Nuevo deal» al montar (botón del detalle del proyecto). */ startCreating?: boolean }) {
   const table = useTableState({ prefix, filterKeys: DEAL_FILTERS, fixed: projectId ? { projectId } : {} });
   const { data, isLoading, isFetching, error } = useDeals(table.query);
   const refresh = useDealRefresh();
   const statuses = useDealStatusOptions();
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(startCreating);
   const save = async (deal: Deal, patch: Partial<DealInput>) => {
     await updateDeal(deal.id, patch);
     await refresh(deal.project?.id);

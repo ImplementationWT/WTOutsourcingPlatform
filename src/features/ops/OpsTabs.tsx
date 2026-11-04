@@ -62,11 +62,11 @@ const message = (e: unknown, fallback: string) => (e instanceof Error ? e.messag
 // ---- Deals --------------------------------------------------------------------------
 
 /** Deals del proyecto: la misma tabla de primer nivel, filtrada por el proyecto. */
-export function DealsTab({ projectId }: { projectId: string }) {
+export function DealsTab({ projectId, startCreating = false }: { projectId: string; startCreating?: boolean }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">Cada deal es un trato por un módulo o funcionalidad, vendido por horas. Las horas vendidas del proyecto suman sus deals aprobados en adelante.</p>
-      <DealsTable projectId={projectId} prefix="d." />
+      <DealsTable projectId={projectId} prefix="d." startCreating={startCreating} />
     </div>
   );
 }

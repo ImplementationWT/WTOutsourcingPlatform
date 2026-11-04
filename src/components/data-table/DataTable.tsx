@@ -213,7 +213,7 @@ export function DataTable<T>({
   const groups =
     grouping && state.group
       ? grouping.order
-          .map((value) => ({ value, rows: rows.filter((r) => grouping.value(r) === value), count: data?.facets[value] ?? 0 }))
+          .map((value) => ({ value, rows: rows.filter((r) => grouping.value(r) === value), count: data?.facets?.[value] ?? 0 }))
           .filter((g) => g.rows.length > 0)
       : [{ value: "", rows, count: rows.length }];
 

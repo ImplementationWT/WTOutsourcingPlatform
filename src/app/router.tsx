@@ -22,7 +22,6 @@ import DealDetailPage from "@/features/core/DealDetailPage";
 import DealsPage from "@/features/core/DealsPage";
 import DashboardPage from "@/features/dashboard/DashboardPage";
 import MeetingsPage from "@/features/meetings/MeetingsPage";
-import OpsProjectDetailPage from "@/features/ops/OpsProjectDetailPage";
 import OpsProjectsPage from "@/features/ops/OpsProjectsPage";
 import NewProjectPage from "@/features/projects/NewProjectPage";
 import ProjectDetailPage from "@/features/projects/ProjectDetailPage";
@@ -69,7 +68,7 @@ export const router = createBrowserRouter([
           { path: "/operativa/tasks", element: <RequireModule module="tasks"><TasksPage /></RequireModule> },
           { path: "/operativa/mi-trabajo", element: <RequireModule module="myWork"><MyWorkPage /></RequireModule> },
           { path: "/operativa/backlog", element: <RequireModule module="backlog"><BacklogPage /></RequireModule> },
-          { path: "/operativa/:id", element: <OpsProjectDetailPage /> },
+          { path: "/operativa/:id", element: <OpsProjectsPage /> },
           { path: "/financiera/invoices", element: <RequireModule module="invoices"><InvoicesPage /></RequireModule> },
           { path: "/financiera/pagos", element: <RequireModule module="payouts"><PayoutsPage /></RequireModule> },
           { path: "/dashboard", element: <DashboardPage /> },

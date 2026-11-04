@@ -225,3 +225,55 @@ export function Donut({ parts, center, centerLabel }: { parts: { label: string; 
     </div>
   );
 }
+
+/**
+ * Línea de una serie (2px) con marcadores de 8px y el valor de los puntos destacados encima; cada
+ * punto tiene su tooltip con un objetivo de hover más ancho que la marca.
+ */
+export function LineChart({ points, color, format, height = 240, labelEvery = 3 }: { points: { label: string; value: number }[]; color: string; format: (v: number) => string; height?: number; /** Cada cuántos puntos se escribe el valor (además del último). */ labelEvery?: number }) {
+  const { top, step } = niceMax(Math.max(0, ...points.map((p) => p.value)));
+  const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
+  const n = points.length;
+  const x = (i: number) => (n <= 1 ? 50 : (i / (n - 1)) * 100);
+  const y = (v: number) => 100 - (v / top) * 100;
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2 pt-5">
+        <div className="relative w-14 shrink-0 text-right text-[11px] text-muted-foreground" style={{ height }}>
+          {ticks.map((t) => (
+            <span key={t} className="absolute right-0 translate-y-1/2 tabular-nums" style={{ bottom: `${(t / top) * 100}%` }}>
+              {format(t)}
+            </span>
+          ))}
+        </div>
+        <div className="relative min-w-0 flex-1" style={{ height }}>
+          {ticks.map((t) => (
+            <div key={t} aria-hidden className="absolute inset-x-0 border-t border-dashed border-border" style={{ bottom: `${(t / top) * 100}%` }} />
+          ))}
+          <svg aria-hidden viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 size-full overflow-visible">
+            <polyline fill="none" stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" points={points.map((p, i) => `${x(i)},${y(p.value)}`).join(" ")} />
+          </svg>
+          {points.map((p, i) => (
+            <Tip key={p.label} text={`${p.label}: ${format(p.value)}`} className="absolute flex h-full -translate-x-1/2 justify-center" style={{ left: `${x(i)}%`, width: `${Math.max(4, 100 / Math.max(1, n))}%`, top: 0 }}>
+              <span aria-hidden className="absolute size-2 -translate-y-1/2 rounded-full ring-2 ring-card" style={{ top: `${y(p.value)}%`, background: color }} />
+              {(i === n - 1 || (i % labelEvery === 0 && p.value > 0)) && (
+                <span className="absolute -translate-y-[calc(100%+8px)] text-[11px] font-semibold whitespace-nowrap tabular-nums" style={{ top: `${y(p.value)}%` }}>
+                  {format(p.value)}
+                </span>
+              )}
+            </Tip>
+          ))}
+        </div>
+      </div>
+      <div className="relative ml-16 h-4">
+        {points.map((p, i) =>
+          i % labelEvery === 0 || i === n - 1 ? (
+            <span key={p.label} className="absolute -translate-x-1/2 text-[11px] whitespace-nowrap text-muted-foreground" style={{ left: `${x(i)}%` }}>
+              {p.label}
+            </span>
+          ) : null,
+        )}
+      </div>
+    </div>
+  );
+}

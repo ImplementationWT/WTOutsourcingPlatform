@@ -6,7 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import AppSidebar from "@/components/layout/AppSidebar";
 import type { SessionUser } from "@/features/auth/auth";
-import OpsProjectDetailPage from "@/features/ops/OpsProjectDetailPage";
+import OpsProjectsPage from "@/features/ops/OpsProjectsPage";
 import type { OpsProject } from "@/features/ops/api";
 import LeadsPage from "@/features/sales/LeadsPage";
 import type { Lead, LeadDetail } from "@/features/sales/api";
@@ -67,7 +67,7 @@ function renderAt(path: string, user: SessionUser, fetchImpl: (url: string, init
         <Routes>
           <Route path="/comercial" element={<LeadsPage />} />
           <Route path="/comercial/leads/:id" element={<LeadsPage />} />
-          <Route path="/operativa/:id" element={<OpsProjectDetailPage />} />
+          <Route path="/operativa/:id" element={<OpsProjectsPage />} />
           <Route path="/deals/:id" element={<p>Deal abierto</p>} />
         </Routes>
       </MemoryRouter>
@@ -271,7 +271,7 @@ describe("reuniones procesadas en Operativa", () => {
     processedAt: "2026-10-28T16:00:00Z",
     transcriptLength: 120,
   };
-  const dealRow = { id: "d1", dealCode: "DL-0001", title: "Reportes" };
+  const dealRow = { id: "d1", dealCode: "DL-0001", title: "Reportes", contacts: [], owner: null, project: null, lead: null, status: "draft", salesStage: "new_deal", hours: 0, rateCents: 0, amountCents: 0, currency: "USD", updatedAt: "2026-10-01T00:00:00Z" };
   const route = (calls: Call[]) => (url: string, init?: RequestInit) => {
     if (init?.method === "POST" && url.includes("/convert")) return json({ created: { id: "x", label: "tarea" }, meeting }, 201);
     if (init?.method === "PATCH") return json({ meeting });
@@ -285,7 +285,7 @@ describe("reuniones procesadas en Operativa", () => {
   it("muestra lo que propone Claude (sentimiento, tipo, action items tipados) y el Team Leader los convierte; el Health no cambia", async () => {
     const holder: Call[] = [];
     const { calls } = renderAt(`/operativa/${project.id}`, LEAD, route(holder));
-    fireEvent.click(await screen.findByRole("tab", { name: "Reuniones" }));
+    fireEvent.click(await screen.findByRole("tab", { name: /^Reuniones/ }));
     expect(await screen.findByText("Quieren reportes semanales.")).toBeTruthy();
     expect(screen.getByText("Bien")).toBeTruthy();
     expect(screen.getByText(/Asistentes: Lucía Pérez/)).toBeTruthy();

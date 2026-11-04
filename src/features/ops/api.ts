@@ -1,3 +1,4 @@
+import type { ChipColor } from "@/components/ui/chip";
 import { useQuery } from "@tanstack/react-query";
 import type { Tone } from "@/components/ui/tones";
 import { apiFetch } from "@/lib/api-client";
@@ -106,6 +107,16 @@ export const HEALTH_TONE: Record<Health, Tone> = {
   at_risk: "danger",
 };
 export const PRIORITY_TONE: Record<Priority, Tone> = { critical: "danger", high: "warn", medium: "info", low: "neutral" };
+/** Colores del prototipo (prioChip; las etapas usan su propio tono en STAGE_HUE). */
+export const PRIORITY_CHIP: Record<Priority, ChipColor> = { critical: "red", high: "red", medium: "amber", low: "green" };
+export const HEALTH_CHIP: Record<Health, ChipColor> = { champion: "green", very_happy: "green", happy: "green", mixed: "amber", neutral: "gray", concerned: "amber", escalated: "red", at_risk: "red" };
+/** Tono de cada etapa (prototipo .stg0…6): se mezcla con el fondo y con el texto en ambos temas. */
+export const STAGE_HUE: Record<Stage, string> = { kickoff: "#38bdf8", structure: "#f97316", automation_layer: "#e0a50f", stabilization: "#84cc16", maintenance: "#3b82f6", no_pending_items: "#6b8e23", completed: "#22e06b" };
+/** Fondo y texto de una etapa mezclando su tono (se lee en claro y en oscuro). */
+export const stageStyle = (stage: Stage) => ({
+  background: `color-mix(in srgb, ${STAGE_HUE[stage]} 20%, transparent)`,
+  color: `color-mix(in srgb, ${STAGE_HUE[stage]} 60%, var(--foreground))`,
+});
 
 // ---- tipos de la API -------------------------------------------------------------
 
@@ -356,5 +367,7 @@ export const updateStageSla = (days: StageSla) => apiFetch<{ days: StageSla }>("
 
 /** Monto en centavos con el formato único del panel. */
 export const money = (cents: number, currency = "USD") => formatMoney(cents, currency);
+/** Monto redondeado como en el prototipo: «$9,000» (otras monedas, con su código). */
+export const moneyShort = (cents: number, currency = "USD") => `${currency === "USD" ? "$" : `${currency} `}${Math.round(cents / 100).toLocaleString("en-US")}`;
 
 export const hoursText = (hours: number) => `${Number.isInteger(hours) ? hours : hours.toFixed(1)} h`;

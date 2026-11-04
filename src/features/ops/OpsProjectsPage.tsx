@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, X } from "lucide-react";
 import { DataTable, type Column } from "@/components/data-table/DataTable";
@@ -25,6 +25,7 @@ import {
   STAGE_LABELS,
   STAGES,
   clientLabel,
+  moneyShort,
   updateProject,
   useClientOptions,
   useOpsProjects,
@@ -33,7 +34,9 @@ import {
   type Priority,
   type ProjectInput,
 } from "./api";
+import { AvatarStack, PersonAvatar } from "@/components/ui/person-avatar";
 import { HealthBadge, PriorityBadge, SentimentBar, StageAgeBadge, StageBadge, StuckBanner } from "./OpsBadges";
+import { ProjectDetailModal } from "./ProjectDetail";
 import { PageHeader } from "@/components/layout/PageHeader";
 
 function NewProjectForm({ onClose }: { onClose: () => void }) {
@@ -177,9 +180,22 @@ function NewProjectForm({ onClose }: { onClose: () => void }) {
   );
 }
 
+/**
+ * Proyectos (prototipo): vistas guardadas, aviso de atascados, tabla agrupada por etapa con Lead y
+ * Developers como avatares, y el detalle en una ventana grande (también por enlace: /operativa/:id).
+ */
 export default function OpsProjectsPage() {
   const queryClient = useQueryClient();
-  const table = useTableState({ filterKeys: PROJECT_FILTERS });
+  const navigate = useNavigate();
+  const { search } = useLocation();
+  const { id: openId } = useParams();
+  const openProject = (id: string | null) => {
+    // Al cerrar se quita la pestaña pedida por enlace (p. ej. ?tab=stages desde el aviso).
+    const q = new URLSearchParams(search);
+    if (!id) q.delete("tab");
+    navigate({ pathname: id ? `/operativa/${id}` : "/operativa", search: q.size ? `?${q}` : "" });
+  };
+  const table = useTableState({ filterKeys: PROJECT_FILTERS, groupByDefault: true });
   const { data, isLoading, isFetching, error } = useOpsProjects(table.query);
   const teams = useTeams().data ?? [];
   const [creating, setCreating] = useState(false);
@@ -187,7 +203,6 @@ export default function OpsProjectsPage() {
     await updateProject(p.id, patch);
     await Promise.all([queryClient.invalidateQueries({ queryKey: opsKeys.allProjects }), queryClient.invalidateQueries({ queryKey: opsKeys.project(p.id) })]);
   };
-  const totals = data?.totals ?? {};
 
   const columns: Column<OpsProjectRow>[] = [
     {
@@ -199,11 +214,13 @@ export default function OpsProjectsPage() {
         <span className="flex min-w-0 flex-col">
           <span className="truncate font-semibold">{p.name}</span>
           <span className="truncate text-xs text-muted-foreground">
-            {clientLabel(p)} · {p.team.name ?? "Sin equipo"}
+            {p.client?.name ?? clientLabel(p)} · {p.team.name ?? "Sin equipo"}
           </span>
         </span>
       ),
     },
+    { id: "lead", header: "Lead", card: false, cell: (p) => (p.lead ? <PersonAvatar person={p.lead} /> : <span className="text-muted-foreground">—</span>) },
+    { id: "developers", header: "Developers", card: false, cell: (p) => <AvatarStack people={p.developers} /> },
     {
       id: "stage",
       header: "Etapa",
@@ -217,6 +234,7 @@ export default function OpsProjectsPage() {
       header: "Health",
       sortKey: "health",
       card: "badge",
+      hidden: true,
       cardCell: (p) => <HealthBadge value={p.health} />,
       cell: (p) => <InlineSelect label={`Health de ${p.name}`} value={p.health} options={HEALTH} labels={HEALTH_LABELS} disabled={!p.canManage} display={<HealthBadge value={p.health} />} onSave={(v) => save(p, { health: v ?? p.health })} />,
     },
@@ -238,11 +256,11 @@ export default function OpsProjectsPage() {
         <InlineSelect label={`Prioridad de ${p.name}`} value={p.priority} options={PRIORITIES} labels={PRIORITY_LABELS} disabled={!p.canManage} display={<PriorityBadge value={p.priority} />} onSave={(v) => save(p, { priority: v ?? p.priority })} />
       ),
     },
-    { id: "soldHours", header: "Horas vendidas", align: "right", footer: <TotalCell hours={totals.soldHours ?? 0} strong />, cell: (p) => <TotalCell hours={p.summary.soldHours} /> },
-    { id: "billableHours", header: "Horas facturables", align: "right", footer: <TotalCell hours={totals.billableHours ?? 0} strong />, cell: (p) => <TotalCell hours={p.summary.billableHours} /> },
+    { id: "soldHours", header: "Horas vendidas", className: "whitespace-nowrap", cell: (p) => `${p.summary.soldHours.toLocaleString("en-US")} h` },
+    { id: "billableHours", header: "Horas facturables", hidden: true, cell: (p) => <TotalCell hours={p.summary.billableHours} /> },
     { id: "billableVsSold", header: "Facturable vs deals", align: "right", card: false, hidden: true, cell: (p) => <TotalCell hours={p.summary.billableVsSold} /> },
-    { id: "progress", header: "Avance", align: "right", card: false, cardCell: (p) => `${p.summary.progress}% avance`, cell: (p) => <span title={`${p.summary.tasksDone}/${p.summary.tasks} tareas`}>{p.summary.progress}%</span> },
-    { id: "amount", header: "Valor vendido", align: "right", footer: <TotalCell cents={totals.amountCents ?? 0} strong />, cell: (p) => <TotalCell cents={p.summary.amountCents} /> },
+    { id: "progress", header: "Avance", align: "right", card: false, hidden: true, cardCell: (p) => `${p.summary.progress}% avance`, cell: (p) => <span title={`${p.summary.tasksDone}/${p.summary.tasks} tareas`}>{p.summary.progress}%</span> },
+    { id: "amount", header: "Valor total", className: "whitespace-nowrap", cell: (p) => <span className="tabular-nums">{moneyShort(p.summary.amountCents)}</span> },
     { id: "kickoff", header: "Kickoff", sortKey: "kickoffDate", card: false, hidden: true, className: "whitespace-nowrap", cell: (p) => (p.kickoffDate ? formatDate(p.kickoffDate) : <span className="text-muted-foreground">—</span>) },
   ];
 
@@ -250,7 +268,7 @@ export default function OpsProjectsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Proyectos"
-        description={<span className="max-sm:hidden">Etapa, health, horas vendidas y facturables, y avance de cada proyecto.</span>}
+        description={data ? `${data.total} ${data.total === 1 ? "proyecto activo" : "proyectos activos"}` : " "}
         actions={
           data?.canCreate && !creating ? (
             <Button size="lg" onClick={() => setCreating(true)}>
@@ -276,17 +294,19 @@ export default function OpsProjectsPage() {
         isFetching={isFetching}
         error={error}
         rowKey={(p) => p.id}
-        rowHref={(p) => `/operativa/${p.id}`}
+        onRowClick={(p) => openProject(p.id)}
+        selectedKey={openId ?? null}
         empty="Aún no hay proyectos."
-        searchPlaceholder="Buscar por proyecto o cliente"
+        searchPlaceholder="Buscar por proyecto, cliente o empresa"
         filters={[
           { key: "stage", label: "Filtrar por etapa", all: "Todas las etapas", options: STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] })) },
           { key: "health", label: "Filtrar por health", all: "Todo el health", options: HEALTH.map((h) => ({ value: h, label: HEALTH_LABELS[h] })) },
           { key: "priority", label: "Filtrar por prioridad", all: "Todas las prioridades", options: PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABELS[p] })) },
           ...(teams.length > 1 ? [{ key: "teamId", label: "Filtrar por team", all: "Todos los teams", options: teams.map((t) => ({ value: t.id, label: t.name })) }] : []),
         ]}
-        grouping={{ label: "Agrupar por etapa", value: (p) => p.stage, order: STAGES, labels: STAGE_LABELS }}
+        grouping={{ label: "Agrupar por etapa", value: (p) => p.stage, order: STAGES, labels: STAGE_LABELS, chip: (v) => <StageBadge value={v as (typeof STAGES)[number]} />, countLabel: (n) => `${n} ${n === 1 ? "proyecto" : "proyectos"}` }}
       />
+      {openId && <ProjectDetailModal key={openId} id={openId} onClose={() => openProject(null)} />}
     </div>
   );
 }

@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConfirmProvider } from "@/components/ui/confirm-provider";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import AppSidebar from "@/components/layout/AppSidebar";
-import OpsProjectDetailPage from "@/features/ops/OpsProjectDetailPage";
 import OpsProjectsPage from "@/features/ops/OpsProjectsPage";
 import { stageAge, type OpsProject, type OpsProjectRow } from "@/features/ops/api";
 import type { SessionUser } from "@/features/auth/auth";
@@ -67,7 +66,7 @@ function renderAt(path: string, user: SessionUser, fetchImpl?: typeof fetch) {
         <AppSidebar />
         <Routes>
           <Route path="/operativa" element={<OpsProjectsPage />} />
-          <Route path="/operativa/:id" element={<OpsProjectDetailPage />} />
+          <Route path="/operativa/:id" element={<OpsProjectsPage />} />
         </Routes>
       </MemoryRouter>
       </ConfirmProvider>
@@ -131,21 +130,20 @@ describe("menú por áreas", () => {
 });
 
 describe("tabla de proyectos (DataTable)", () => {
-  it("muestra etapa, health, prioridad y los campos calculados; sin «Siguiente acción»", async () => {
+  it("muestra etapa, Lead y Developers como avatares, prioridad y los campos calculados; sin «Siguiente acción»", async () => {
     localStorage.clear();
     renderAt("/operativa", LEAD, (async () => json(page([listItem]))) as typeof fetch);
     const table = await screen.findByRole("table", { name: "Proyectos" });
     const row = within(within(table).getByText("Automatización Manpersa").closest("tr")!);
     expect(row.getByText("Estructura")).toBeTruthy();
-    expect(row.getByText("At Risk")).toBeTruthy();
+    expect(row.getByRole("img", { name: "Ana" })).toBeTruthy();
+    expect(row.getByRole("img", { name: "Diego" })).toBeTruthy();
     expect(row.getByText("Critical")).toBeTruthy();
     expect(row.getByText("60 h")).toBeTruthy();
     expect(within(table).queryByRole("columnheader", { name: /Siguiente acción/ })).toBeNull();
     expect(screen.getByRole("heading", { name: "Proyectos" })).toBeTruthy();
-    expect(row.getByText("25%")).toBeTruthy();
-    // Totales al pie, del conjunto filtrado.
-    const foot = within(table.querySelector("tfoot")!);
-    expect(foot.getByText("60 h")).toBeTruthy();
+    // Health y Avance quedan en «Columnas».
+    expect(within(table).queryByRole("columnheader", { name: /Health/ })).toBeNull();
   });
 
   it("filtros, búsqueda y orden van a la API y a la URL; cambiar un filtro vuelve a la página 1", async () => {
@@ -172,24 +170,24 @@ describe("tabla de proyectos (DataTable)", () => {
     await waitFor(() => expect(urls.some((u) => u.includes("sort=stage") && u.includes("dir=asc"))).toBe(true));
   });
 
-  it("agrupar por etapa muestra el contador del servidor", async () => {
-    renderAt("/operativa?group=1", LEAD, (async () => json(page([listItem], { facets: { structure: 7 } }))) as typeof fetch);
+  it("agrupa por etapa de inicio, con el contador del servidor", async () => {
+    renderAt("/operativa", LEAD, (async () => json(page([listItem], { facets: { structure: 7 } }))) as typeof fetch);
     const header = await screen.findByRole("columnheader", { name: /Estructura/ });
-    expect(within(header).getByText("7")).toBeTruthy();
+    expect(within(header).getByText("7 proyectos")).toBeTruthy();
   });
 
-  it("edición en la celda: el Team Leader cambia el health sin abrir el detalle", async () => {
+  it("edición en la celda: el Team Leader cambia la prioridad sin abrir el detalle", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     renderAt("/operativa", LEAD, (async (input: RequestInfo | URL, init?: RequestInit) => {
       calls.push({ url: String(input), init });
-      if (init?.method === "PATCH") return json({ project: { ...project, health: "happy" } });
+      if (init?.method === "PATCH") return json({ project: { ...project, priority: "high" } });
       return json(page([{ ...listItem, canManage: true }]));
     }) as typeof fetch);
-    await pick("Health de Automatización Manpersa", "Happy");
+    await pick("Prioridad de Automatización Manpersa", "High");
     await waitFor(() => expect(calls.some((c) => c.init?.method === "PATCH")).toBe(true));
     const patch = calls.find((c) => c.init?.method === "PATCH")!;
     expect(patch.url).toBe(`/api/ops/projects/${project.id}`);
-    expect(JSON.parse(String(patch.init?.body))).toEqual({ health: "happy" });
+    expect(JSON.parse(String(patch.init?.body))).toEqual({ priority: "high" });
     expect(screen.getByRole("table", { name: "Proyectos" })).toBeTruthy();
   });
 
@@ -245,16 +243,17 @@ describe("detalle del proyecto", () => {
 
   it("Team Leader: edita etapa, health y los campos nuevos; el Sentiment se deriva y no se edita", async () => {
     renderAt(`/operativa/${project.id}`, LEAD, route({ manage: true, work: true }));
-    expect(await screen.findByRole("button", { name: "Maintenance" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Pasar a Maintenance" })).toBeTruthy();
     expect(screen.getByLabelText("Health")).toBeTruthy();
     expect(screen.queryByLabelText("Sentiment score")).toBeNull();
     expect(screen.getByText("Sentiment (del Health)")).toBeTruthy();
     for (const label of ["Contactos", "Developers", "Kickoff", "Tipo de pago", "SOW"]) expect(screen.getByLabelText(label)).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Etapas" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /^Etapas/ })).toBeTruthy();
     // Del proyecto solo queda el SOW: sin propuesta ni Project Plan.
     for (const label of ["Project Plan", "Propuesta"]) expect(screen.queryByLabelText(label)).toBeNull();
-    expect(screen.getByText("Horas vendidas")).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Cuentas" })).toBeTruthy();
+    expect(screen.getByText("Total hours approved")).toBeTruthy();
+    expect(screen.getByText("Paso 2 de 7")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /^Cuentas/ })).toBeTruthy();
   });
 
   it("la pestaña Deals es la tabla de Deals filtrada por el proyecto", async () => {
@@ -271,9 +270,9 @@ describe("detalle del proyecto", () => {
   it("Comercial: solo lectura, sin controles ni pestaña de cuentas", async () => {
     renderAt(`/operativa/${project.id}`, COMMERCIAL, route({ manage: false, work: false }));
     expect(await screen.findByRole("heading", { name: "Automatización Manpersa" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Maintenance" })).toBeNull();
-    expect(screen.queryByRole("tab", { name: "Cuentas" })).toBeNull();
-    expect(screen.getByRole("tab", { name: "Deals" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Pasar a Maintenance" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /^Cuentas/ })).toBeNull();
+    expect(screen.getByRole("tab", { name: /^Deals/ })).toBeTruthy();
     expect(screen.queryByLabelText("Deal")).toBeNull();
   });
 
@@ -285,7 +284,7 @@ describe("detalle del proyecto", () => {
       if (init?.method === "PATCH") return json({ project: { ...project, stage: "maintenance" } });
       return base(input, init);
     }) as typeof fetch);
-    fireEvent.click(await screen.findByRole("button", { name: "Maintenance" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pasar a Maintenance" }));
     await waitFor(() => expect(calls.some((c) => c.init?.method === "PATCH")).toBe(true));
     const patch = calls.find((c) => c.init?.method === "PATCH")!;
     expect(patch.url).toBe(`/api/ops/projects/${project.id}`);
@@ -302,10 +301,10 @@ describe("detalle del proyecto", () => {
       if (url.endsWith("/accounts")) return json({ accounts: [account] });
       return base(input, init);
     }) as typeof fetch);
-    fireEvent.click(await screen.findByRole("tab", { name: "Cuentas" }));
+    fireEvent.click(await screen.findByRole("tab", { name: /^Cuentas/ }));
     expect(await screen.findByText(/Panel de hosting/)).toBeTruthy();
     expect(screen.queryByText(secret)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Ver/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Ver$/ }));
     expect(await screen.findByText(secret)).toBeTruthy();
     expect(JSON.stringify(queryClient.getQueryCache().getAll().map((q) => q.state.data))).not.toContain(secret);
     fireEvent.click(screen.getByRole("button", { name: /Ocultar/ }));
@@ -318,7 +317,7 @@ describe("detalle del proyecto", () => {
       if (String(input).endsWith("/accounts")) return json({ error: "El vault de cuentas no está disponible" }, 503);
       return base(input, init);
     }) as typeof fetch);
-    fireEvent.click(await screen.findByRole("tab", { name: "Cuentas" }));
+    fireEvent.click(await screen.findByRole("tab", { name: /^Cuentas/ }));
     expect(await screen.findByText(/aún no está activado en el servidor/)).toBeTruthy();
   });
 });
