@@ -45,6 +45,8 @@ type Ref = { id: string; name: string | null };
 export interface Contact {
   id: string;
   name: string;
+  /** (calc, en la lista) Cliente si está en un proyecto; Lead si solo está en leads. */
+  kind?: "client" | "lead" | null;
   emails: string[];
   phone: string | null;
   title: string | null;

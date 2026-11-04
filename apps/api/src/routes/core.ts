@@ -73,7 +73,14 @@ export async function registerCoreRoutes(app: FastifyInstance, { store }: { stor
       defaultSort: { key: "name", dir: "asc" },
       search: ["name", "emails", "phone", "title", "company"]
     });
-    return { ...result, rows: result.rows.map(contactView) };
+    // Tipo (calc): Cliente si está en algún proyecto; Lead si solo está en leads.
+    const ids = result.rows.map((c) => c._id);
+    const [inProjects, inLeads] = ids.length
+      ? await Promise.all([store.opsProjects.distinct("contactIds", { contactIds: { $in: ids } }), store.leads.distinct("contactId", { contactId: { $in: ids } })])
+      : [[], []];
+    const clients = new Set(inProjects as string[]);
+    const leads = new Set(inLeads as string[]);
+    return { ...result, rows: result.rows.map((c) => ({ ...contactView(c), kind: clients.has(c._id) ? "client" : leads.has(c._id) ? "lead" : null })) };
   });
 
   app.post("/api/contacts", { preHandler: requireAuth }, async (request, reply) => {

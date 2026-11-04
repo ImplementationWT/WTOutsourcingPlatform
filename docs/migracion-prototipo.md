@@ -190,3 +190,19 @@ usaron valores nuevos de enums, correr el script de reversa de cada paso antes d
   de 5 series se agrupan en «Otros» (no se ciclan colores). Los estados (tareas, stages, tiempo en
   etapa) usan los tonos de estado.
 - **Rollback:** volver a la imagen anterior; no hay datos nuevos.
+
+## Paso 9 · Leads, Actividades, Contactos y Propuestas al estilo del prototipo
+
+- **Leads:** estado nuevo `ghosted` (frío: una demo o una propuesta lo devuelve al embudo, como
+  Nurturing). La temperatura guardada como `nurturing` se muestra como **Cold**; el valor no cambia.
+- **Actividades:** se suman los tipos comerciales del prototipo (Triage Call, Crear Demo, Reunión
+  Demo, Crear Propuesta, Enviar Propuesta, Reunión de Cierre, Enviar Onboarding; Follow Up ya
+  existía) sin quitar los anteriores. Estados Open y Closed (Overdue se calcula: Open con la fecha
+  pasada). Inicio automático al crearla y **tiempo invertido** hasta el cierre.
+- **Contactos:** columna Tipo (calc): Cliente si está en algún proyecto, Lead si solo está en leads.
+- **Propuestas (D6):** se conservan las actuales con el estilo del panel; los sitios HTML alojados
+  quedan para una fase aparte.
+- **Rollback:** antes de bajar de versión, `db.sales_leads.updateMany({status: "ghosted"}, {$set:
+  {status: "lost"}})` y `db.sales_activities.updateMany({kind: {$in: ["triage_call",
+  "create_demo", "demo_meeting", "create_proposal", "send_proposal", "closing_meeting",
+  "send_onboarding"]}}, {$set: {kind: "other"}})`.

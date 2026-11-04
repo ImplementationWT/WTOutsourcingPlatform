@@ -44,14 +44,25 @@ function renderAt(path: string, user: SessionUser, fetchImpl: (url: string, init
 
 describe("actividades", () => {
   it("una actividad vencida se marca y su estado se edita en la celda", async () => {
-    const activity = { id: "a1", title: "Llamar a Francisco", kind: "call", owner: { id: "u-com", name: "Marta" }, dueDate: "2020-01-01", overdue: true, status: "pending", notes: "", lead: { id: "l1", title: "Manpersa" }, deal: null, completedAt: null, updatedAt: "" };
+    const activity = { id: "a1", title: "Llamar a Francisco", kind: "call", owner: { id: "u-com", name: "Marta" }, dueDate: "2020-01-01", overdue: true, status: "pending", notes: "", lead: { id: "l1", title: "Manpersa" }, deal: null, completedAt: null, startedAt: "2026-11-02T15:00:00Z", investedMinutes: null, updatedAt: "" };
     const { calls } = renderAt("/comercial/actividades", COMMERCIAL, (_url, init) => (init?.method === "PATCH" ? json({ activity }) : json(page([activity]))));
     const table = await screen.findByRole("table", { name: "Actividades" });
     expect(within(table).getByText(/vencida/)).toBeTruthy();
+    expect(within(table).getByText("Overdue")).toBeTruthy();
     expect(within(table).getByRole("link", { name: "Manpersa" }).getAttribute("href")).toBe("/comercial/leads/l1");
-    await pick("Estado de Llamar a Francisco", "Hecha");
+    await pick("Estado de Llamar a Francisco", "Closed");
     await waitFor(() => expect(calls.some((c) => c.init?.method === "PATCH")).toBe(true));
     expect(JSON.parse(String(calls.find((c) => c.init?.method === "PATCH")!.init?.body))).toEqual({ status: "done" });
+  });
+});
+
+describe("actividades comerciales del prototipo", () => {
+  it("tipos comerciales y tiempo invertido entre el inicio y el cierre", async () => {
+    const closed = { id: "a2", title: "Demo con Acme", kind: "demo_meeting", owner: null, dueDate: null, overdue: false, status: "done", notes: "", lead: null, deal: null, completedAt: "2026-11-02T17:15:00Z", startedAt: "2026-11-02T15:00:00Z", investedMinutes: 135, updatedAt: "" };
+    renderAt("/comercial/actividades", COMMERCIAL, () => json(page([closed])));
+    const row = within((await screen.findByRole("table", { name: "Actividades" })).querySelector("tbody")!);
+    expect(row.getByText("Reunión Demo")).toBeTruthy();
+    expect(row.getByText("2 h 15 min")).toBeTruthy();
   });
 });
 

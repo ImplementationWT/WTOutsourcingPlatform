@@ -10,13 +10,15 @@ import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useOwners } from "@/features/sales/api";
-import { formatDate } from "@/lib/format";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   ACTIVITY_FILTERS,
   ACTIVITY_KIND_LABELS,
   ACTIVITY_KINDS,
   ACTIVITY_STATUS_LABELS,
+  durationText,
   ACTIVITY_STATUSES,
   commercialKeys,
   createActivity,
@@ -131,7 +133,20 @@ export function ActivitiesTable({ leadId, dealId, prefix = "" }: { leadId?: stri
       id: "status",
       header: "Estado",
       sortKey: "status",
-      cell: (a) => <InlineSelect label={`Estado de ${a.title}`} value={a.status} options={ACTIVITY_STATUSES} labels={ACTIVITY_STATUS_LABELS} disabled={!canWrite} onSave={(v) => save(a, { status: (v ?? a.status) as ActivityStatus })} />,
+      cell: (a) => (
+        <span className="inline-flex items-center gap-1.5">
+          <InlineSelect label={`Estado de ${a.title}`} value={a.status} options={ACTIVITY_STATUSES} labels={ACTIVITY_STATUS_LABELS} disabled={!canWrite} onSave={(v) => save(a, { status: (v ?? a.status) as ActivityStatus })} />
+          {a.overdue && <StatusBadge tone="danger">Overdue</StatusBadge>}
+        </span>
+      ),
+    },
+    { id: "startedAt", header: "Inicio", card: false, className: "whitespace-nowrap", cell: (a) => formatDateTime(a.startedAt) },
+    {
+      id: "invested",
+      header: "Tiempo invertido",
+      card: "meta",
+      cardCell: (a) => (a.investedMinutes === null ? "Abierta" : durationText(a.investedMinutes)),
+      cell: (a) => (a.investedMinutes === null ? <span className="text-muted-foreground">—</span> : <span className="tabular-nums">{durationText(a.investedMinutes)}</span>),
     },
     {
       id: "dueDate",
