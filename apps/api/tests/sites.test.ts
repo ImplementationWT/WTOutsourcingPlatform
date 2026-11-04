@@ -147,4 +147,18 @@ describe("propuestas en WTProposalPlatform", () => {
     expect(res.status).toBe(503);
     expect((await (await off.as("marta"))("GET", "/api/sites/config")).body).toEqual({ configured: false });
   });
+
+  it("una subida desde otra página (formulario en una propuesta) se rechaza aunque lleve la sesión", async () => {
+    const platform = fakePlatform();
+    const { as } = await world(platform.client);
+    const marta = await as("marta");
+    const upload = multipart({ name: "intruso", html: "<p>x</p>" });
+    for (const headers of [{ "sec-fetch-site": "same-site" }, { "sec-fetch-site": "cross-site" }, { origin: "https://demo-manpersa.sites.whatever.tech" }]) {
+      expect((await marta("POST", "/api/sites", upload.body, { ...upload.headers, ...headers })).status).toBe(403);
+      expect((await marta("POST", `/api/sites/${SITE_ID}/files`, upload.body, { ...upload.headers, ...headers })).status).toBe(403);
+    }
+    expect(platform.calls.some((c) => c.method === "POST")).toBe(false);
+    // Desde el propio panel sí.
+    expect((await marta("POST", "/api/sites", upload.body, { ...upload.headers, "sec-fetch-site": "same-origin" })).status).toBe(201);
+  });
 });

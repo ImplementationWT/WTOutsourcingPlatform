@@ -21,6 +21,23 @@ const patchBody = z
   })
   .strict();
 
+/**
+ * ¿La petición viene del panel? Los navegadores envían Sec-Fetch-Site (same-origin desde el panel);
+ * si falta, se compara el Origin con el host. Sin ninguno de los dos no es un navegador (sin cookie
+ * ajena que aprovechar).
+ */
+export function fromPanel(request: FastifyRequest) {
+  const site = request.headers["sec-fetch-site"];
+  if (site) return site === "same-origin" || site === "none";
+  const origin = request.headers.origin;
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === request.headers.host;
+  } catch {
+    return false;
+  }
+}
+
 /** El equipo no cuenta como visita: el token de la plataforma vale 30 días; se renueva cada día. */
 const TEAM_TOKEN_MS = 24 * 3_600_000;
 
@@ -144,6 +161,12 @@ export async function registerSiteRoutes(app: FastifyInstance, { store, sites }:
 
   // Subidas: el cuerpo multipart pasa sin leerlo (lo valida la plataforma, con sus límites).
   await app.register(async (scope) => {
+    // Un formulario HTML puede enviar multipart desde otra página sin preflight, y las propuestas
+    // (*.sites.whatever.tech) son el mismo sitio que el panel: la cookie de sesión viajaría. Solo se
+    // aceptan subidas hechas desde el propio panel.
+    scope.addHook("onRequest", async (request, reply) => {
+      if (!fromPanel(request)) return reply.code(403).send({ error: "Origen no permitido." });
+    });
     scope.addContentTypeParser("multipart/form-data", (_request, _payload, done) => done(null));
     const stream = (request: FastifyRequest) => ({
       body: Readable.toWeb(request.raw) as ReadableStream,
