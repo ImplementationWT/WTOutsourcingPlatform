@@ -167,6 +167,9 @@ export async function registerCommercialRoutes(app: FastifyInstance, { store }: 
       notes: a.notes,
       ...refs(a),
       completedAt: a.completedAt ?? null,
+      /** Inicio automático (al crearla) y minutos hasta el cierre (tiempo invertido). */
+      startedAt: a.createdAt,
+      investedMinutes: a.completedAt ? Math.max(0, Math.round((a.completedAt.getTime() - a.createdAt.getTime()) / 60_000)) : null,
       updatedAt: a.updatedAt
     });
   }

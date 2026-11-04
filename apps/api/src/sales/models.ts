@@ -5,14 +5,15 @@
  * Etapa común del lead (§3). "won" solo se alcanza al convertirlo en cliente. `nurturing` y
  * `unqualified` (más `lost`) forman la vista de leads fríos ("Cold Leads" de Monday).
  */
-export const LEAD_STATUSES = ["new", "contacted", "demo", "proposal_sent", "won", "lost", "nurturing", "unqualified"] as const;
+export const LEAD_STATUSES = ["new", "contacted", "demo", "proposal_sent", "won", "lost", "ghosted", "nurturing", "unqualified"] as const;
 /** Leads activos y fríos: una sola tabla, dos vistas. */
 export const ACTIVE_LEAD_STATUSES = ["new", "contacted", "demo", "proposal_sent"] as const;
-export const COLD_LEAD_STATUSES = ["nurturing", "unqualified", "lost"] as const;
+export const COLD_LEAD_STATUSES = ["nurturing", "unqualified", "lost", "ghosted"] as const;
 /** Funnel de origen (§4.1). */
 export const LEAD_FUNNELS = ["lht", "upwork", "guide", "outreach", "aitp", "other"] as const;
 export const LEAD_TEMPERATURES = ["hot", "warm", "nurturing"] as const;
-export const ACTIVITY_KINDS = ["call", "email", "meeting", "follow_up", "task", "other"] as const;
+/** Los tipos comerciales del prototipo (Triage Call … Enviar Onboarding) se suman a los anteriores. */
+export const ACTIVITY_KINDS = ["triage_call", "create_demo", "demo_meeting", "create_proposal", "send_proposal", "closing_meeting", "send_onboarding", "follow_up", "call", "email", "meeting", "task", "other"] as const;
 export const ACTIVITY_STATUSES = ["pending", "done", "cancelled"] as const;
 export const DEMO_STATUSES = ["scheduled", "done", "cancelled", "no_show"] as const;
 export const PROPOSAL_STATUSES = ["draft", "sent", "accepted", "rejected"] as const;
@@ -160,7 +161,7 @@ export interface DealUpdateDoc {
  */
 export const advanceTo = (current: LeadStatus, next: LeadStatus): LeadStatus => {
   if (current === "won" || current === "lost") return current;
-  if (current === "nurturing" || current === "unqualified") return next === "contacted" ? current : next;
+  if (current === "nurturing" || current === "unqualified" || current === "ghosted") return next === "contacted" ? current : next;
   return ACTIVE_LEAD_STATUSES.indexOf(next as (typeof ACTIVE_LEAD_STATUSES)[number]) > ACTIVE_LEAD_STATUSES.indexOf(current as (typeof ACTIVE_LEAD_STATUSES)[number]) ? next : current;
 };
 

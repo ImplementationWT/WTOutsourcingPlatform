@@ -7,6 +7,7 @@ import { useTableState } from "@/components/data-table/table-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useSession } from "@/features/auth/auth";
 import { createContact, updateContact, useContacts, type Contact, type ContactInput } from "./api";
 import { canWriteCore } from "./hooks";
@@ -125,6 +126,12 @@ export default function ContactsPage() {
     { id: "company", header: "Empresa", sortKey: "company", cell: (c) => muted(c.company) },
     { id: "emails", header: "Correo", cell: (c) => muted(c.emails[0]) },
     { id: "phone", header: "Teléfono", cell: (c) => muted(c.phone) },
+    {
+      id: "kind",
+      header: "Tipo",
+      card: "badge",
+      cell: (c) => (c.kind ? <StatusBadge tone={c.kind === "client" ? "ok" : "info"}>{c.kind === "client" ? "Cliente" : "Lead"}</StatusBadge> : muted(null)),
+    },
   ];
 
   return (

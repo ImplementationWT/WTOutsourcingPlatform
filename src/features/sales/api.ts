@@ -7,9 +7,9 @@ import type { DealStatus, Health, Proposal, ProposalStatus, Stage } from "@/feat
 
 // ---- catálogos (los mismos valores que valida la API) ---------------------------------
 
-export const LEAD_STATUSES = ["new", "contacted", "demo", "proposal_sent", "won", "lost", "nurturing", "unqualified"] as const;
+export const LEAD_STATUSES = ["new", "contacted", "demo", "proposal_sent", "won", "lost", "ghosted", "nurturing", "unqualified"] as const;
 /** Una sola tabla de leads, tres vistas: activos, fríos (Cold Leads) y ganados. */
-export const LEAD_VIEWS = { active: ["new", "contacted", "demo", "proposal_sent"], cold: ["nurturing", "unqualified", "lost"], won: ["won"] } as const;
+export const LEAD_VIEWS = { active: ["new", "contacted", "demo", "proposal_sent"], cold: ["nurturing", "unqualified", "lost", "ghosted"], won: ["won"] } as const;
 export type LeadView = keyof typeof LEAD_VIEWS;
 export const LEAD_FUNNELS = ["lht", "upwork", "guide", "outreach", "aitp", "other"] as const;
 export const LEAD_TEMPERATURES = ["hot", "warm", "nurturing"] as const;
@@ -27,12 +27,14 @@ export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   proposal_sent: "Propuesta enviada",
   won: "Ganado",
   lost: "Perdido",
+  ghosted: "Ghosted",
   nurturing: "Nurturing",
   unqualified: "No calificado",
 };
 export const LEAD_VIEW_LABELS: Record<LeadView, string> = { active: "Activos", cold: "Fríos", won: "Ganados" };
 export const LEAD_FUNNEL_LABELS: Record<LeadFunnel, string> = { lht: "LHT", upwork: "Upwork", guide: "Guía", outreach: "Outreach", aitp: "AITP", other: "Otro" };
-export const LEAD_TEMPERATURE_LABELS: Record<LeadTemperature, string> = { hot: "Hot", warm: "Warm", nurturing: "Nurturing" };
+/** La temperatura «nurturing» se muestra como Cold (prototipo); el valor guardado no cambia. */
+export const LEAD_TEMPERATURE_LABELS: Record<LeadTemperature, string> = { hot: "Hot", warm: "Warm", nurturing: "Cold" };
 export const LEAD_TEMPERATURE_TONE: Record<LeadTemperature, Tone> = { hot: "danger", warm: "warn", nurturing: "info" };
 export const LEAD_STATUS_TONE: Record<LeadStatus, Tone> = {
   new: "info",
@@ -41,6 +43,7 @@ export const LEAD_STATUS_TONE: Record<LeadStatus, Tone> = {
   proposal_sent: "ok",
   won: "ok",
   lost: "neutral",
+  ghosted: "neutral",
   nurturing: "outline",
   unqualified: "neutral",
 };

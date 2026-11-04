@@ -7,14 +7,30 @@ import { apiFetch } from "@/lib/api-client";
 
 // ---- catálogos (los mismos valores que valida la API) ---------------------------------
 
-export const ACTIVITY_KINDS = ["call", "email", "meeting", "follow_up", "task", "other"] as const;
+/** Los tipos comerciales del prototipo (Triage Call … Enviar Onboarding) se suman a los existentes. */
+export const ACTIVITY_KINDS = ["triage_call", "create_demo", "demo_meeting", "create_proposal", "send_proposal", "closing_meeting", "send_onboarding", "follow_up", "call", "email", "meeting", "task", "other"] as const;
 export const ACTIVITY_STATUSES = ["pending", "done", "cancelled"] as const;
 
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 export type ActivityStatus = (typeof ACTIVITY_STATUSES)[number];
 
-export const ACTIVITY_KIND_LABELS: Record<ActivityKind, string> = { call: "Llamada", email: "Correo", meeting: "Reunión", follow_up: "Follow-up", task: "Tarea", other: "Otra" };
-export const ACTIVITY_STATUS_LABELS: Record<ActivityStatus, string> = { pending: "Pendiente", done: "Hecha", cancelled: "Cancelada" };
+export const ACTIVITY_KIND_LABELS: Record<ActivityKind, string> = {
+  triage_call: "Triage Call",
+  create_demo: "Crear Demo",
+  demo_meeting: "Reunión Demo",
+  create_proposal: "Crear Propuesta",
+  send_proposal: "Enviar Propuesta",
+  closing_meeting: "Reunión de Cierre",
+  send_onboarding: "Enviar Onboarding",
+  follow_up: "Follow Up",
+  call: "Llamada",
+  email: "Correo",
+  meeting: "Reunión",
+  task: "Tarea",
+  other: "Otra",
+};
+/** Open y Closed como en el prototipo; Overdue se calcula (Open con la fecha pasada). */
+export const ACTIVITY_STATUS_LABELS: Record<ActivityStatus, string> = { pending: "Open", done: "Closed", cancelled: "Cancelada" };
 
 // ---- tipos de la API -------------------------------------------------------------
 
@@ -34,6 +50,9 @@ export interface Activity {
   lead: LeadRef;
   deal: DealRef;
   completedAt: string | null;
+  /** Inicio automático (al crearla) y minutos entre el inicio y el cierre. */
+  startedAt: string;
+  investedMinutes: number | null;
   updatedAt: string;
 }
 
@@ -125,3 +144,6 @@ export const createProposal = (input: Partial<ProposalInput> & { title: string; 
 export const updateProposal = (id: string, patch: Partial<ProposalInput>) => apiFetch<{ proposal: ProposalDetail }>(`/api/proposals/${id}`, send("PATCH", patch));
 
 export type { DemoStatus };
+
+/** «2 h 15 min» desde minutos. */
+export const durationText = (minutes: number) => `${Math.floor(minutes / 60)} h ${minutes % 60} min`;

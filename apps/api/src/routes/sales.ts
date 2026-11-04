@@ -56,6 +56,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   proposal_sent: "Propuesta enviada",
   won: "Ganado",
   lost: "Perdido",
+  ghosted: "Ghosted",
   nurturing: "Nurturing",
   unqualified: "No calificado"
 };
