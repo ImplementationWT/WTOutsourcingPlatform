@@ -122,3 +122,18 @@ usaron valores nuevos de enums, correr el script de reversa de cada paso antes d
 - **Menú:** Backlog / Sprints al final, con el contador de tareas sin sprint
   (`GET /api/tasks/backlog-count`). En el celular, los roles de equipo ven Mi trabajo en la barra.
 - **Datos:** no hay cambios de esquema: todo sale de Tasks. **Rollback:** volver a la imagen anterior.
+
+## Paso 5 · Comunicaciones
+
+- **Datos:** colección nueva `core_communications` (tipo, dirección, asunto, resumen, responsable,
+  contacto en texto, fecha, proyecto **o** lead, seguimiento opcional, borrado con «Deshacer»).
+  Registro manual: no hay integración con Gmail.
+- **Acceso** (sin reglas nuevas): las de un lead, como Leads (escriben boss y commercial, finance
+  lee); las de un proyecto las ve quien ve el proyecto (`projectScope`) y escriben boss, commercial y
+  el equipo. La pantalla vive en Comercial (boss, commercial, finance).
+- **Pantalla** `/comercial/comunicaciones`: KPIs, aviso de proyectos sin contacto hace más de 7 días
+  y leads activos sin respuesta hace más de 2 (desde su llegada si nunca se les escribió), pestañas
+  por tipo y seguimientos, búsqueda. Badge en el menú con los seguimientos vencidos o de hoy.
+- **Pestañas** «Comunicaciones» en el proyecto y en el lead (en producción el lead no tenía pestaña
+  Emails; se agrega sin quitar ninguna).
+- **Rollback:** volver a la imagen anterior; para limpiar, `db.core_communications.drop()`.

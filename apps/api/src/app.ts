@@ -26,6 +26,7 @@ import { registerMeetingInboxRoutes } from "./routes/meetings.js";
 import { registerOpsRoutes } from "./routes/ops.js";
 import { registerSalesRoutes } from "./routes/sales.js";
 import { registerServerRoutes } from "./routes/servers.js";
+import { registerCommunicationRoutes } from "./routes/communications.js";
 import { registerTaskRoutes } from "./routes/tasks.js";
 import { registerViewRoutes } from "./routes/views.js";
 import { ServerDirectory } from "./servers/directory.js";
@@ -133,6 +134,7 @@ export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStrea
   await registerCommercialRoutes(app, { store });
   await registerViewRoutes(app, { store });
   await registerTaskRoutes(app, { store });
+  await registerCommunicationRoutes(app, { store });
   await registerMeetingInboxRoutes(app, { store, processing: meetings, signingKey: readAiSigningKey });
 
   app.addHook("onClose", async () => {

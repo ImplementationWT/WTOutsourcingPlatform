@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { CommsTab } from "@/features/communications/CommsList";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { CalendarPlus, Check as CheckIcon, ChevronRight, ExternalLink, FilePlus2, FileText, Handshake, ListPlus, Loader2, Mail, MessageSquarePlus, MonitorPlay, MoreHorizontal, Pencil, Phone, Plus } from "lucide-react";
@@ -56,7 +57,7 @@ import { ResponseNotice } from "./LeadPanel";
 import { LeadStatusBadge } from "./SalesBadges";
 import { useCreateDeal } from "./use-create-deal";
 
-type TabId = "updates" | "activities" | "demos" | "proposals" | "deals" | "meetings" | "data";
+type TabId = "updates" | "activities" | "demos" | "proposals" | "deals" | "meetings" | "comms" | "data";
 
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
@@ -680,6 +681,7 @@ export default function LeadDetailPage() {
     { id: "proposals", label: "Propuestas", count: proposals.length },
     { id: "activities", label: "Actividades", count: data.pendingActivities },
     { id: "meetings", label: "Reuniones" },
+    { id: "comms", label: "Comunicaciones" },
     { id: "updates", label: "Updates" },
     { id: "deals", label: "Deals", count: deals.length },
     ...(hasSourceData ? [{ id: "data" as const, label: "Datos del source" }] : []),
@@ -857,6 +859,7 @@ export default function LeadDetailPage() {
               ))}
             </div>
             <div role="tabpanel" className="min-h-64 p-5">
+              {tab === "comms" && <CommsTab scope={{ leadId: lead.id }} defaultContact={lead.contactName ?? ""} />}
               {tab === "updates" && <UpdatesPanel base={leadBase(lead.id)} canWork={canWrite} onPosted={refresh} />}
               {tab === "activities" && <ActivitiesTable leadId={lead.id} prefix="a." />}
               {tab === "demos" && <DemosTab key={`demos-${adding?.n ?? 0}`} leadId={lead.id} demos={demos} canWrite={canWrite} startAdding={startAdding("demos")} />}
