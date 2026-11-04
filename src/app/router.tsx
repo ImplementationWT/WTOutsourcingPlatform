@@ -27,7 +27,6 @@ import OpsProjectsPage from "@/features/ops/OpsProjectsPage";
 import NewProjectPage from "@/features/projects/NewProjectPage";
 import ProjectDetailPage from "@/features/projects/ProjectDetailPage";
 import ProjectsPage from "@/features/projects/ProjectsPage";
-import LeadDetailPage from "@/features/sales/LeadDetailPage";
 import LeadsPage from "@/features/sales/LeadsPage";
 import IntegrationsPage from "@/features/servers/IntegrationsPage";
 import SettingsPage from "@/features/settings/SettingsPage";
@@ -45,7 +44,7 @@ export const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { path: "/comercial", element: <LeadsPage /> },
-          { path: "/comercial/leads/:id", element: <LeadDetailPage /> },
+          { path: "/comercial/leads/:id", element: <LeadsPage /> },
           { path: "/comercial/comunicaciones", element: <RequireModule module="communications"><CommsPage /></RequireModule> },
           { path: "/comercial/actividades", element: <ActivitiesPage /> },
           { path: "/comercial/demos", element: <DemosPage /> },

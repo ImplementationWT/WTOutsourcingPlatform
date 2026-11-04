@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Loader2, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Loader2, Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select } from "@/components/ui/select";
@@ -51,6 +51,13 @@ export interface Grouping<T> {
   value: (row: T) => string;
   order: readonly string[];
   labels: Record<string, string>;
+  /**
+   * Encabezado del grupo al estilo del prototipo: plegable, con el chip del valor y «N leads».
+   * Sin esto, el encabezado es texto con contador (pantallas que ya lo usaban así).
+   */
+  chip?: (value: string) => ReactNode;
+  /** «1 lead», «3 leads»… junto al chip. */
+  countLabel?: (n: number) => string;
 }
 
 interface DataTableProps<T> {
@@ -186,6 +193,7 @@ export function DataTable<T>({
   const cards = useCards();
   const { state, set } = table;
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [folded, setFolded] = useState<Record<string, boolean>>({});
   const { shown, visible, toggle } = useVisibleColumns(label, columns);
   const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
@@ -197,7 +205,8 @@ export function DataTable<T>({
   const open = (row: T) => (onRowClick ? onRowClick(row) : rowHref && navigate(rowHref(row)));
   const openCard = (row: T) => (cardHref ? navigate(cardHref(row)) : open(row));
   const active = filters.filter((f) => state.filters[f.key]);
-  const activeCount = active.length + (grouping && state.group ? 1 : 0);
+  // Agrupar cuenta como filtro, salvo en las tablas que agrupan de inicio (encabezado con chip).
+  const activeCount = active.length + (grouping && state.group && !grouping.chip ? 1 : 0);
   const hasPanel = filters.length > 0 || Boolean(grouping);
 
   // Agrupar: los grupos siguen el orden del catálogo y el contador es del conjunto filtrado.
@@ -247,6 +256,19 @@ export function DataTable<T>({
   );
 
   const groupCount = (n: number) => <span className="ml-1.5 rounded-full bg-foreground/10 px-1.5 py-px text-[11px] font-semibold tabular-nums">{n}</span>;
+  // Encabezado plegable (prototipo): chevron, chip del valor y «N leads».
+  const richHeader = (g: { value: string; count: number }) => {
+    const label = grouping!.labels[g.value] ?? g.value;
+    const open = !folded[g.value];
+    return (
+      <button type="button" aria-expanded={open} aria-label={`${open ? "Plegar" : "Desplegar"} ${label}`} onClick={() => setFolded((f) => ({ ...f, [g.value]: open }))} className="flex w-full items-center gap-2.5 text-left">
+        <ChevronDown aria-hidden className={cn("size-4 text-muted-foreground transition-transform", !open && "-rotate-90")} />
+        {grouping!.chip!(g.value)}
+        <span className="text-sm text-muted-foreground">{grouping!.countLabel ? grouping!.countLabel(g.count) : g.count}</span>
+      </button>
+    );
+  };
+  const rich = Boolean(grouping?.chip);
 
   return (
     <div className="space-y-3">
@@ -356,13 +378,19 @@ export function DataTable<T>({
                   <Fragment key={g.value || "all"}>
                     {grouping && state.group && (
                       <tr className="border-b border-border bg-muted/50">
-                        <th colSpan={shown.length} scope="colgroup" className="px-4 py-2 text-left text-xs font-semibold">
-                          {grouping.labels[g.value] ?? g.value}
-                          {groupCount(g.count)}
+                        <th colSpan={shown.length} scope="colgroup" className={cn("px-4 text-left text-xs font-semibold", rich ? "py-2.5" : "py-2")}>
+                          {rich ? (
+                            richHeader(g)
+                          ) : (
+                            <>
+                              {grouping.labels[g.value] ?? g.value}
+                              {groupCount(g.count)}
+                            </>
+                          )}
                         </th>
                       </tr>
                     )}
-                    {g.rows.map((row) => {
+                    {(rich && folded[g.value] ? [] : g.rows).map((row) => {
                       const selected = selectedKey !== undefined && selectedKey === rowKey(row);
                       return (
                         <tr
@@ -407,13 +435,16 @@ export function DataTable<T>({
         <div className="space-y-3">
           {groups.map((g) => (
             <section key={g.value || "all"} className="space-y-3" aria-label={grouping && state.group ? (grouping.labels[g.value] ?? g.value) : undefined}>
-              {grouping && state.group && (
-                <p className="pt-1 text-xs font-semibold">
-                  {grouping.labels[g.value] ?? g.value}
-                  {groupCount(g.count)}
-                </p>
-              )}
-              {g.rows.map((row) => {
+              {grouping && state.group &&
+                (rich ? (
+                  <div className="pt-1">{richHeader(g)}</div>
+                ) : (
+                  <p className="pt-1 text-xs font-semibold">
+                    {grouping.labels[g.value] ?? g.value}
+                    {groupCount(g.count)}
+                  </p>
+                ))}
+              {(rich && folded[g.value] ? [] : g.rows).map((row) => {
                 const badges = columns.filter((c) => c.card === "badge");
                 const meta = columns.find((c) => c.card === "meta");
                 const rest = columns.filter((c) => c !== titleColumn && c.card === undefined);

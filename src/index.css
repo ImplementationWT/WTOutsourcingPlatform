@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "@fontsource-variable/inter";
 @import "@fontsource-variable/work-sans";
 @import "@fontsource-variable/jetbrains-mono";
 
@@ -8,28 +9,46 @@
 
 :root {
   /*
-   * Marca Whatever Tech (whatever.tech): rojo sobre negro, Work Sans. Estilo limpio: superficies
-   * planas (tarjetas blancas sobre gris muy claro en claro; grafito sobre negro en oscuro), bordes
-   * finos y el rojo solo en la acción principal y en lo activo.
+   * Marca Whatever Tech con la paleta del prototipo (Sistema.dc.html): rojo sobre negro, Inter.
+   * Superficies planas (tarjetas blancas sobre gris muy claro en claro; grafito sobre negro en
+   * oscuro), bordes finos y el rojo solo en la acción principal y en lo activo.
    */
-  --background: #f5f5f7;
-  --foreground: #111116;
+  --background: #f5f5f6;
+  --foreground: #17171b;
   --card: #ffffff;
-  --card-foreground: #111116;
+  --card-foreground: #17171b;
   --popover: #ffffff;
-  --popover-foreground: #111116;
-  --primary: #dc2440;
+  --popover-foreground: #17171b;
+  --primary: #d9223e;
   --primary-foreground: #ffffff;
-  --secondary: #f0f0f3;
-  --secondary-foreground: #111116;
-  --muted: #f0f0f3;
-  --muted-foreground: #62636e;
-  --accent: #f0f0f3;
-  --accent-foreground: #111116;
+  --secondary: #f3f3f5;
+  --secondary-foreground: #17171b;
+  --muted: #f3f3f5;
+  --muted-foreground: #62626d;
+  --accent: #f3f3f5;
+  --accent-foreground: #17171b;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: #e6e6eb;
-  --input: #dedee5;
-  --ring: #ff3054;
+  --border: #e7e7ea;
+  --input: #e7e7ea;
+  --ring: #d9223e;
+  /* Del prototipo: borde fuerte (hover), acento suave (activo) y texto de acento. */
+  --line-strong: #cfcfd6;
+  --accent-soft: #fde8ec;
+  --accent-text: #b4162e;
+  --nav-dot: #b9b9c2;
+  /* Chips del prototipo (.chip.c-*): fondo suave + texto, por color. */
+  --chip-red-bg: #fde8ec;
+  --chip-red-fg: #b4162e;
+  --chip-green-bg: #dcf5e7;
+  --chip-green-fg: #0f6b3a;
+  --chip-blue-bg: #e6efff;
+  --chip-blue-fg: #1d4ed8;
+  --chip-amber-bg: #fdf0d5;
+  --chip-amber-fg: #8a5a00;
+  --chip-purple-bg: #ece8ff;
+  --chip-purple-fg: #5b3fd0;
+  --chip-brown-bg: #f3e6da;
+  --chip-brown-fg: #7a4a24;
   --chart-1: #ff3054;
   --chart-2: #4f86ff;
   --chart-3: #f5b83d;
@@ -66,13 +85,13 @@
   --shadow-card: 0 1px 2px rgb(17 17 22 / 4%);
   --overlay: rgb(5 5 8 / 45%);
   --sidebar: #ffffff;
-  --sidebar-foreground: #111116;
-  --sidebar-primary: #dc2440;
+  --sidebar-foreground: #17171b;
+  --sidebar-primary: #d9223e;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #fdeef0;
-  --sidebar-accent-foreground: #111116;
-  --sidebar-border: #e6e6eb;
-  --sidebar-ring: #ff3054;
+  --sidebar-accent: #fde8ec;
+  --sidebar-accent-foreground: #17171b;
+  --sidebar-border: #e7e7ea;
+  --sidebar-ring: #d9223e;
 }
 
 @theme inline {
@@ -97,7 +116,8 @@
   --color-accent-2-fg: color-mix(in oklch, var(--status-accent) var(--status-fg-mix), var(--foreground));
   --shadow-card: var(--shadow-card);
   --font-heading: var(--font-sans);
-  --font-sans: 'Work Sans Variable', -apple-system, system-ui, sans-serif;
+  --font-sans: 'Inter Variable', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-legacy: 'Work Sans Variable', -apple-system, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
   /* Rojo de la marca como escala (acentos, estados activos, foco). */
   --color-brand-50: #fff1f3;
@@ -118,6 +138,10 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --color-line-strong: var(--line-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-text: var(--accent-text);
+  --color-nav-dot: var(--nav-dot);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -151,25 +175,41 @@
 }
 
 .dark {
-  /* La misma paleta que whatever.tech: negro, superficies grafito y rojo de acento. */
-  --background: #0b0b0f;
-  --foreground: #eeeff4;
-  --card: #131317;
-  --card-foreground: #eeeff4;
-  --popover: #18181d;
-  --popover-foreground: #eeeff4;
-  --primary: #f23d58;
+  /* Oscuro del prototipo: negro, superficies grafito y rojo de acento. */
+  --background: #0d0d10;
+  --foreground: #f1f1f4;
+  --card: #16161a;
+  --card-foreground: #f1f1f4;
+  --popover: #1a1a1f;
+  --popover-foreground: #f1f1f4;
+  --primary: #e0324d;
   --primary-foreground: #ffffff;
-  --secondary: #1a1a20;
-  --secondary-foreground: #eeeff4;
-  --muted: #1a1a20;
-  --muted-foreground: #9b9ca8;
-  --accent: #1f1f26;
-  --accent-foreground: #eeeff4;
+  --secondary: #1f1f25;
+  --secondary-foreground: #f1f1f4;
+  --muted: #1f1f25;
+  --muted-foreground: #a0a0ac;
+  --accent: #1f1f25;
+  --accent-foreground: #f1f1f4;
   --destructive: oklch(0.704 0.191 22.216);
-  --border: rgb(238 239 244 / 8%);
-  --input: rgb(238 239 244 / 11%);
-  --ring: #ff3054;
+  --border: #26262c;
+  --input: #26262c;
+  --ring: #f0455f;
+  --line-strong: #3a3a43;
+  --accent-soft: rgb(240 69 95 / 16%);
+  --accent-text: #ff8a9b;
+  --nav-dot: #5a5a66;
+  --chip-red-bg: rgb(240 69 95 / 16%);
+  --chip-red-fg: #ff8a9b;
+  --chip-green-bg: rgb(52 200 120 / 16%);
+  --chip-green-fg: #6ee0a0;
+  --chip-blue-bg: rgb(79 117 255 / 20%);
+  --chip-blue-fg: #a5bbff;
+  --chip-amber-bg: rgb(245 180 60 / 16%);
+  --chip-amber-fg: #f4c46a;
+  --chip-purple-bg: rgb(140 110 255 / 20%);
+  --chip-purple-fg: #c4b5ff;
+  --chip-brown-bg: rgb(176 112 64 / 22%);
+  --chip-brown-fg: #d9a06f;
   --chart-1: #ff4560;
   --chart-2: #5b8cff;
   --chart-3: #f7c04f;
@@ -185,14 +225,14 @@
   --shadow-overlay: 0 24px 64px -16px rgb(0 0 0 / 60%);
   --shadow-card: none;
   --overlay: rgb(5 5 8 / 60%);
-  --sidebar: #0e0e12;
-  --sidebar-foreground: #eeeff4;
-  --sidebar-primary: #f23d58;
+  --sidebar: #16161a;
+  --sidebar-foreground: #f1f1f4;
+  --sidebar-primary: #e0324d;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #1a1a20;
-  --sidebar-accent-foreground: #eeeff4;
-  --sidebar-border: rgb(238 239 244 / 7%);
-  --sidebar-ring: #ff3054;
+  --sidebar-accent: rgb(240 69 95 / 16%);
+  --sidebar-accent-foreground: #f1f1f4;
+  --sidebar-border: #26262c;
+  --sidebar-ring: #f0455f;
 }
 
 /* Modo claro: la escala de la marca se oscurece para leerse sobre fondo blanco. */
@@ -216,6 +256,60 @@ html:not(.dark) {
     @apply font-mono;}
   input::placeholder, textarea::placeholder {
     @apply text-muted-foreground/70;}}
+
+/*
+ * Pantallas protegidas (Dashboard de Infraestructura, Apps, Integraciones…) y la insignia del
+ * usuario conservan su tipografía original: el estilo del prototipo no las toca.
+ */
+.skin-legacy {
+  font-family: var(--font-legacy);
+}
+
+/*
+ * Formularios con el aspecto del prototipo (.field / .sel): campos de 44 px, fondo suave y borde
+ * fino. Se activa con la clase `proto-form` en el contenedor (detalle del lead, del proyecto…).
+ */
+.proto-form {
+  --control-h: 2.75rem;
+}
+.proto-form .border-input {
+  border-color: var(--border);
+  border-radius: 10px;
+  background-color: var(--muted);
+}
+.proto-form .border-input:hover {
+  border-color: var(--line-strong);
+}
+
+/* Chips del prototipo: `chip-red`, `chip-green`… (fondo suave y texto del mismo color). */
+@utility chip-red {
+  background-color: var(--chip-red-bg);
+  color: var(--chip-red-fg);
+}
+@utility chip-green {
+  background-color: var(--chip-green-bg);
+  color: var(--chip-green-fg);
+}
+@utility chip-blue {
+  background-color: var(--chip-blue-bg);
+  color: var(--chip-blue-fg);
+}
+@utility chip-amber {
+  background-color: var(--chip-amber-bg);
+  color: var(--chip-amber-fg);
+}
+@utility chip-purple {
+  background-color: var(--chip-purple-bg);
+  color: var(--chip-purple-fg);
+}
+@utility chip-brown {
+  background-color: var(--chip-brown-bg);
+  color: var(--chip-brown-fg);
+}
+@utility chip-gray {
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+}
 
 /* Pantallas táctiles: controles de 40 px como mínimo. */
 @media (pointer: coarse) {

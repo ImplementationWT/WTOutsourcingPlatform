@@ -28,7 +28,7 @@ export const PAGE_SIZES = [25, 50, 100] as const;
  * (p. ej. la de deals dentro del proyecto: `d.page`, `d.sort`…). `filterKeys` son los filtros que
  * acepta esta tabla; `fixed` son filtros que no se muestran ni van a la URL (p. ej. el proyecto).
  */
-export function useTableState({ prefix = "", filterKeys = [], fixed = {} }: { prefix?: string; filterKeys?: readonly string[]; fixed?: Record<string, string> } = {}): TableStateApi {
+export function useTableState({ prefix = "", filterKeys = [], fixed = {}, groupByDefault = false }: { prefix?: string; filterKeys?: readonly string[]; fixed?: Record<string, string>; /** Agrupada de inicio (la URL guarda `group=0` si se desagrupa). */ groupByDefault?: boolean } = {}): TableStateApi {
   const [params, setParams] = useSearchParams();
   const key = useCallback((name: string) => `${prefix}${name}`, [prefix]);
   const keysText = filterKeys.join(",");
@@ -48,10 +48,10 @@ export function useTableState({ prefix = "", filterKeys = [], fixed = {} }: { pr
       sort: params.get(key("sort")),
       dir: params.get(key("dir")) === "asc" ? "asc" : "desc",
       q: params.get(key("q")) ?? "",
-      group: params.get(key("group")) === "1",
+      group: params.get(key("group")) === "1" || (groupByDefault && params.get(key("group")) !== "0"),
       filters,
     };
-  }, [params, key, keysText]);
+  }, [params, key, keysText, groupByDefault]);
 
   const set = useCallback<TableStateApi["set"]>(
     (patch) => {
@@ -63,7 +63,7 @@ export function useTableState({ prefix = "", filterKeys = [], fixed = {} }: { pr
           if (patch.sort !== undefined) write("sort", patch.sort);
           if (patch.dir !== undefined) write("dir", patch.dir);
           if (patch.q !== undefined) write("q", patch.q.trim() ? patch.q : null);
-          if (patch.group !== undefined) write("group", patch.group ? "1" : null);
+          if (patch.group !== undefined) write("group", patch.group === groupByDefault ? null : patch.group ? "1" : "0");
           if (patch.pageSize !== undefined) write("pageSize", patch.pageSize === PAGE_SIZES[0] ? null : String(patch.pageSize));
           for (const [name, value] of Object.entries(patch.filters ?? {})) write(name, value);
           if (patch.page !== undefined) write("page", patch.page > 1 ? String(patch.page) : null);
@@ -73,7 +73,7 @@ export function useTableState({ prefix = "", filterKeys = [], fixed = {} }: { pr
         { replace: true },
       );
     },
-    [setParams, key],
+    [setParams, key, groupByDefault],
   );
 
   const query = useMemo(() => {

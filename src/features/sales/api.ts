@@ -1,3 +1,4 @@
+import type { ChipColor } from "@/components/ui/chip";
 import { useQuery } from "@tanstack/react-query";
 import type { Tone } from "@/components/ui/tones";
 import { useTablePage } from "@/components/data-table/use-table-page";
@@ -47,6 +48,9 @@ export const LEAD_STATUS_TONE: Record<LeadStatus, Tone> = {
   nurturing: "outline",
   unqualified: "neutral",
 };
+/** Colores del prototipo (estadoChip / tempChip). */
+export const LEAD_STATUS_CHIP: Record<LeadStatus, ChipColor> = { new: "blue", contacted: "amber", demo: "purple", proposal_sent: "green", won: "green", lost: "red", ghosted: "brown", nurturing: "gray", unqualified: "gray" };
+export const LEAD_TEMPERATURE_CHIP: Record<LeadTemperature, ChipColor> = { hot: "red", warm: "amber", nurturing: "blue" };
 export const DEMO_STATUS_LABELS: Record<DemoStatus, string> = { scheduled: "Agendada", done: "Realizada", cancelled: "Cancelada", no_show: "No asistió" };
 
 // ---- tipos de la API -------------------------------------------------------------

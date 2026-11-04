@@ -8,7 +8,6 @@ import AppSidebar from "@/components/layout/AppSidebar";
 import type { SessionUser } from "@/features/auth/auth";
 import OpsProjectDetailPage from "@/features/ops/OpsProjectDetailPage";
 import type { OpsProject } from "@/features/ops/api";
-import LeadDetailPage from "@/features/sales/LeadDetailPage";
 import LeadsPage from "@/features/sales/LeadsPage";
 import type { Lead, LeadDetail } from "@/features/sales/api";
 import { optionLabels, pick } from "./pick";
@@ -67,7 +66,7 @@ function renderAt(path: string, user: SessionUser, fetchImpl: (url: string, init
         <AppSidebar />
         <Routes>
           <Route path="/comercial" element={<LeadsPage />} />
-          <Route path="/comercial/leads/:id" element={<LeadDetailPage />} />
+          <Route path="/comercial/leads/:id" element={<LeadsPage />} />
           <Route path="/operativa/:id" element={<OpsProjectDetailPage />} />
           <Route path="/deals/:id" element={<p>Deal abierto</p>} />
         </Routes>
@@ -95,7 +94,14 @@ describe("leads", () => {
   const listed: Lead = { ...lead };
   const counts = { new: 3, contacted: 1, demo: 1, proposal_sent: 0, won: 2, lost: 0, nurturing: 4, unqualified: 0 };
   const page = (extra: Record<string, unknown> = {}) => ({ rows: [listed], total: 1, page: 1, pageSize: 25, facets: { demo: 1 }, totals: {}, counts, canWrite: true, ...extra });
-  const route = (url: string) => (url.startsWith("/api/sales/owners") ? json({ owners: [{ id: "u-com", name: "Marta", role: "commercial" }] }) : json(page()));
+  const route = (url: string) =>
+    url.startsWith("/api/sales/owners")
+      ? json({ owners: [{ id: "u-com", name: "Marta", role: "commercial" }] })
+      : url === `/api/sales/leads/${lead.id}`
+        ? json({ lead, demos: [], proposals: [], project: null, deals: [], pendingActivities: 0, canWrite: true })
+        : url.startsWith("/api/sales/leads")
+          ? json(page())
+          : json({ meetings: [], updates: [], rows: [], total: 0, page: 1, pageSize: 25, facets: {}, totals: {} });
 
   it("tabla de leads: funnel y temperatura a la vista; las píldoras del embudo cuentan y filtran por estado", async () => {
     localStorage.clear();
@@ -110,7 +116,7 @@ describe("leads", () => {
     await waitFor(() => expect(calls.some((c) => c.url.includes("status=won"))).toBe(true));
   });
 
-  it("«Columnas» muestra las ocultas (origen, respuesta) y un clic en la fila abre la vista rápida", async () => {
+  it("agrupa por estado con grupos plegables; «Columnas» muestra las ocultas y un clic en la fila abre el detalle", async () => {
     localStorage.clear();
     renderAt("/comercial", COMMERCIAL, route);
     const table = await screen.findByRole("table", { name: "Leads" });
@@ -120,9 +126,15 @@ describe("leads", () => {
     fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Respuesta" }));
     await waitFor(() => expect(within(table).getByText("Meta Ads")).toBeTruthy());
     expect(within(table).getByText("3 d")).toBeTruthy();
+    expect(within(table).getByText("1 lead")).toBeTruthy();
+    fireEvent.click(within(table).getByRole("button", { name: "Plegar Demo" }));
+    expect(within(table).queryByText("Upwork")).toBeNull();
+    fireEvent.click(within(table).getByRole("button", { name: "Desplegar Demo" }));
     fireEvent.click(within(table).getByText("Upwork"));
-    const open = await screen.findByRole("link", { name: "Abrir completo" });
-    expect(open.getAttribute("href")).toBe(`/comercial/leads/${lead.id}`);
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(await dialog.findByRole("heading", { name: "Manpersa SAC" })).toBeTruthy();
+    for (const name of [/Información/, /Actividades/, /Reuniones/, /Propuestas/, /Comunicaciones/]) expect(dialog.getByRole("tab", { name })).toBeTruthy();
+    expect(dialog.getByRole("region", { name: "Updates" })).toBeTruthy();
   });
 
   it("filtros en el panel «Filtros»: la vista va a la API y queda como chip que se puede quitar", async () => {
@@ -161,14 +173,14 @@ describe("leads", () => {
   };
   const patches = (calls: Call[]) => calls.filter((c) => c.init?.method === "PATCH").map((c) => JSON.parse(String(c.init?.body)));
 
-  it("detalle: respuesta y pendientes, «Ganado» se elige a mano, sin «Convertir en cliente», y los datos del source tal cual", async () => {
+  it("detalle: respuesta y pendientes, «Ganado» se elige a mano, sin «Convertir en cliente», y las respuestas del formulario tal cual", async () => {
     renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, detailRoute());
     expect(await screen.findByRole("heading", { name: "Manpersa SAC" })).toBeTruthy();
     expect(screen.getByText("3 d")).toBeTruthy();
     expect(screen.getByRole("tab", { name: /Actividades/ }).textContent).toContain("2");
     expect(screen.queryByRole("button", { name: /Convertir en cliente/ })).toBeNull();
     expect(await optionLabels("Estado del lead")).toContain("Ganado");
-    fireEvent.click(screen.getByRole("tab", { name: "Datos del source" }));
+    expect(screen.getByRole("heading", { name: "Respuestas del formulario" })).toBeTruthy();
     expect(screen.getByText("form.campaign")).toBeTruthy();
     expect(screen.getByText("octubre")).toBeTruthy();
   });

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { Menu, Search } from "lucide-react";
+import { Menu, Moon, Search, Sun } from "lucide-react";
 import { BrandLockup, BrandMark } from "@/components/brand/Brand";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useSession, type UserRole } from "@/features/auth/auth";
@@ -22,6 +22,9 @@ function bottomItems(role: UserRole | undefined): Pick<NavItem, "to" | "label" |
   if (role === "boss" || role === "commercial" || role === "finance") return [{ to: "/comercial", label: "Leads", end: true, also: /^\/comercial\/leads\// }, meetings, projects];
   return [{ to: "/operativa/mi-trabajo", label: "Mi trabajo" }, meetings, projects];
 }
+
+/** Pantallas protegidas: conservan la tipografía original (el estilo del prototipo no las toca). */
+const LEGACY_ROUTES = /^\/(dashboard|projects|servers|ai|costs|integrations|clients)(\/|$)/;
 
 function Breadcrumbs({ crumbs }: { crumbs: Crumb[] }) {
   if (!crumbs.length) return null;
@@ -56,7 +59,7 @@ function Breadcrumbs({ crumbs }: { crumbs: Crumb[] }) {
 
 export default function AppLayout() {
   // El login fuerza el oscuro: al entrar al panel se aplica el tema elegido.
-  const { theme } = useTheme();
+  const { theme, toggle: toggleTheme } = useTheme();
   useEffect(() => applyTheme(theme), [theme]);
   const role = useSession().data?.role;
   const { pathname } = useLocation();
@@ -102,11 +105,17 @@ export default function AppLayout() {
               <button type="button" className={cn(iconButton, "lg:hidden")} aria-label="Buscar" onClick={() => setPaletteOpen(true)}>
                 <Search className="size-5" />
               </button>
-              <UserMenu />
+              <button type="button" onClick={toggleTheme} className="hidden h-10 items-center gap-2 rounded-xl border border-border bg-card px-3.5 text-sm font-semibold transition-colors hover:border-line-strong hover:bg-muted sm:inline-flex">
+                {theme === "dark" ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
+                {theme === "dark" ? "Claro" : "Oscuro"}
+              </button>
+              <span className="skin-legacy contents">
+                <UserMenu />
+              </span>
             </div>
           </header>
 
-          <div className="px-4 pt-6 pb-28 sm:px-6 lg:px-8 lg:pt-8 lg:pb-10">
+          <div className={cn("px-4 pt-6 pb-28 sm:px-6 lg:px-8 lg:pt-8 lg:pb-10", LEGACY_ROUTES.test(pathname) && "skin-legacy")}>
             <Outlet />
           </div>
         </main>

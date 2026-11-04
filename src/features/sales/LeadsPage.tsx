@@ -1,5 +1,5 @@
-import { useState, useSyncExternalStore } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, MoreVertical, Plus, X } from "lucide-react";
 import { DataTable, type Column } from "@/components/data-table/DataTable";
@@ -8,7 +8,6 @@ import { useTableState } from "@/components/data-table/table-state";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
@@ -36,7 +35,7 @@ import {
   type LeadStatus,
   type LeadView,
 } from "./api";
-import { LeadPanel } from "./LeadPanel";
+import { LeadDetailModal } from "./LeadDetail";
 import { LeadStatusBadge, TemperatureBadge } from "./SalesBadges";
 
 function NewLeadForm({ onClose }: { onClose: () => void }) {
@@ -143,24 +142,13 @@ function NewLeadForm({ onClose }: { onClose: () => void }) {
   );
 }
 
-const WIDE = "(min-width: 1280px)";
-const wideQuery = () => (typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(WIDE) : null);
-/** En pantallas anchas la vista rápida va fija junto a la tabla; si no, entra como panel. */
-function useWide() {
-  return useSyncExternalStore(
-    (onChange) => {
-      const mql = wideQuery();
-      mql?.addEventListener("change", onChange);
-      return () => mql?.removeEventListener("change", onChange);
-    },
-    () => wideQuery()?.matches ?? false,
-    () => false,
-  );
-}
+/** Estados con píldora propia aunque estén en cero (los del prototipo); el resto, solo si hay leads. */
+const PILL_STATUSES: readonly LeadStatus[] = ["new", "contacted", "demo", "proposal_sent", "won", "lost", "ghosted"];
 
-/** Píldoras del embudo: «Todos» y cada estado con su contador (sobre los demás filtros). */
+/** Píldoras del embudo (prototipo): «Todos» y cada estado con su contador (sobre los demás filtros). */
 function StatusChips({ counts, value, onChange }: { counts: Partial<Record<LeadStatus, number>> | undefined; value: LeadStatus | undefined; onChange: (status: LeadStatus | undefined) => void }) {
   const total = LEAD_STATUSES.reduce((sum, st) => sum + (counts?.[st] ?? 0), 0);
+  const shown = LEAD_STATUSES.filter((st) => PILL_STATUSES.includes(st) || (counts?.[st] ?? 0) > 0 || value === st);
   const chip = (key: string, label: string, count: number | undefined, selected: boolean, onClick: () => void) => (
     <button
       key={key}
@@ -168,19 +156,18 @@ function StatusChips({ counts, value, onChange }: { counts: Partial<Record<LeadS
       aria-pressed={selected}
       onClick={onClick}
       className={cn(
-        "inline-flex h-10 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition-colors",
-        selected ? "border-primary/40 bg-primary/10 text-foreground" : "border-border bg-card hover:bg-accent dark:bg-white/[0.03]",
-        !selected && count === 0 && "text-muted-foreground",
+        "inline-flex h-10 shrink-0 items-center gap-2 rounded-full border px-3.5 text-sm transition-[background-color,border-color,transform] active:translate-y-px",
+        selected ? "border-primary bg-accent-soft font-semibold text-accent-text" : "border-border bg-card font-medium hover:border-line-strong hover:bg-muted",
       )}
     >
       {label}
-      <span className={cn("min-w-5 rounded-full px-1.5 text-center text-xs tabular-nums", selected ? "bg-primary text-primary-foreground" : "bg-foreground/[0.07] text-muted-foreground")}>{count ?? "–"}</span>
+      <span className={cn("inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs tabular-nums", selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>{count ?? "–"}</span>
     </button>
   );
   return (
     <div role="group" aria-label="Embudo" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
       {chip("all", "Todos", counts ? total : undefined, !value, () => onChange(undefined))}
-      {LEAD_STATUSES.map((st) => chip(st, LEAD_STATUS_LABELS[st], counts?.[st], value === st, () => onChange(value === st ? undefined : st)))}
+      {shown.map((st) => chip(st, LEAD_STATUS_LABELS[st], counts?.[st], value === st, () => onChange(value === st ? undefined : st)))}
     </div>
   );
 }
@@ -194,7 +181,7 @@ function LeadMenu({ lead }: { lead: Lead }) {
         <MoreVertical className="size-5" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={4} className="w-48">
-        <DropdownMenuItem onClick={() => navigate(`/comercial/leads/${lead.id}`)}>Abrir</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigate({ pathname: `/comercial/leads/${lead.id}`, search: location.search })}>Abrir</DropdownMenuItem>
         {lead.phone && <DropdownMenuItem onClick={() => window.open(`tel:${lead.phone!.replace(/[^\d+]/g, "")}`, "_self")}>Llamar</DropdownMenuItem>}
         {lead.email && <DropdownMenuItem onClick={() => window.open(`mailto:${lead.email}`, "_self")}>Escribir correo</DropdownMenuItem>}
       </DropdownMenuContent>
@@ -202,18 +189,22 @@ function LeadMenu({ lead }: { lead: Lead }) {
   );
 }
 
+/**
+ * Leads (prototipo): píldoras por estado, tabla agrupada por estado con grupos plegables, y el
+ * detalle en una ventana grande al hacer clic (también por enlace: /comercial/leads/:id).
+ */
 export default function LeadsPage() {
   const navigate = useNavigate();
-  const wide = useWide();
-  const table = useTableState({ filterKeys: LEAD_FILTERS });
+  const { search } = useLocation();
+  const { id: openId } = useParams();
+  const table = useTableState({ filterKeys: LEAD_FILTERS, groupByDefault: true });
   const { data, isLoading, isFetching, error } = useLeads(table.query);
   const queryClient = useQueryClient();
   const canWrite = data?.canWrite ?? false;
   const owners = useOwners(canWrite).data ?? [];
   const [creating, setCreating] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
   const status = table.state.filters.status as LeadStatus | undefined;
-  const opened = data?.rows.find((l) => l.id === openId) ?? null;
+  const openLead = (id: string | null) => navigate({ pathname: id ? `/comercial/leads/${id}` : "/comercial", search });
   const save = async (lead: Lead, patch: Partial<LeadInput>) => {
     await updateLead(lead.id, patch);
     await queryClient.invalidateQueries({ queryKey: salesKeys.all });
@@ -299,24 +290,12 @@ export default function LeadsPage() {
     { id: "deal", header: "Deal", card: false, hidden: true, cell: (l) => <RelationCell to={l.deal ? `/deals/${l.deal.id}` : null}>{l.deal?.dealCode}</RelationCell> },
   ];
 
-  const panel = opened && (
-    <LeadPanel
-      key={opened.id}
-      lead={opened}
-      owners={owners}
-      canWrite={canWrite}
-      onClose={() => setOpenId(null)}
-      onSave={(patch) => save(opened, patch)}
-      onFixDates={() => navigate(`/comercial/leads/${opened.id}#${opened.submittedAt ? "reunion" : "submission"}`)}
-    />
-  );
-
   return (
-    <div className="xl:flex">
-      <div className="min-w-0 flex-1 space-y-5">
+    <>
+      <div className="space-y-5">
         <PageHeader
           title="Leads"
-          description={<span className="max-sm:hidden">Todos los orígenes en una sola tabla, con su Setter, su Closer y el deal.</span>}
+          description={<span className="max-sm:hidden">Todos los sources en una sola tabla, con Setter, Closer y conversión en cliente.</span>}
           actions={
             canWrite && !creating ? (
               <Button size="lg" onClick={() => setCreating(true)}>
@@ -340,9 +319,8 @@ export default function LeadsPage() {
           isFetching={isFetching}
           error={error}
           rowKey={(l) => l.id}
-          onRowClick={(l) => setOpenId((id) => (id === l.id ? null : l.id))}
-          cardHref={(l) => `/comercial/leads/${l.id}`}
-          selectedKey={openId}
+          onRowClick={(l) => openLead(l.id)}
+          selectedKey={openId ?? null}
           rowMenu={(l) => <LeadMenu lead={l} />}
           empty="Aún no hay leads. Crea el primero con «Nuevo lead»."
           searchPlaceholder="Buscar por empresa, contacto o correo"
@@ -352,22 +330,11 @@ export default function LeadsPage() {
             { key: "temperature", label: "Filtrar por temperatura", all: "Toda temperatura", options: LEAD_TEMPERATURES.map((t) => ({ value: t, label: LEAD_TEMPERATURE_LABELS[t] })) },
             ...(owners.length ? [{ key: "closerUserId", label: "Filtrar por Closer", all: "Todos los Closers", options: owners.map((o) => ({ value: o.id, label: o.name })) }] : []),
           ]}
-          grouping={{ label: "Agrupar por estado", value: (l) => l.status, order: LEAD_STATUSES, labels: LEAD_STATUS_LABELS }}
+          grouping={{ label: "Agrupar por estado", value: (l) => l.status, order: LEAD_STATUSES, labels: LEAD_STATUS_LABELS, chip: (v) => <LeadStatusBadge value={v as LeadStatus} />, countLabel: (n) => `${n} ${n === 1 ? "lead" : "leads"}` }}
         />
       </div>
 
-      {/* Vista rápida: fija a la derecha en pantallas anchas; en las demás, panel deslizable. */}
-      {wide && panel && (
-        <aside aria-label="Vista rápida del lead" className="sticky top-16 -mt-8 -mr-8 -mb-10 ml-8 h-[calc(100svh-4rem)] w-[22rem] shrink-0 border-l border-border bg-card">
-          {panel}
-        </aside>
-      )}
-      <Sheet open={!wide && Boolean(panel)} onOpenChange={(o) => !o && setOpenId(null)}>
-        <SheetContent side="right" showCloseButton={false} className="w-full max-w-sm gap-0 bg-card p-0 sm:max-w-sm">
-          <SheetTitle className="sr-only">Vista rápida del lead</SheetTitle>
-          {panel}
-        </SheetContent>
-      </Sheet>
-    </div>
+      {openId && <LeadDetailModal key={openId} id={openId} onClose={() => openLead(null)} />}
+    </>
   );
 }

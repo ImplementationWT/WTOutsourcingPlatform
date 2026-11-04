@@ -28,13 +28,13 @@ function writeCollapsed(titles: string[]) {
 
 const itemClass = (active: boolean) =>
   cn(
-    "group/item flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-    active ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground" : "text-sidebar-foreground/80 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground",
+    "group/item flex h-10 items-center gap-2.5 rounded-[10px] px-3 text-sm transition-colors",
+    active ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-muted",
   );
 
 /** Punto a la izquierda de cada opción: rojo en la activa. */
 function Dot({ active }: { active: boolean }) {
-  return <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full transition-colors", active ? "bg-sidebar-primary" : "bg-foreground/25 group-hover/item:bg-foreground/45")} />;
+  return <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full transition-colors", active ? "bg-sidebar-primary" : "bg-nav-dot")} />;
 }
 
 /** Botón «Buscar o ir a…» (abre el buscador; también con Ctrl K). */
@@ -86,7 +86,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                         <Dot active={exact || Boolean(item.also?.test(pathname))} />
                         <span className="flex-1 truncate">{item.label}</span>
                         {item.badge && badges[item.badge] > 0 && (
-                          <span className="rounded-full bg-foreground/10 px-1.5 text-[11px] font-semibold text-muted-foreground tabular-nums" aria-label={`${badges[item.badge]} ${item.badge === "backlog" ? "sin sprint" : "seguimientos pendientes"}`}>
+                          <span className="text-xs font-medium text-muted-foreground tabular-nums" aria-label={`${badges[item.badge]} ${item.badge === "backlog" ? "sin sprint" : "seguimientos pendientes"}`}>
                             {badges[item.badge]}
                           </span>
                         )}
@@ -110,7 +110,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                 aria-controls={id}
                 disabled={here}
                 onClick={() => toggle(group.title)}
-                className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-[11px] font-bold tracking-[0.12em] text-muted-foreground uppercase transition-colors hover:text-foreground disabled:cursor-default disabled:hover:text-muted-foreground"
+                className="flex w-full items-center justify-between rounded-md px-3 pt-2 pb-1.5 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase transition-colors hover:text-foreground disabled:cursor-default disabled:hover:text-muted-foreground"
               >
                 {group.title}
                 <ChevronDown aria-hidden className={cn("size-3.5 transition-transform", !open && "-rotate-90")} />
@@ -142,7 +142,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
 /** Barra lateral fija en pantallas grandes; en el celular la navegación vive en un panel (AppLayout). */
 export default function AppSidebar({ onSearch }: { onSearch?: () => void }) {
   return (
-    <aside className="sticky top-0 z-20 hidden h-svh w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex">
+    <aside className="sticky top-0 z-20 hidden h-svh w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex">
       <div className="px-5 pt-5 pb-4">
         <BrandLockup subtitle="Plataforma de la empresa" />
       </div>
