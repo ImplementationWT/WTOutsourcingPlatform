@@ -53,6 +53,9 @@ import {
 import { ResponseNotice } from "./ResponseNotice";
 import { LeadStatusBadge } from "./SalesBadges";
 import { useCreateDeal } from "./use-create-deal";
+import { slugify, useSites, useSitesConfig } from "@/features/sites/api";
+import { UploadSiteDialog } from "@/features/sites/SiteDialogs";
+import { SitesList } from "@/features/sites/SitesList";
 
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
@@ -697,6 +700,47 @@ function InfoTab({ data, canWrite, persist }: { data: LeadData; canWrite: boolea
   );
 }
 
+/**
+ * Propuestas del lead (prototipo): los sitios publicados en WTProposalPlatform ligados al lead y
+ * «Subir propuesta» con el lead ya elegido. Debajo, las propuestas que solo tienen un enlace.
+ */
+function LeadSites({ data, canWrite, adding, onAdd }: { data: LeadData; canWrite: boolean; adding: number; onAdd: () => void }) {
+  const { lead } = data;
+  const sites = useSites("live", { leadId: lead.id });
+  const configured = useSitesConfig().data?.configured;
+  const linked = new Set((sites.data?.items ?? []).map((s) => s.proposalId));
+  const others = data.proposals.filter((p) => !linked.has(p.id));
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="space-y-6">
+      <TabHead
+        title="Propuestas"
+        action={
+          canWrite &&
+          configured && (
+            <Button onClick={() => setOpen(true)}>
+              <Plus /> Subir propuesta
+            </Button>
+          )
+        }
+      />
+      {configured !== false && <SitesList sites={sites.data?.items} isLoading={sites.isLoading} canWrite={canWrite && (sites.data?.canWrite ?? false)} showLinks={false} empty="Aún no hay propuestas publicadas para este lead." />}
+      {(others.length > 0 || configured === false) && (
+        <div className="space-y-3">
+          <h4 className="text-caps-label">Enlaces y cotizaciones</h4>
+          <ProposalsTab key={`proposals-${adding}`} leadId={lead.id} proposals={others} canWrite={canWrite} startAdding={adding > 0 && configured === false} />
+          {configured === false && canWrite && !others.length && (
+            <Button variant="outline" onClick={onAdd}>
+              <Plus /> Agregar enlace
+            </Button>
+          )}
+        </div>
+      )}
+      {open && <UploadSiteDialog open onClose={() => setOpen(false)} lead={{ id: lead.id, name: lead.title }} suggestedName={slugify(`demo-prospecto-${lead.company || lead.title}`)} />}
+    </div>
+  );
+}
+
 type ModalTab = "info" | "activities" | "meetings" | "proposals" | "comms" | "demos" | "deals";
 
 /**
@@ -724,7 +768,7 @@ export function LeadDetailModal({ id, onClose }: { id: string; onClose: () => vo
         { id: "info", label: "Información" },
         { id: "activities", label: "Actividades", count: data.pendingActivities },
         { id: "meetings", label: "Reuniones" },
-        { id: "proposals", label: "Propuestas", count: data.proposals.length },
+        { id: "proposals", label: "Propuestas", count: data.proposals.length || undefined },
         { id: "comms", label: "Comunicaciones" },
         { id: "demos", label: "Demos", count: data.demos.length },
         { id: "deals", label: "Deals", count: data.deals.length },
@@ -804,21 +848,7 @@ export function LeadDetailModal({ id, onClose }: { id: string; onClose: () => vo
                         <MeetingsPanel base={leadBase(data.lead.id)} canWork={canWrite} deals={data.deals.map((d) => ({ id: d.id, dealCode: d.dealCode, title: d.title }))} />
                       </>
                     )}
-                    {tab === "proposals" && (
-                      <>
-                        <TabHead
-                          title="Propuestas"
-                          action={
-                            canWrite && (
-                              <Button onClick={() => add("proposals")}>
-                                <Plus /> Subir propuesta
-                              </Button>
-                            )
-                          }
-                        />
-                        <ProposalsTab key={`proposals-${adding?.n ?? 0}`} leadId={data.lead.id} proposals={data.proposals} canWrite={canWrite} startAdding={adding?.tab === "proposals"} />
-                      </>
-                    )}
+                    {tab === "proposals" && <LeadSites data={data} canWrite={canWrite} adding={adding?.tab === "proposals" ? adding.n : 0} onAdd={() => add("proposals")} />}
                     {tab === "comms" && (
                       <>
                         <TabHead title="Comunicaciones" />

@@ -11,6 +11,7 @@ import { createClaudeMeetingAnalyzer } from "./meetings/analyzer.js";
 import {
   appBaseDomain,
   loadAccountVaultKey,
+  loadProposalSites,
   loadReadAiSigningKey,
   loadAnthropicKey,
   loadEnv,
@@ -22,6 +23,7 @@ import {
 import { getProvider } from "./integrations/catalog.js";
 import { DEFAULT_TIMING } from "./jobs/types.js";
 import { registerSecret } from "./lib/redact.js";
+import { createSitesClient } from "./sales/sites-client.js";
 import { ServerDirectory } from "./servers/directory.js";
 import { AdminStore } from "./store/admin-store.js";
 import { InitialPasswordVault } from "./store/initial-password-vault.js";
@@ -40,6 +42,8 @@ const serverKeysKey = loadServerKeysKey(env);
 const anthropicKey = loadAnthropicKey(env);
 registerSecret(anthropicKey);
 const readAiSigningKey = loadReadAiSigningKey(env);
+const proposalSitesConfig = loadProposalSites(env);
+if (proposalSitesConfig) registerSecret(proposalSitesConfig.key);
 if (readAiSigningKey) registerSecret(readAiSigningKey.toString("base64"));
 if (server) registerSecret(server.provisionerKey);
 
@@ -89,6 +93,7 @@ const app = await buildApp({
   servers,
   vaultKey: accountVaultKey,
   readAiSigningKey,
+  proposalSites: proposalSitesConfig ? createSitesClient(proposalSitesConfig) : undefined,
   // Reuniones de Comercial y Operativa: la misma clave de Anthropic que el AI Developer.
   meetingAnalyzer: anthropicKey ? createClaudeMeetingAnalyzer(anthropicKey, env.ANTHROPIC_WORKSPACE) : undefined,
   ai: anthropicKey

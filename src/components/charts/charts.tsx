@@ -98,7 +98,7 @@ const niceMax = (max: number) => {
  * Barras verticales; con varias series se apilan (2px de separación entre segmentos). El valor
  * total va encima de cada barra; el detalle por serie, en el tooltip.
  */
-export function ColumnChart({ columns, series, format, height = 240 }: { columns: { label: string; values: Record<string, number> }[]; series: Series[]; format: (v: number) => string; height?: number }) {
+export function ColumnChart({ columns, series, format, height = 240, labelEvery = 1, totals: showTotals = true }: { columns: { label: string; values: Record<string, number> }[]; series: Series[]; format: (v: number) => string; height?: number; /** Cada cuántas columnas se escribe la etiqueta del eje (las demás quedan en el tooltip). */ labelEvery?: number; /** Valor encima de cada barra. */ totals?: boolean }) {
   const totals = columns.map((c) => series.reduce((n, s) => n + (c.values[s.key] ?? 0), 0));
   const { top, step } = niceMax(Math.max(0, ...totals));
   const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
@@ -120,7 +120,7 @@ export function ColumnChart({ columns, series, format, height = 240 }: { columns
             {columns.map((c, i) => (
               <Tip key={c.label} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end" text={`${c.label}: ${series.length > 1 ? series.filter((s) => c.values[s.key]).map((s) => `${s.label} ${format(c.values[s.key])}`).join(" · ") : format(totals[i])}`}>
                 <span className="absolute left-1/2 -translate-x-1/2 text-[11px] font-semibold whitespace-nowrap tabular-nums" style={{ bottom: `calc(${(totals[i] / top) * 100}% + 4px)` }}>
-                  {totals[i] ? format(totals[i]) : ""}
+                  {showTotals && totals[i] ? format(totals[i]) : ""}
                 </span>
                 <div className="flex w-[72%] max-w-16 flex-col-reverse gap-[2px]" style={{ height: `${(totals[i] / top) * 100}%` }}>
                   {series.map((s, k) => {
@@ -136,9 +136,9 @@ export function ColumnChart({ columns, series, format, height = 240 }: { columns
         </div>
       </div>
       <div className="flex gap-1 pl-14">
-        {columns.map((c) => (
-          <span key={c.label} className="min-w-0 flex-1 truncate text-center text-[11px] text-muted-foreground" title={c.label}>
-            {c.label}
+        {columns.map((c, i) => (
+          <span key={c.label} className="min-w-0 flex-1 overflow-visible text-center text-[11px] whitespace-nowrap text-muted-foreground" title={c.label}>
+            {i % labelEvery === 0 ? c.label : ""}
           </span>
         ))}
       </div>

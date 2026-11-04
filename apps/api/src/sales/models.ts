@@ -124,6 +124,9 @@ export interface ProposalDoc {
   area: "commercial" | "operations";
   /** Con líneas, el monto es la suma de sus subtotales (calc). */
   lines?: ProposalLineDoc[];
+  /** Sitio en WTProposalPlatform (Propuestas): su id allá y el nombre del subdominio. */
+  siteId?: string;
+  siteName?: string;
   mondayId?: string;
   sentAt?: Date;
   decidedAt?: Date;

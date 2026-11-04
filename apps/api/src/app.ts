@@ -30,9 +30,11 @@ import { registerCommunicationRoutes } from "./routes/communications.js";
 import { registerInvoiceRoutes } from "./routes/invoices.js";
 import { registerPayoutRoutes } from "./routes/payouts.js";
 import { registerTableroRoutes } from "./routes/tableros.js";
+import { registerSiteRoutes } from "./routes/sites.js";
 import { registerTaskRoutes } from "./routes/tasks.js";
 import { registerViewRoutes } from "./routes/views.js";
 import { ServerDirectory } from "./servers/directory.js";
+import type { SitesClient } from "./sales/sites-client.js";
 import type { AdminStore } from "./store/admin-store.js";
 
 export interface AppOptions {
@@ -52,9 +54,11 @@ export interface AppOptions {
   meetingAnalyzer?: MeetingAnalyzer;
   /** Signing key del webhook de Read.ai; sin ella el webhook responde 503. */
   readAiSigningKey?: Buffer;
+  /** WTProposalPlatform (sitios de las propuestas); sin ella, /api/sites responde 503. */
+  proposalSites?: SitesClient;
 }
 
-export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStream, ai, servers: givenServers, vaultKey, meetingAnalyzer, readAiSigningKey }: AppOptions) {
+export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStream, ai, servers: givenServers, vaultKey, meetingAnalyzer, readAiSigningKey, proposalSites }: AppOptions) {
   const app = Fastify({
     logger: loggerOptions({ level: logLevel, stream: logStream }),
     // La API solo escucha en 127.0.0.1 detrás de nginx: se confía únicamente en ese salto, así
@@ -141,6 +145,7 @@ export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStrea
   await registerInvoiceRoutes(app, { store });
   await registerPayoutRoutes(app, { store, users });
   await registerTableroRoutes(app, { store });
+  await registerSiteRoutes(app, { store, sites: proposalSites });
   await registerMeetingInboxRoutes(app, { store, processing: meetings, signingKey: readAiSigningKey });
 
   app.addHook("onClose", async () => {

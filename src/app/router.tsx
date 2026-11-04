@@ -16,6 +16,7 @@ import ActivitiesPage from "@/features/commercial/ActivitiesPage";
 import DemosPage from "@/features/commercial/DemosPage";
 import ProposalDetailPage from "@/features/commercial/ProposalDetailPage";
 import ProposalsPage from "@/features/commercial/ProposalsPage";
+import SitesPage from "@/features/sites/SitesPage";
 import ContactDetailPage from "@/features/core/ContactDetailPage";
 import ContactsPage from "@/features/core/ContactsPage";
 import DealDetailPage from "@/features/core/DealDetailPage";
@@ -47,7 +48,8 @@ export const router = createBrowserRouter([
           { path: "/comercial/comunicaciones", element: <RequireModule module="communications"><CommsPage /></RequireModule> },
           { path: "/comercial/actividades", element: <ActivitiesPage /> },
           { path: "/comercial/demos", element: <DemosPage /> },
-          { path: "/comercial/propuestas", element: <ProposalsPage /> },
+          { path: "/comercial/propuestas", element: <SitesPage /> },
+          { path: "/comercial/cotizaciones", element: <ProposalsPage /> },
           { path: "/comercial/propuestas/:id", element: <ProposalDetailPage /> },
           { path: "/comercial/contactos", element: <ContactsPage /> },
           { path: "/comercial/contactos/:id", element: <ContactDetailPage /> },

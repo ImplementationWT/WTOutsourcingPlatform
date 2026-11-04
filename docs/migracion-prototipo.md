@@ -33,7 +33,8 @@ por estar en Dashboards) y el selector «Ver como» de Mi trabajo y Tasks.
 
 1. **Dashboards:** Financiero, Comercial, Operativo (`/tableros/…`). No hay otros dashboards además
    de estos tres y el de Infraestructura, que queda intacto.
-2. **Comercial:** Contactos, Leads, Propuestas, Meetings, Comunicaciones, Actividades, Demos.
+2. **Comercial:** Contactos, Leads, Propuestas, Meetings, Comunicaciones. Actividades y Demos
+   salen del menú: viven en el detalle del lead y sus rutas siguen activas.
 3. **Operativa:** Mi trabajo, Proyectos, Tasks.
 4. **Financiera:** Invoices, Pagos / Comisiones.
 5. **Infraestructura:** sin cambios.
@@ -206,3 +207,35 @@ usaron valores nuevos de enums, correr el script de reversa de cada paso antes d
   {status: "lost"}})` y `db.sales_activities.updateMany({kind: {$in: ["triage_call",
   "create_demo", "demo_meeting", "create_proposal", "send_proposal", "closing_meeting",
   "send_onboarding"]}}, {$set: {kind: "other"}})`.
+
+## Paso 10 · Estilo del prototipo, Leads, Proyectos y Propuestas
+
+- **Estilo:**
+  - paleta de `Sistema.dc.html` como tokens (claro y oscuro) en `src/index.css`;
+  - Inter, chips `chip-*`, formularios `proto-form`, KPIs y botón Claro/Oscuro.
+  - Las pantallas protegidas y la insignia del usuario conservan Work Sans (`skin-legacy`).
+- **Leads y Proyectos:** lista agrupada (grupos plegables) y detalle en ventana grande, como en el
+  prototipo. `/comercial/leads/:id` y `/operativa/:id` abren la lista con el detalle encima.
+- **Propuestas (decisión: conectar con WTProposalPlatform):**
+  - Las pantallas son las del prototipo: tarjetas, subir (archivo, ZIP o código), actualizar,
+    ver, estadísticas, copiar, personalizar (subdominio, contraseña, inicio), descargar ZIP,
+    archivar, papelera y eliminar.
+  - Los archivos y el sitio público siguen en WTProposalPlatform (`<nombre>.sites.whatever.tech`);
+    esta API la llama en `/api/sites/*` con una llave de servidor. No se toca la infraestructura
+    del VPS.
+  - Cada sitio queda ligado a su lead o proyecto (`ProposalDoc.siteId`). Las propuestas antiguas,
+    que solo tenían enlace, se ligan por su URL.
+  - Las cotizaciones con líneas siguen en `/comercial/cotizaciones`.
+  - **Para activarlo:**
+    1. En WTProposalPlatform, fusionar el PR «Llave de servidor». Crear el secret
+       `PLATFORM_API_KEY` (32+ caracteres aleatorios). Volver a ejecutar `deploy/setup-server.sh`
+       (cambió `app-deploy`) y luego el Deploy.
+    2. En esta API:
+       - `PROPOSAL_SITES_URL=https://panel.sites.whatever.tech`;
+       - `PROPOSAL_SITES_KEY_PATH=<archivo con la misma llave>` (montado como los demás secretos).
+       Sin ellas, Propuestas muestra un aviso y `/api/sites` responde 503.
+    3. nginx: el bloque `location /api/sites/` (subidas de hasta 50 MB) está en
+       `deploy/nginx/launchpad.whatever.tech.conf`; recargar nginx al desplegar.
+  - **Rollback:**
+    - quitar las dos variables: la pantalla muestra el aviso, sin tocar datos;
+    - las propuestas creadas aquí guardan su URL, así que siguen visibles en el lead como enlaces.

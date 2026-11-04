@@ -5,6 +5,7 @@
 import { MongoClient } from "mongodb";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { buildApp } from "../src/app.js";
+import { createSitesClient } from "../src/sales/sites-client.js";
 import { hashPassword } from "../src/auth/password.js";
 import { JobEngine } from "../src/jobs/engine.js";
 import { AdminStore } from "../src/store/admin-store.js";
@@ -128,7 +129,9 @@ const app = await buildApp({
   deps: fakes.deps,
   logLevel: "warn",
   auth: { adminUsername: "admin", adminPasswordHash: await hashPassword(PASSWORD), sessionSecret: "demo-".repeat(10), secureCookies: false },
-  ai: { agent, config: { sessionBudgetCents: 1000, workspace: "default" } }
+  ai: { agent, config: { sessionBudgetCents: 1000, workspace: "default" } },
+  // Propuestas: con DEMO_SITES_URL y DEMO_SITES_KEY, una WTProposalPlatform local (opcional).
+  proposalSites: process.env.DEMO_SITES_URL && process.env.DEMO_SITES_KEY ? createSitesClient({ baseUrl: process.env.DEMO_SITES_URL, key: process.env.DEMO_SITES_KEY }) : undefined
 });
 await app.listen({ port: PORT, host: "127.0.0.1" });
 

@@ -92,6 +92,10 @@ export const envSchema = z.object({
   /** Clave AES-256 (32 bytes en base64) del vault de cuentas de Operativa. */
   ACCOUNT_VAULT_KEY_PATH: optional(z.string().min(1)),
   /** Archivo con la signing key (base64) del webhook de Read.ai; sin ella el webhook responde 503. */
+  // Propuestas: WTProposalPlatform (panel.sites.whatever.tech) aloja los sitios; esta API la llama
+  // con su llave de servidor (archivo con la misma PLATFORM_API_KEY de esa plataforma).
+  PROPOSAL_SITES_URL: optional(z.string().regex(/^https?:\/\/[^\s/]+$/, "debe ser el origen, p. ej. https://panel.sites.whatever.tech")),
+  PROPOSAL_SITES_KEY_PATH: optional(z.string().min(1)),
   READ_AI_SIGNING_KEY_PATH: optional(z.string().min(1)),
 
   // Sesión del panel
@@ -201,6 +205,14 @@ export function loadReadAiSigningKey(env: Env) {
     throw new Error("Configuración inválida:\n  - READ_AI_SIGNING_KEY_PATH: el archivo debe contener la signing key del webhook de Read.ai (base64)");
   }
   return key;
+}
+
+/** WTProposalPlatform (origen y llave de servidor), o undefined si Propuestas no está conectada. */
+export function loadProposalSites(env: Env) {
+  if (!env.PROPOSAL_SITES_URL || !env.PROPOSAL_SITES_KEY_PATH) return undefined;
+  const key = readFileSync(env.PROPOSAL_SITES_KEY_PATH, "utf8").trim();
+  if (key.length < 32) throw new Error("Configuración inválida:\n  - PROPOSAL_SITES_KEY_PATH: el archivo debe contener la PLATFORM_API_KEY de WTProposalPlatform (32+ caracteres)");
+  return { baseUrl: env.PROPOSAL_SITES_URL, key };
 }
 
 /** Clave de la API de Anthropic (archivo), o undefined si el AI Developer no está configurado. */
