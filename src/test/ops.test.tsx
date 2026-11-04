@@ -80,22 +80,23 @@ describe("menú por áreas", () => {
   // Solo los títulos de grupo de la barra lateral (la página tiene su propio encabezado "Operativa").
   const sections = () =>
     within(screen.getByRole("navigation", { name: "Áreas" }))
-      .queryAllByText(/^(Dashboards|Comercial|Operativa|Financiera|Infraestructura)$/)
+      .getAllByRole("button")
+      .filter((b) => b.hasAttribute("aria-expanded"))
       .map((n) => n.textContent);
 
-  it("CEO/CCO ve todas las áreas (Dashboards, que aún no existe, al pie con «Pronto»)", () => {
+  it("CEO/CCO ve todas las áreas, con Dashboards arriba", () => {
     renderAt("/operativa", BOSS, (async () => json(page([]))) as typeof fetch);
-    expect(sections()).toEqual(["Comercial", "Operativa", "Financiera", "Infraestructura", "Dashboards"]);
+    expect(sections()).toEqual(["Dashboards", "Comercial", "Operativa", "Financiera", "Infraestructura"]);
   });
 
   it("Comercial: Comercial y Operativa, sin Infraestructura", () => {
     renderAt("/operativa", COMMERCIAL, (async () => json(page([]))) as typeof fetch);
-    expect(sections()).toEqual(["Comercial", "Operativa", "Dashboards"]);
+    expect(sections()).toEqual(["Dashboards", "Comercial", "Operativa"]);
   });
 
   it("Financiera: Comercial (en lectura), Operativa y Financiera", () => {
     renderAt("/operativa", FINANCE, (async () => json(page([]))) as typeof fetch);
-    expect(sections()).toEqual(["Comercial", "Operativa", "Financiera", "Dashboards"]);
+    expect(sections()).toEqual(["Dashboards", "Comercial", "Operativa", "Financiera"]);
     expect(screen.getByRole("link", { name: /^Leads$/ })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /Sources de leads/ })).toBeNull();
     expect(screen.queryByRole("link", { name: /Reuniones por asignar/ })).toBeNull();
@@ -104,7 +105,7 @@ describe("menú por áreas", () => {
 
   it("developer: Meetings (en Comercial), Operativa e Infraestructura", () => {
     renderAt("/operativa", DEV, (async () => json(page([]))) as typeof fetch);
-    expect(sections()).toEqual(["Comercial", "Operativa", "Infraestructura", "Dashboards"]);
+    expect(sections()).toEqual(["Dashboards", "Comercial", "Operativa", "Infraestructura"]);
     expect(screen.getByRole("link", { name: /^Meetings$/ })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /^Leads$/ })).toBeNull();
   });
@@ -120,7 +121,7 @@ describe("menú por áreas", () => {
     renderAt("/operativa", BOSS, (async () => json(page([]))) as typeof fetch);
     const nav = within(screen.getByRole("navigation", { name: "Áreas" }));
     const links = nav.getAllByRole("link").map((a) => a.textContent);
-    expect(links).toEqual(["Contactos", "Leads", "Propuestas", "Meetings", "Comunicaciones", "Actividades", "Demos", "Mi trabajo", "Proyectos", "Tasks", "Invoices", "Pagos / Comisiones", "Dashboard", "Apps y repositorios", "Integraciones", "Backlog / Sprints"]);
+    expect(links).toEqual(["Financiero", "Comercial", "Operativo", "Contactos", "Leads", "Propuestas", "Meetings", "Comunicaciones", "Actividades", "Demos", "Mi trabajo", "Proyectos", "Tasks", "Invoices", "Pagos / Comisiones", "Dashboard", "Apps y repositorios", "Integraciones", "Backlog / Sprints"]);
     expect(screen.getByRole("link", { name: /Contactos/ }).getAttribute("href")).toBe("/comercial/contactos");
     expect(screen.queryByRole("link", { name: /Empresas/ })).toBeNull();
     expect(screen.queryByRole("link", { name: /^Deals$/ })).toBeNull();

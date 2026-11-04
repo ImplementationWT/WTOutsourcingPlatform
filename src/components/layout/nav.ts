@@ -51,9 +51,9 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: "Dashboards",
     items: [
-      { to: "/tableros/financiero", label: "Financiero", icon: Landmark, module: "dashboards", soon: true },
-      { to: "/tableros/comercial", label: "Comercial", icon: BarChart3, module: "dashboards", soon: true },
-      { to: "/tableros/operativo", label: "Operativo", icon: Gauge, module: "dashboards", soon: true },
+      { to: "/tableros/financiero", label: "Financiero", icon: Landmark, module: "dashboards" },
+      { to: "/tableros/comercial", label: "Comercial", icon: BarChart3, module: "dashboards" },
+      { to: "/tableros/operativo", label: "Operativo", icon: Gauge, module: "dashboards" },
     ],
   },
   {

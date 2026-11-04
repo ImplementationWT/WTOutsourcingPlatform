@@ -172,3 +172,21 @@ usaron valores nuevos de enums, correr el script de reversa de cada paso antes d
   con los demás (en paralelo), no al registrar cada ruta.
 - **Rollback:** volver a la imagen anterior (ignora `seniority`); para limpiar,
   `db.fin_payouts.drop()` y `db.users.updateMany({}, {$unset: {seniority: ""}})`.
+
+## Paso 8 · Dashboards Financiero, Comercial y Operativo
+
+- **Rutas:** `/tableros/financiero`, `/tableros/comercial` y `/tableros/operativo`, en el grupo
+  Dashboards arriba del menú (D8). El Dashboard de Infraestructura (`/dashboard`) no cambia.
+- **Datos (sin reglas nuevas):** el Financiero lee Invoices (solo boss y finance); el Comercial,
+  `GET /api/tableros/comercial` (quienes leen Leads); el Operativo, Tasks y Proyectos con el alcance
+  por equipo. Quien entra a un dashboard sin acceso a sus datos ve un aviso y no se piden datos.
+- **Comercial sin pipeline:** «Pipeline abierto», «Ganado» y «Pipeline por stage» no se implementan
+  hasta decidir cómo se relacionan los deals con Comercial (pendiente 4).
+- **Gráficos** (`src/components/charts`): barras verticales (apiladas por serie), barras horizontales,
+  donas y la cuadrícula de horas por persona (Días, Semanas o Meses; Invertidas, Facturables o
+  Proyectadas). Tooltip CSS al pasar el mouse y «Ver como tabla» en cada tarjeta.
+- **Colores:** tokens `--viz-1…5` (azul, amarillo, violeta, verde, rojo) con los tonos de la marca,
+  validados en claro y oscuro con el validador de dataviz contra la superficie de las tarjetas. Más
+  de 5 series se agrupan en «Otros» (no se ciclan colores). Los estados (tareas, stages, tiempo en
+  etapa) usan los tonos de estado.
+- **Rollback:** volver a la imagen anterior; no hay datos nuevos.

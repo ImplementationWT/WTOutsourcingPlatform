@@ -6,6 +6,7 @@ import BacklogPage from "@/features/tasks/BacklogPage";
 import CommsPage from "@/features/communications/CommsPage";
 import InvoicesPage from "@/features/finance/InvoicesPage";
 import PayoutsPage from "@/features/finance/PayoutsPage";
+import { CommercialDashboard, FinancialDashboard, OperationalDashboard } from "@/features/tableros/DashboardPages";
 import Home from "@/app/Home";
 import AppLayout from "@/components/layout/AppLayout";
 import UsersPage from "@/features/admin/UsersPage";
@@ -60,6 +61,10 @@ export const router = createBrowserRouter([
           ...["/comercial/deals", "/operativa/deals"].map((path) => ({ path, element: <Navigate to="/deals" replace /> })),
           { path: "/comercial/reuniones", element: <Navigate to="/meetings" replace /> },
           { path: "/financiera", element: <Navigate to="/financiera/invoices" replace /> },
+          { path: "/tableros", element: <Navigate to="/tableros/operativo" replace /> },
+          { path: "/tableros/financiero", element: <RequireModule module="dashboards"><FinancialDashboard /></RequireModule> },
+          { path: "/tableros/comercial", element: <RequireModule module="dashboards"><CommercialDashboard /></RequireModule> },
+          { path: "/tableros/operativo", element: <RequireModule module="dashboards"><OperationalDashboard /></RequireModule> },
           ...["/comercial/clientes", "/comercial/empresas/*", "/comercial/partners/*", "/comercial/catalogo", "/comercial/sources"].map((path) => ({ path, element: <Navigate to="/comercial" replace /> })),
           { path: "/operativa", element: <OpsProjectsPage /> },
           { path: "/operativa/tasks", element: <RequireModule module="tasks"><TasksPage /></RequireModule> },

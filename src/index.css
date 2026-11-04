@@ -35,6 +35,16 @@
   --chart-3: #f5b83d;
   --chart-4: #34c38f;
   --chart-5: #8b7cf6;
+  /*
+   * Series de los dashboards: los mismos tonos de --chart-*, con el amarillo un paso más oscuro y
+   * en orden fijo (azul, amarillo, violeta, verde, rojo) para separar bien con daltonismo.
+   * Validado con el validador de dataviz contra la superficie de las tarjetas, en claro y oscuro.
+   */
+  --viz-1: #4f86ff;
+  --viz-2: #e0a21c;
+  --viz-3: #8b7cf6;
+  --viz-4: #34c38f;
+  --viz-5: #ff3054;
   --radius: 0.625rem;
   /*
    * Sistema de diseño (docs: src/components/ui). Espaciado en la escala de 4 px de Tailwind
@@ -165,6 +175,11 @@
   --chart-3: #f7c04f;
   --chart-4: #3ccf95;
   --chart-5: #a193ff;
+  --viz-1: #5b8cff;
+  --viz-2: #c98500;
+  --viz-3: #8b7cf6;
+  --viz-4: #1f9e6c;
+  --viz-5: #ff4560;
   --status-fg-mix: 72%;
   --shadow-popover: 0 8px 24px -8px rgb(0 0 0 / 50%), 0 2px 6px -2px rgb(0 0 0 / 30%);
   --shadow-overlay: 0 24px 64px -16px rgb(0 0 0 / 60%);
