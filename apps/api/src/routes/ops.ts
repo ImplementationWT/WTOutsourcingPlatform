@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import { canSeeClient } from "../auth/access.js";
+import { MODULE_ACCESS } from "../auth/modules.js";
 import { requireAuth, requireBoss } from "../auth/session.js";
 import type { SessionUser } from "../auth/users.js";
 import { open, seal } from "../lib/server-cipher.js";
@@ -473,7 +474,20 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
     if (!project) return reply;
     const present = await people([project]);
     const user = request.user!;
-    return { project: present(project), permissions: { manage: canManageProject(user, project), work: canWorkOnProject(user, project) } };
+    // Horas y monto cobrados (invoices en Paid): solo para quien ve Financiera.
+    let finance: { paidHours: number; paidCents: number } | null = null;
+    if ((MODULE_ACCESS.invoices as readonly string[]).includes(user.role)) {
+      const [paid] = await store.db
+        .collection("fin_invoices")
+        .aggregate<{ hours: number; cents: number }>([
+          { $match: { projectId: project._id, stage: "paid", deletedAt: null } },
+          { $lookup: { from: "ops_deals", localField: "dealId", foreignField: "_id", as: "deal" } },
+          { $group: { _id: null, hours: { $sum: "$hours" }, cents: { $sum: { $multiply: ["$hours", { $ifNull: [{ $first: "$deal.rateCents" }, 0] }] } } } }
+        ])
+        .toArray();
+      finance = { paidHours: paid?.hours ?? 0, paidCents: Math.round(paid?.cents ?? 0) };
+    }
+    return { project: present(project), permissions: { manage: canManageProject(user, project), work: canWorkOnProject(user, project) }, finance };
   });
 
   app.patch("/api/ops/projects/:id", { preHandler: requireAuth }, async (request, reply) => {

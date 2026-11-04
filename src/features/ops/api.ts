@@ -253,7 +253,7 @@ export function useOpsProjects(query: string) {
 export function useOpsProject(id: string) {
   return useQuery({
     queryKey: opsKeys.project(id),
-    queryFn: () => apiFetch<{ project: OpsProject; permissions: { manage: boolean; work: boolean } }>(`/api/ops/projects/${id}`),
+    queryFn: () => apiFetch<{ project: OpsProject; permissions: { manage: boolean; work: boolean }; finance?: { paidHours: number; paidCents: number } | null }>(`/api/ops/projects/${id}`),
   });
 }
 

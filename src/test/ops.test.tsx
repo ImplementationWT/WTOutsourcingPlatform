@@ -83,9 +83,9 @@ describe("menú por áreas", () => {
       .queryAllByText(/^(Dashboards|Comercial|Operativa|Financiera|Infraestructura)$/)
       .map((n) => n.textContent);
 
-  it("CEO/CCO ve todas las áreas (Dashboards y Financiera, que aún no existen, al pie con «Pronto»)", () => {
+  it("CEO/CCO ve todas las áreas (Dashboards, que aún no existe, al pie con «Pronto»)", () => {
     renderAt("/operativa", BOSS, (async () => json(page([]))) as typeof fetch);
-    expect(sections()).toEqual(["Comercial", "Operativa", "Infraestructura", "Dashboards", "Financiera"]);
+    expect(sections()).toEqual(["Comercial", "Operativa", "Financiera", "Infraestructura", "Dashboards"]);
   });
 
   it("Comercial: Comercial y Operativa, sin Infraestructura", () => {
@@ -95,7 +95,7 @@ describe("menú por áreas", () => {
 
   it("Financiera: Comercial (en lectura), Operativa y Financiera", () => {
     renderAt("/operativa", FINANCE, (async () => json(page([]))) as typeof fetch);
-    expect(sections()).toEqual(["Comercial", "Operativa", "Dashboards", "Financiera"]);
+    expect(sections()).toEqual(["Comercial", "Operativa", "Financiera", "Dashboards"]);
     expect(screen.getByRole("link", { name: /^Leads$/ })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /Sources de leads/ })).toBeNull();
     expect(screen.queryByRole("link", { name: /Reuniones por asignar/ })).toBeNull();
@@ -120,7 +120,7 @@ describe("menú por áreas", () => {
     renderAt("/operativa", BOSS, (async () => json(page([]))) as typeof fetch);
     const nav = within(screen.getByRole("navigation", { name: "Áreas" }));
     const links = nav.getAllByRole("link").map((a) => a.textContent);
-    expect(links).toEqual(["Contactos", "Leads", "Propuestas", "Meetings", "Comunicaciones", "Actividades", "Demos", "Mi trabajo", "Proyectos", "Tasks", "Dashboard", "Apps y repositorios", "Integraciones", "Backlog / Sprints"]);
+    expect(links).toEqual(["Contactos", "Leads", "Propuestas", "Meetings", "Comunicaciones", "Actividades", "Demos", "Mi trabajo", "Proyectos", "Tasks", "Invoices", "Dashboard", "Apps y repositorios", "Integraciones", "Backlog / Sprints"]);
     expect(screen.getByRole("link", { name: /Contactos/ }).getAttribute("href")).toBe("/comercial/contactos");
     expect(screen.queryByRole("link", { name: /Empresas/ })).toBeNull();
     expect(screen.queryByRole("link", { name: /^Deals$/ })).toBeNull();
