@@ -1,6 +1,8 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { RequireModule } from "@/components/layout/RequireModule";
 import TasksPage from "@/features/tasks/TasksPage";
+import MyWorkPage from "@/features/tasks/MyWorkPage";
+import BacklogPage from "@/features/tasks/BacklogPage";
 import Home from "@/app/Home";
 import AppLayout from "@/components/layout/AppLayout";
 import UsersPage from "@/features/admin/UsersPage";
@@ -56,6 +58,8 @@ export const router = createBrowserRouter([
           ...["/comercial/clientes", "/comercial/empresas/*", "/comercial/partners/*", "/comercial/catalogo", "/comercial/sources"].map((path) => ({ path, element: <Navigate to="/comercial" replace /> })),
           { path: "/operativa", element: <OpsProjectsPage /> },
           { path: "/operativa/tasks", element: <RequireModule module="tasks"><TasksPage /></RequireModule> },
+          { path: "/operativa/mi-trabajo", element: <RequireModule module="myWork"><MyWorkPage /></RequireModule> },
+          { path: "/operativa/backlog", element: <RequireModule module="backlog"><BacklogPage /></RequireModule> },
           { path: "/operativa/:id", element: <OpsProjectDetailPage /> },
           { path: "/dashboard", element: <DashboardPage /> },
           { path: "/projects", element: <ProjectsPage /> },

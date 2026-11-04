@@ -20,7 +20,7 @@ function bottomItems(role: UserRole | undefined): Pick<NavItem, "to" | "label" |
   const projects = { to: "/operativa", label: "Proyectos", end: true, also: /^\/operativa\/[^/]+$/ };
   const meetings = { to: "/meetings", label: "Meetings" };
   if (role === "boss" || role === "commercial" || role === "finance") return [{ to: "/comercial", label: "Leads", end: true, also: /^\/comercial\/leads\// }, meetings, projects];
-  return [meetings, projects];
+  return [{ to: "/operativa/mi-trabajo", label: "Mi trabajo" }, meetings, projects];
 }
 
 function Breadcrumbs({ crumbs }: { crumbs: Crumb[] }) {

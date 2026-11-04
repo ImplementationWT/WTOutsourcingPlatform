@@ -110,7 +110,8 @@ export function useBoardAction() {
   return async <T,>(action: () => Promise<T>, failure = "No se pudo guardar el cambio.") => {
     try {
       const result = await action();
-      await Promise.all([queryClient.invalidateQueries({ queryKey: boardKey }), queryClient.invalidateQueries({ queryKey: ["ops"] })]);
+      // Tablero, contador del backlog y proyectos (que suman horas y avance).
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ["tasks"] }), queryClient.invalidateQueries({ queryKey: ["ops"] })]);
       return result;
     } catch (err) {
       toast.error(failure, { description: errorText(err, "Inténtalo de nuevo.") });

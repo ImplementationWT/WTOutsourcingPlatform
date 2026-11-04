@@ -149,6 +149,13 @@ export async function registerTaskRoutes(app: FastifyInstance, { store }: { stor
     };
   });
 
+  /** Para el contador del menú: tareas (no subtareas) sin sprint en los proyectos visibles. */
+  app.get("/api/tasks/backlog-count", { preHandler: requireModule("backlog") }, async (request) => {
+    const ids = (await visibleProjects(request.user!)).map((p) => p._id);
+    const count = ids.length ? await store.opsTasks.countDocuments({ projectId: { $in: ids }, parentTaskId: null, sprintId: null, deletedAt: null }) : 0;
+    return { count };
+  });
+
   app.post("/api/tasks", guard, async (request, reply) => {
     const body = createTaskSchema.safeParse(request.body);
     if (!body.success) return invalid(reply, body.error);

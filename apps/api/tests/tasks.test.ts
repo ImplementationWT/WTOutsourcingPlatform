@@ -143,3 +143,17 @@ describe("sprints", () => {
     expect((await ana("POST", "/api/tasks", { projectId: project.id, title: "X", sprintId: "33333333-3333-4333-8333-333333333333" })).status).toBe(400);
   });
 });
+
+describe("backlog", () => {
+  it("cuenta las tareas sin sprint de los proyectos visibles (no subtareas ni borradas)", async () => {
+    const { ana, as, project } = await world();
+    const s1 = (await ana("POST", "/api/sprints", { projectId: project.id, name: "MVP", startDate: "2026-11-02", endDate: "2026-11-13" })).body.sprint;
+    const loose = (await ana("POST", "/api/tasks", { projectId: project.id, title: "Sin sprint" })).body.task;
+    await ana("POST", "/api/tasks", { projectId: project.id, parentTaskId: loose.id, title: "Subtarea" });
+    await ana("POST", "/api/tasks", { projectId: project.id, title: "En sprint", sprintId: s1.id });
+    const gone = (await ana("POST", "/api/tasks", { projectId: project.id, title: "Borrada" })).body.task;
+    await ana("DELETE", `/api/tasks/${gone.id}`);
+    expect((await ana("GET", "/api/tasks/backlog-count")).body.count).toBe(1);
+    expect((await (await as("olga"))("GET", "/api/tasks/backlog-count")).body.count).toBe(0);
+  });
+});

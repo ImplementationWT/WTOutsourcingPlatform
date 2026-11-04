@@ -109,3 +109,16 @@ usaron valores nuevos de enums, correr el script de reversa de cada paso antes d
   {$set: {status: "in_progress"}})`. Para limpiar del todo: borrar las subtareas
   (`{parentTaskId: {$type: "string"}}`) y las tareas con `deletedAt` de tipo fecha, y quitar
   `ops_sprints` y `ops_task_updates`. Los campos nuevos los ignora la versión anterior.
+
+## Paso 4 · Mi trabajo y Backlog / Sprints
+
+- **Mi trabajo** (`/operativa/mi-trabajo`): tareas y subtareas abiertas de una persona agrupadas en
+  Vencidas, Esta semana, Próximas, Sin fecha y Completadas (las 5 últimas). «Ver como» elige a otra
+  persona de los equipos visibles. Status y horas invertidas se cambian ahí mismo, con las reglas de
+  Tasks (el developer, solo lo suyo).
+- **Backlog / Sprints** (`/operativa/backlog`): tareas sin sprint con owner y sprint; capacidad por
+  sprint = developers del proyecto × días hábiles × 6 h, con alerta de sobrecarga general y por
+  persona; disponibilidad de developers (los que no tienen tareas, primero).
+- **Menú:** Backlog / Sprints al final, con el contador de tareas sin sprint
+  (`GET /api/tasks/backlog-count`). En el celular, los roles de equipo ven Mi trabajo en la barra.
+- **Datos:** no hay cambios de esquema: todo sale de Tasks. **Rollback:** volver a la imagen anterior.

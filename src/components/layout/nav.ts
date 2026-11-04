@@ -29,6 +29,8 @@ export interface NavItem {
   icon: LucideIcon;
   /** Quién la ve: el acceso vive en MODULE_ACCESS (src/lib/access.ts). */
   module: ModuleId;
+  /** Contador al lado (lo calcula `useNavBadges`). */
+  badge?: "backlog";
   /** Pantallas que aún no existen: no se muestran como enlace. */
   soon?: boolean;
   /** Rutas que también lo marcan como activo (p. ej. el detalle de un lead). */
@@ -69,7 +71,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: "Operativa",
     items: [
-      { to: "/operativa/mi-trabajo", label: "Mi trabajo", icon: UserCheck, module: "myWork", soon: true },
+      { to: "/operativa/mi-trabajo", label: "Mi trabajo", icon: UserCheck, module: "myWork" },
       { to: "/operativa", label: "Proyectos", icon: BriefcaseBusiness, module: "projects", end: true, also: /^\/operativa\/(?!mi-trabajo$|tasks$|backlog$)[^/]+$/ },
       { to: "/operativa/tasks", label: "Tasks", icon: ClipboardList, module: "tasks" },
     ],
@@ -91,7 +93,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: "",
-    items: [{ to: "/operativa/backlog", label: "Backlog / Sprints", icon: KanbanSquare, module: "backlog", soon: true }],
+    items: [{ to: "/operativa/backlog", label: "Backlog / Sprints", icon: KanbanSquare, module: "backlog", badge: "backlog" }],
   },
 ];
 
