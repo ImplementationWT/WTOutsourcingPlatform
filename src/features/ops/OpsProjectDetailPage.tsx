@@ -205,7 +205,7 @@ function ProjectData({ project, canManage }: { project: OpsProject; canManage: b
 }
 
 /** Resumen calculado en el servidor: horas vendidas, facturables y avance (§4.2). */
-function SummaryCard({ project }: { project: OpsProject }) {
+function SummaryCard({ project, finance }: { project: OpsProject; finance?: { paidHours: number; paidCents: number } | null }) {
   const s = project.summary;
   const rows: [string, ReactNode][] = [
     ["Horas vendidas", <TotalCell hours={s.soldHours} strong />],
@@ -213,6 +213,13 @@ function SummaryCard({ project }: { project: OpsProject }) {
     ["Facturable vs deals", <TotalCell hours={s.billableVsSold} strong />],
     ["Valor vendido", <TotalCell cents={s.amountCents} strong />],
     ["Hourly rate", <span className="font-semibold tabular-nums">{s.soldHours ? `${money(Math.round(s.amountCents / s.soldHours))} / h` : "—"}</span>],
+    // Cobrado (invoices en Paid): solo lo recibe quien ve Financiera.
+    ...(finance
+      ? ([
+          ["Horas pagadas", <TotalCell hours={finance.paidHours} strong />],
+          ["Pagado vs deals", <span className="font-semibold tabular-nums">{s.amountCents ? `${Math.min(100, Math.round((finance.paidCents / s.amountCents) * 100))}%` : "—"}</span>],
+        ] as [string, ReactNode][])
+      : []),
   ];
   return (
     <Panel title="Resumen">
@@ -435,7 +442,7 @@ export default function OpsProjectDetailPage() {
         </div>
 
         <aside className="space-y-5" aria-label="Resumen del proyecto">
-          <SummaryCard project={project} />
+          <SummaryCard project={project} finance={data.finance} />
           {(project.sowUrl || showLead || project.clientSlug) && (
             <Panel title="Enlaces">
               <div className="-mx-1 space-y-0.5">

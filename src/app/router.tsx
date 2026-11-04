@@ -4,6 +4,7 @@ import TasksPage from "@/features/tasks/TasksPage";
 import MyWorkPage from "@/features/tasks/MyWorkPage";
 import BacklogPage from "@/features/tasks/BacklogPage";
 import CommsPage from "@/features/communications/CommsPage";
+import InvoicesPage from "@/features/finance/InvoicesPage";
 import Home from "@/app/Home";
 import AppLayout from "@/components/layout/AppLayout";
 import UsersPage from "@/features/admin/UsersPage";
@@ -63,6 +64,7 @@ export const router = createBrowserRouter([
           { path: "/operativa/mi-trabajo", element: <RequireModule module="myWork"><MyWorkPage /></RequireModule> },
           { path: "/operativa/backlog", element: <RequireModule module="backlog"><BacklogPage /></RequireModule> },
           { path: "/operativa/:id", element: <OpsProjectDetailPage /> },
+          { path: "/financiera/invoices", element: <RequireModule module="invoices"><InvoicesPage /></RequireModule> },
           { path: "/dashboard", element: <DashboardPage /> },
           { path: "/projects", element: <ProjectsPage /> },
           { path: "/projects/new", element: <NewProjectPage /> },

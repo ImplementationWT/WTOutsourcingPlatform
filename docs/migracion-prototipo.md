@@ -137,3 +137,19 @@ usaron valores nuevos de enums, correr el script de reversa de cada paso antes d
 - **Pestañas** «Comunicaciones» en el proyecto y en el lead (en producción el lead no tenía pestaña
   Emails; se agrega sin quitar ninguna).
 - **Rollback:** volver a la imagen anterior; para limpiar, `db.core_communications.drop()`.
+
+## Paso 6 · Invoices
+
+- **Datos:** colección nueva `fin_invoices` (número INV-0001 de la secuencia `invoice`, mes, stage,
+  fechas de factura y pago, sustained, proyecto, deal, horas, fee en centavos, borrado con
+  «Deshacer»). Rate = el del deal; monto bruto = horas × rate; total = bruto + fee. Team leader y
+  tipo de pago se leen del proyecto.
+- **Stages:** Overdue, Follow Up, Due, Pending, Invoiced, Upcoming y Paid. Una Pending de un mes
+  futuro se muestra como Upcoming. Pasar a un stage facturado pone la fecha de factura; a Paid, la
+  de pago.
+- **Acceso:** Financiera (boss y finance). El proyecto muestra «Horas pagadas» y «Pagado vs deals»
+  solo a esos roles (la API no las envía al resto).
+- **No se toca el deal:** cambiar el stage de una invoice no cambia el estado del deal
+  (`invoiced`/`paid`). Queda como decisión pendiente si deben sincronizarse.
+- **Rollback:** volver a la imagen anterior; para limpiar, `db.fin_invoices.drop()` y
+  `db.counters.deleteOne({_id: "invoice"})`.
