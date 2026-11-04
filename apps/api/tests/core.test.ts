@@ -4,6 +4,7 @@ import { buildApp } from "../src/app.js";
 import { createLoginGuard } from "../src/auth/login-guard.js";
 import { hashPassword } from "../src/auth/password.js";
 import { migrateToV2, migrateToV4 } from "../src/core/migrate.js";
+import { migratePrototypeProjects } from "../src/core/migrate-prototype.js";
 import { runTableQuery, tableQuerySchema } from "../src/lib/table-query.js";
 import { PROJECT_STAGES } from "../src/ops/models.js";
 import { freshStore, startDb, stopDb } from "./helpers/db.js";
@@ -187,6 +188,18 @@ describe("deals (tabla de primer nivel)", () => {
 });
 
 describe("migraciones", () => {
+  it("prototipo, Proyectos: etapa con fecha estimada y lista de developers; repetirla no cambia nada", async () => {
+    const store = await freshStore();
+    const at = new Date("2026-09-15T12:00:00Z");
+    const dev = randomUUID();
+    await store.opsProjects.insertOne({ _id: randomUUID(), name: "P", customerName: "C", teamId: TEST_TEAM_ID, leadUserId: null, developerUserId: dev, clientSlug: null, stage: "structure", health: "neutral", priority: "medium", createdBy: "tests", createdAt: at, updatedAt: at });
+    await migratePrototypeProjects(store);
+    await store.opsProjects.updateOne({}, { $set: { updatedAt: new Date() } });
+    await migratePrototypeProjects(store);
+    const project = (await store.opsProjects.findOne({}))!;
+    expect(project).toMatchObject({ stageSince: "2026-09-15", stageHistory: [{ stage: "structure", at: "2026-09-15", by: "migración", estimated: true }], developerUserIds: [dev], developerUserId: dev });
+  });
+
   it("deals de la Fase 1 → códigos DL y equipo del proyecto; repetirla no cambia nada", async () => {
     const store = await freshStore();
     const at = new Date();

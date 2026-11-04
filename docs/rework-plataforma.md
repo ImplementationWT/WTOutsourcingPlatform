@@ -175,7 +175,7 @@ la demo.
 | Campo | Tipo / nota |
 |---|---|
 | nombre, cliente | texto · enlace a Empresa |
-| equipo | Team Leader + 1 Developer (`leadUserId`, `developerUserId`), dentro de un `teamId` |
+| equipo | Team Leader + hasta 2 Developers (`leadUserId`, `developerUserIds`; `developerUserId` es el primero), dentro de un `teamId` |
 | etapa, health, prioridad | catálogos (sección 3) |
 | sentiment | **(calc)** del Health |
 | kickoff, propuestaUrl, projectPlan, sow | fecha · enlace · archivos |
@@ -264,7 +264,7 @@ AI Developer (ya existe) dentro de la rentabilidad por proyecto.
 5. **Health y Sentiment.** Cambiar el Health recalcula el Sentiment y deja una novedad automática.
 6. **Cuentas.** Un pool de cuentas por proyecto; nadie comparte claves por chat. Rotar actualiza la
    fecha. Sin clave de cifrado en el servidor, el vault responde 503 y el resto sigue funcionando.
-7. **Equipo.** Un proyecto = 1 Team Leader + 1 Developer. Ambos tienen Tasks.
+7. **Equipo.** Un proyecto = 1 Team Leader + hasta 2 Developers (D5, migración del prototipo). Todos tienen Tasks.
 
 ---
 

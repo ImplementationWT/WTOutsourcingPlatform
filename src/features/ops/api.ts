@@ -118,6 +118,8 @@ export interface OpsProject {
   team: Ref;
   lead: Ref | null;
   developer: Ref | null;
+  /** Hasta 2 developers; `developer` es el primero. */
+  developers: Ref[];
   contacts: Ref[];
   /** El cliente es el contacto del proyecto (con su empresa); `customerName` sale de él. */
   client: { id: string; name: string | null; company: string | null } | null;
@@ -126,6 +128,9 @@ export interface OpsProject {
   kickoffDate: string | null;
   leadId: string | null;
   stage: Stage;
+  /** Desde qué día (AAAA-MM-DD) está en la etapa actual. */
+  stageSince: string;
+  stageHistory: StageHistoryEntry[];
   health: Health;
   /** (calc) del Health. */
   sentimentScore: number;
@@ -136,6 +141,43 @@ export interface OpsProject {
   summary: { deals: number; amountCents: number; soldHours: number; billableHours: number; billableVsSold: number; tasks: number; tasksDone: number; progress: number };
   createdAt: string;
   updatedAt: string;
+}
+
+export interface StageHistoryEntry {
+  stage: Stage;
+  at: string;
+  by: string;
+  /** Fecha deducida al migrar. */
+  estimated?: boolean;
+}
+
+/** Plazo esperado por etapa en días (null: sin límite). */
+export type StageSla = Record<Stage, number | null>;
+export const MAX_DEVELOPERS = 2;
+
+/** Proyecto que lleva más días en su etapa que el plazo esperado. */
+export interface StuckProject {
+  id: string;
+  name: string;
+  stage: Stage;
+  days: number;
+  sla: number | null;
+}
+
+/** Días entre dos fechas AAAA-MM-DD (sin zona horaria). */
+export const daysBetween = (from: string, to: string) => Math.max(0, Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000));
+export const todayIso = () => new Date().toISOString().slice(0, 10);
+
+/**
+ * Tiempo en la etapa: verde en plazo, ámbar desde el 75 % del plazo y rojo si lo pasa. Sin plazo
+ * (Completed), solo los días.
+ */
+export function stageAge(since: string, sla: number | null, today = todayIso()) {
+  const days = daysBetween(since, today);
+  if (sla === null) return { days, sla, over: 0, tone: "neutral" as Tone, text: `${days} d` };
+  const over = days - sla;
+  const tone: Tone = over > 0 ? "danger" : days >= sla * 0.75 ? "warn" : "ok";
+  return { days, sla, over, tone, text: over > 0 ? `${days} d · +${over} d` : `${days} d de ${sla} d` };
 }
 
 /** Cliente del proyecto: su contacto con la empresa al lado (o el nombre guardado, en proyectos viejos). */
@@ -205,7 +247,7 @@ export const PROJECT_FILTERS = ["stage", "health", "priority", "teamId"] as cons
 /** Tabla de proyectos (paginada en el servidor, con contador por etapa y totales del filtro). */
 export function useOpsProjects(query: string) {
   const enabled = Boolean(useSession().data);
-  return useTablePage<OpsProjectRow, { canCreate: boolean }>(opsKeys.allProjects, "/api/ops/projects", query, enabled);
+  return useTablePage<OpsProjectRow, { canCreate: boolean; stuck: StuckProject[]; sla: StageSla }>(opsKeys.allProjects, "/api/ops/projects", query, enabled);
 }
 
 export function useOpsProject(id: string) {
@@ -255,6 +297,7 @@ export interface ProjectInput {
   contactIds: string[];
   leadUserId: string | null;
   developerUserId: string | null;
+  developerUserIds: string[];
   clientSlug: string | null;
   sowUrl: string | null;
   kickoffDate: string | null;
@@ -299,6 +342,15 @@ export const createProposal = (id: string, input: { title: string; url: string; 
   apiFetch<{ proposal: Proposal }>(`${base(id)}/proposals`, send("POST", input));
 export const updateProposal = (id: string, proposalId: string, patch: Partial<{ title: string; url: string; dealId: string | null; amountCents: number | null; status: ProposalStatus }>) =>
   apiFetch<{ proposal: Proposal }>(`${base(id)}/proposals/${proposalId}`, send("PATCH", patch));
+
+export function useStageSla() {
+  return useQuery({
+    queryKey: ["ops", "stage-sla"],
+    queryFn: () => apiFetch<{ days: StageSla; defaults: StageSla }>("/api/ops/stage-sla"),
+    staleTime: 60_000,
+  });
+}
+export const updateStageSla = (days: StageSla) => apiFetch<{ days: StageSla }>("/api/ops/stage-sla", send("PUT", { days }));
 
 // ---- formato ---------------------------------------------------------------------
 

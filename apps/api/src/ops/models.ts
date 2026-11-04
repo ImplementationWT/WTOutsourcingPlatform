@@ -50,6 +50,37 @@ export type MeetingEngagement = (typeof MEETING_ENGAGEMENTS)[number];
 export type ActionItemStatus = (typeof ACTION_ITEM_STATUSES)[number];
 export type NextAction = (typeof NEXT_ACTIONS)[number];
 
+/** Tiempo esperado en cada etapa, en días (null: sin límite). Se configura en Settings (solo boss). */
+export const DEFAULT_STAGE_SLA: Record<ProjectStage, number | null> = {
+  kickoff: 7,
+  structure: 30,
+  automation_layer: 21,
+  stabilization: 14,
+  maintenance: 60,
+  no_pending_items: 14,
+  completed: null
+};
+
+/** Plazos por etapa guardados en la colección `settings`. */
+export interface StageSlaDoc {
+  _id: "stage-sla";
+  days: Record<ProjectStage, number | null>;
+  updatedBy: string;
+  updatedAt: Date;
+}
+
+/** Un paso por una etapa: desde qué día (AAAA-MM-DD) y quién lo movió. */
+export interface StageHistoryEntry {
+  stage: ProjectStage;
+  at: string;
+  by: string;
+  /** Fecha deducida al migrar (no se registró el cambio real). */
+  estimated?: boolean;
+}
+
+/** Máximo de developers por proyecto (D5). */
+export const MAX_PROJECT_DEVELOPERS = 2;
+
 /** Sentiment derivado del Health (sección 3 del documento): no se escribe a mano. */
 export const SENTIMENT_BY_HEALTH: Record<HealthScore, number> = {
   champion: 100,
@@ -77,6 +108,8 @@ export interface OpsProjectDoc {
   teamId: string;
   leadUserId: string | null;
   developerUserId: string | null;
+  /** Developers del proyecto (hasta 2); `developerUserId` queda como el primero. */
+  developerUserIds?: string[];
   /** Slug de la app aprovisionada en Infraestructura, si ya se creó. */
   clientSlug: string | null;
   /** Ya no se usa (solo queda el SOW); puede seguir en documentos viejos. */
@@ -84,6 +117,9 @@ export interface OpsProjectDoc {
   leadId?: string | null;
   contactIds?: string[];
   stage: ProjectStage;
+  /** Desde qué día (AAAA-MM-DD) está en la etapa actual, y el historial de etapas. */
+  stageSince?: string;
+  stageHistory?: StageHistoryEntry[];
   health: HealthScore;
   /** Fase 1: se escribía a mano. Hoy el Sentiment se deriva del Health (`sentimentOf`). */
   sentimentScore?: number;

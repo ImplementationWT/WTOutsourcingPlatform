@@ -4,6 +4,7 @@ import { ChangePasswordForm } from "@/features/auth/ChangePasswordPage";
 import { useTeams } from "@/features/admin/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useCrumbs } from "@/components/layout/crumbs";
+import { StageSlaCard } from "./StageSlaCard";
 
 export default function SettingsPage() {
   useCrumbs([{ label: "Configuración" }], { replace: true });
@@ -48,6 +49,8 @@ export default function SettingsPage() {
             <ChangePasswordForm />
           </CardContent>
         </Card>
+
+        {user?.role === "boss" && <StageSlaCard />}
       </div>
     </section>
   );

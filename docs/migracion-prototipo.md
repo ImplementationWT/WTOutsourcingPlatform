@@ -78,3 +78,17 @@ Aditiva e idempotente al arrancar (patrón de `core/migrate.ts`): campos opciona
 defecto, colecciones nuevas y valores nuevos en los enums; no se renombra ni se borra nada. Antes
 de desplegar, `mongodump` completo. Rollback: volver a la imagen anterior (ignora lo nuevo); si se
 usaron valores nuevos de enums, correr el script de reversa de cada paso antes de bajar de versión.
+
+## Paso 2 · Proyectos
+
+- **Datos:** `ops_projects` suma `stageSince`, `stageHistory[]` y `developerUserIds[]` (hasta 2). Los
+  plazos por etapa viven en `settings` (`_id: "stage-sla"`); sin documento se usan los iniciales
+  (Kick Off 7, Structural Build 30, Automation Layer 21, Stabilization 14, Maintenance 60, No
+  Pending Items 14, Completed sin límite). Las vistas guardadas, en `ui_views`, por usuario.
+- **Migración** (`core/migrate-prototype.ts`): a cada proyecto sin `stageSince` le pone la fecha de
+  su última actualización, marcada como *estimada* en el historial, y su developer en la lista.
+- **Rollback:** no hay valores nuevos en enums; la versión anterior ignora los campos y colecciones
+  nuevos. Para limpiar: `db.ops_projects.updateMany({}, {$unset: {stageSince: "", stageHistory: "",
+  developerUserIds: ""}})`, `db.settings.deleteOne({_id: "stage-sla"})` y `db.ui_views.drop()`.
+- **Pendiente para pasos siguientes:** la pestaña Comunicaciones (paso 5), las horas pagadas en los
+  KPIs (paso 6) y los gráficos de ventas del proyecto (paso 8).
