@@ -8,6 +8,7 @@ import { Kpi, KpiRow } from "@/components/ui/kpi";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { api, hoursLabel, sprintLabel, statusOf, TASK_STATUS_LABELS, TASK_STATUSES, useBoard, useBoardAction, type Board, type TaskStatus } from "./api";
 import { filterTasks, nextSprintDates, workItems, type TaskFilters } from "./filters";
@@ -23,8 +24,11 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "notimeline", label: "Sin timeline" },
 ];
 
-/** Crear tarea y sprint con valores razonables, y abrir la tarea nueva. */
-function useCreators(board: Board | undefined, open: (id: string) => void) {
+/**
+ * Crear tarea y sprint con valores razonables. La tarea nueva se abre; el sprint nuevo avisa y
+ * llama a `onSprint` para que la pantalla pase a la vista por sprint (en «Todas» no se ve vacío).
+ */
+function useCreators(board: Board | undefined, open: (id: string) => void, onSprint?: (projectId: string) => void) {
   const run = useBoardAction();
   const target = (projectId?: string) => board?.projects.find((p) => p.id === projectId && p.canManage) ?? board?.projects.find((p) => p.canManage);
   return {
@@ -41,9 +45,16 @@ function useCreators(board: Board | undefined, open: (id: string) => void) {
     },
     async sprint(projectId?: string) {
       const project = target(projectId);
-      if (!board || !project) return;
+      if (!board) return;
+      if (!project || (projectId && project.id !== projectId)) {
+        toast.error("No puedes crear sprints en este proyecto.", { description: "Los crea el boss o el team leader del equipo." });
+        return;
+      }
       const n = board.sprints.filter((s) => s.projectId === project.id).length + 1;
-      await run(() => api.createSprint({ projectId: project.id, name: n === 1 ? "Kick-Off" : "Nuevo sprint", ...nextSprintDates(board, project.id) }));
+      const created = await run(() => api.createSprint({ projectId: project.id, name: n === 1 ? "Kick-Off" : "Nuevo sprint", ...nextSprintDates(board, project.id) }));
+      if (!created) return;
+      toast.success(`Sprint creado en ${project.name}: ${sprintLabel(created.sprint)}`, { undo: () => run(() => api.deleteSprint(created.sprint.id)) });
+      onSprint?.(project.id);
     },
   };
 }
@@ -144,8 +155,8 @@ function useDetail() {
 export function ProjectTasksPanel({ projectId }: { projectId: string }) {
   const { data: board } = useBoard();
   const { detail, open, close } = useDetail();
-  const create = useCreators(board, (id) => open(id));
   const [view, setView] = useState<BoardView>("sprints");
+  const create = useCreators(board, (id) => open(id), () => setView("sprints"));
   if (!board) return <Skeleton className="h-48 w-full" />;
   const project = board.projects.find((p) => p.id === projectId);
   const tasks = board.tasks.filter((t) => t.projectId === projectId);
@@ -186,7 +197,21 @@ export default function TasksPage() {
   const { data: board, isLoading, error } = useBoard();
   const [params, setParams] = useSearchParams();
   const { detail, open, close } = useDetail();
-  const create = useCreators(board, (id) => open(id));
+  const create = useCreators(
+    board,
+    (id) => open(id),
+    (projectId) =>
+      setParams(
+        (cur) => {
+          const next = new URLSearchParams(cur);
+          next.set("tab", "sprints");
+          next.set("project", projectId);
+          next.delete("sprint");
+          return next;
+        },
+        { replace: true },
+      ),
+  );
   const get = (k: string) => params.get(k) ?? undefined;
   const set = (k: string, v: string | null | undefined) =>
     setParams(

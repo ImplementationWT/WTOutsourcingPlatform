@@ -9,11 +9,9 @@ import {
   Gauge,
   KanbanSquare,
   Landmark,
-  ListTodo,
   Mail,
   Megaphone,
   MessagesSquare,
-  MonitorPlay,
   Plug,
   Receipt,
   UserCheck,
@@ -47,6 +45,7 @@ export interface NavGroup {
 
 // Costos está dentro del Dashboard de Infraestructura y Usuarios en el menú del usuario.
 // Deals no está en el menú: se gestiona en la pestaña Deals del proyecto (/deals sigue por ruta).
+// Actividades y Demos tampoco: viven en el detalle del lead (sus rutas siguen activas).
 export const NAV_GROUPS: NavGroup[] = [
   {
     title: "Dashboards",
@@ -64,8 +63,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/comercial/propuestas", label: "Propuestas", icon: FileText, module: "proposals" },
       { to: "/meetings", label: "Meetings", icon: MessagesSquare, module: "meetings" },
       { to: "/comercial/comunicaciones", label: "Comunicaciones", icon: Mail, module: "communications", badge: "followUps" },
-      { to: "/comercial/actividades", label: "Actividades", icon: ListTodo, module: "activities" },
-      { to: "/comercial/demos", label: "Demos", icon: MonitorPlay, module: "demos" },
     ],
   },
   {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { ConfirmProvider } from "@/components/ui/confirm-provider";
 import TasksPage from "@/features/tasks/TasksPage";
 import type { Board, Task } from "@/features/tasks/api";
@@ -34,12 +34,18 @@ const board: Board = {
   tasks: [parent, lonely],
 };
 
+function Where() {
+  const { search } = useLocation();
+  return <output aria-label="Ruta">{search}</output>;
+}
+
 function renderTasks(path = "/operativa/tasks") {
   const calls: { url: string; method: string; body: unknown }[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : undefined });
     if (url === "/api/tasks/board") return json(board);
+    if (url === "/api/sprints" && init?.method === "POST") return json({ sprint: { id: "s2", number: 3, ...JSON.parse(String(init.body)) } }, 201);
     return json({ ok: true });
   }) as typeof fetch;
   const queryClient = withSession(new QueryClient({ defaultOptions: { queries: { retry: false } } }), LEAD);
@@ -48,7 +54,7 @@ function renderTasks(path = "/operativa/tasks") {
       <ConfirmProvider>
         <MemoryRouter initialEntries={[path]}>
           <Routes>
-            <Route path="/operativa/tasks" element={<TasksPage />} />
+            <Route path="/operativa/tasks" element={<><TasksPage /><Where /></>} />
           </Routes>
         </MemoryRouter>
       </ConfirmProvider>
@@ -110,5 +116,13 @@ describe("Tasks", () => {
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
     fireEvent.click(within(dialog).getByRole("button", { name: "Eliminar tarea" }));
     await waitFor(() => expect(calls.some((c) => c.method === "DELETE" && c.url === "/api/tasks/t1")).toBe(true));
+  });
+
+  it("«Nuevo sprint» crea el sprint y pasa a la vista por sprint del proyecto", async () => {
+    const calls = renderTasks();
+    fireEvent.click(await screen.findByRole("button", { name: /Nuevo sprint/ }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/api/sprints" && (c.body as { projectId: string }).projectId === "p1")).toBe(true));
+    await waitFor(() => expect(screen.getByLabelText("Ruta").textContent).toContain("tab=sprints"));
+    expect(screen.getByLabelText("Ruta").textContent).toContain("project=p1");
   });
 });

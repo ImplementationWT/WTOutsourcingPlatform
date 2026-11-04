@@ -84,8 +84,8 @@ describe("menú de Comercial", () => {
     renderAt("/comercial", COMMERCIAL, () => json({ rows: [], total: 0, page: 1, pageSize: 25, facets: {}, totals: {}, counts: {}, canWrite: true, sources: [] }));
     const nav = within(screen.getByRole("navigation", { name: "Áreas" }));
     expect(nav.getByRole("link", { name: /^Leads$/ })).toBeTruthy();
-    for (const name of [/Actividades/, /Demos/, /Propuestas/, /Contactos/, /^Meetings$/]) expect(nav.getByRole("link", { name })).toBeTruthy();
-    for (const name of [/Partners/, /Catálogo/, /Reuniones por asignar/, /Sources de leads/, /Empresas/]) expect(nav.queryByRole("link", { name })).toBeNull();
+    for (const name of [/Propuestas/, /Contactos/, /^Meetings$/]) expect(nav.getByRole("link", { name })).toBeTruthy();
+    for (const name of [/^Actividades$/, /^Demos$/, /Partners/, /Catálogo/, /Reuniones por asignar/, /Sources de leads/, /Empresas/]) expect(nav.queryByRole("link", { name })).toBeNull();
     expect(nav.queryByText("Infraestructura")).toBeNull();
     expect(nav.queryByRole("link", { name: /^Deals$/ })).toBeNull();
   });
