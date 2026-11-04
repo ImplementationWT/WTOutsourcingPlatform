@@ -92,3 +92,20 @@ usaron valores nuevos de enums, correr el script de reversa de cada paso antes d
   developerUserIds: ""}})`, `db.settings.deleteOne({_id: "stage-sla"})` y `db.ui_views.drop()`.
 - **Pendiente para pasos siguientes:** la pestaña Comunicaciones (paso 5), las horas pagadas en los
   KPIs (paso 6) y los gráficos de ventas del proyecto (paso 8).
+
+## Paso 3 · Tasks
+
+- **Datos:** en `ops_tasks`, las subtareas son tareas con `parentTaskId` (un solo nivel). Campos nuevos
+  opcionales: `sprintId`, `startDate`, `investedHours`, `billableHours`, `details`, `deletedAt` y
+  `deletedWith` (borrado con «Deshacer»). `estimatedHours` son las horas proyectadas y `dueDate` el
+  fin del timeline. Colecciones nuevas: `ops_sprints` (número fijo por proyecto, no se reutiliza) y
+  `ops_task_updates`. Status nuevo: `stuck` (Pending, Working on it, In Review, Stuck, Completed).
+- **Reglas:** la tarea padre con subtareas es de solo lectura (owners, status, timeline y horas se
+  calculan); sin subtareas dice «Sin tareas». Crear y asignar: CEO/CCO y Team Leader del equipo. El
+  developer solo cambia status y horas de lo suyo (como antes). Todo hereda `projectScope`.
+- **Tareas anteriores:** quedan como tareas sin subtareas («Sin tareas»). Su status guardado se
+  conserva y sigue contando para el avance del proyecto.
+- **Rollback:** antes de volver a la versión anterior, `db.ops_tasks.updateMany({status: "stuck"},
+  {$set: {status: "in_progress"}})`. Para limpiar del todo: borrar las subtareas
+  (`{parentTaskId: {$type: "string"}}`) y las tareas con `deletedAt` de tipo fecha, y quitar
+  `ops_sprints` y `ops_task_updates`. Los campos nuevos los ignora la versión anterior.

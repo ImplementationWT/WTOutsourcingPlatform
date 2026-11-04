@@ -42,7 +42,8 @@ import {
   type StageSla,
 } from "./api";
 import { HealthBadge, PriorityBadge, SentimentBar, StageTrack } from "./OpsBadges";
-import { AccountsTab, DealsTab, MeetingsTab, ProposalsTab, TasksTab, UpdatesTab } from "./OpsTabs";
+import { AccountsTab, DealsTab, MeetingsTab, ProposalsTab, UpdatesTab } from "./OpsTabs";
+import { ProjectTasksPanel } from "@/features/tasks/TasksPage";
 
 type TabId = "deals" | "tasks" | "proposals" | "accounts" | "meetings" | "updates" | "stages";
 const TAB_IDS: readonly TabId[] = ["deals", "tasks", "proposals", "accounts", "meetings", "updates", "stages"];
@@ -420,7 +421,7 @@ export default function OpsProjectDetailPage() {
             </div>
             <div role="tabpanel" className="min-h-64 p-5">
               {tab === "deals" && <DealsTab projectId={project.id} />}
-              {tab === "tasks" && <TasksTab projectId={project.id} teamId={project.team.id} canWork={permissions.work} canManage={permissions.manage} currentUserId={session?.id ?? ""} />}
+              {tab === "tasks" && <ProjectTasksPanel projectId={project.id} />}
               {tab === "accounts" && permissions.work && <AccountsTab projectId={project.id} canManage={permissions.manage} />}
               {tab === "proposals" && <ProposalsTab projectId={project.id} canManage={permissions.manage} />}
               {tab === "meetings" && <MeetingsTab projectId={project.id} canWork={permissions.work} />}

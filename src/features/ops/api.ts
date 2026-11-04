@@ -11,7 +11,7 @@ export const STAGES = ["kickoff", "structure", "automation_layer", "stabilizatio
 export const HEALTH = ["champion", "very_happy", "happy", "mixed", "neutral", "concerned", "escalated", "at_risk"] as const;
 export const PRIORITIES = ["critical", "high", "medium", "low"] as const;
 export const DEAL_STATUSES = ["draft", "proposed", "approved", "in_progress", "delivered", "invoiced", "paid", "cancelled"] as const;
-export const TASK_STATUSES = ["todo", "in_progress", "review", "done"] as const;
+export const TASK_STATUSES = ["todo", "in_progress", "review", "stuck", "done"] as const;
 export const ACCOUNT_KINDS = ["web", "email", "api", "database", "server", "social", "other"] as const;
 export const PAYMENT_TYPES = ["upwork", "stripe", "direct_pe", "direct_us", "paypal", "revolut"] as const;
 export const NEXT_ACTIONS = ["contact", "follow_up", "prepare_proposal", "internal_review", "none"] as const;
@@ -55,7 +55,7 @@ export const DEAL_STATUS_LABELS: Record<DealStatus, string> = {
   paid: "Cobrado",
   cancelled: "Cancelado",
 };
-export const TASK_STATUS_LABELS: Record<TaskStatus, string> = { todo: "Por hacer", in_progress: "En curso", review: "En revisión", done: "Hecha" };
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = { todo: "Pending", in_progress: "Working on it", review: "In Review", stuck: "Stuck", done: "Completed" };
 export const ACCOUNT_KIND_LABELS: Record<AccountKind, string> = {
   web: "Web / panel",
   email: "Correo",

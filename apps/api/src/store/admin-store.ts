@@ -3,7 +3,7 @@ import { type Db, MongoServerError } from "mongodb";
 import { OwnershipError } from "../lib/errors.js";
 import { redact } from "../lib/redact.js";
 import type { AiAgentSettingsDoc } from "../ai/anthropic-adapter.js";
-import type { DealDoc, MeetingDoc, OpsProjectDoc, OpsTaskDoc, ProjectUpdateDoc, StageSlaDoc, VaultAccountDoc } from "../ops/models.js";
+import type { DealDoc, MeetingDoc, OpsProjectDoc, OpsTaskDoc, ProjectUpdateDoc, SprintDoc, StageSlaDoc, TaskUpdateDoc, VaultAccountDoc } from "../ops/models.js";
 import type { ContactDoc } from "../core/models.js";
 import { migrateToV2, migrateToV3, migrateToV4 } from "../core/migrate.js";
 import { migratePrototypeProjects } from "../core/migrate-prototype.js";
@@ -69,6 +69,8 @@ export class AdminStore {
   readonly opsProjects;
   readonly deals;
   readonly opsTasks;
+  readonly sprints;
+  readonly taskUpdates;
   readonly vaultAccounts;
   readonly projectUpdates;
   readonly meetings;
@@ -103,6 +105,8 @@ export class AdminStore {
     this.opsProjects = db.collection<OpsProjectDoc>("ops_projects");
     this.deals = db.collection<DealDoc>("ops_deals");
     this.opsTasks = db.collection<OpsTaskDoc>("ops_tasks");
+    this.sprints = db.collection<SprintDoc>("ops_sprints");
+    this.taskUpdates = db.collection<TaskUpdateDoc>("ops_task_updates");
     this.vaultAccounts = db.collection<VaultAccountDoc>("ops_vault_accounts");
     this.projectUpdates = db.collection<ProjectUpdateDoc>("ops_project_updates");
     // Tabla única de reuniones (antes ops_meetings, sales_meetings y meetings_inbox).
@@ -149,6 +153,10 @@ export class AdminStore {
       this.deals.createIndex({ projectId: 1, createdAt: -1 }),
       this.opsTasks.createIndex({ projectId: 1, createdAt: -1 }),
       this.opsTasks.createIndex({ dealId: 1 }),
+      this.opsTasks.createIndex({ parentTaskId: 1 }),
+      this.opsTasks.createIndex({ sprintId: 1 }),
+      this.sprints.createIndex({ projectId: 1, number: 1 }),
+      this.taskUpdates.createIndex({ taskId: 1, createdAt: -1 }),
       this.vaultAccounts.createIndex({ projectId: 1, label: 1 }),
       this.projectUpdates.createIndex({ projectId: 1, createdAt: -1 }),
       this.meetings.createIndex({ projectId: 1, heldAt: -1 }),
