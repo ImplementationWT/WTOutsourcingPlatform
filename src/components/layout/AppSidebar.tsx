@@ -5,6 +5,7 @@ import { BrandLockup } from "@/components/brand/Brand";
 import { useSession } from "@/features/auth/auth";
 import { cn } from "@/lib/utils";
 import { isActive, navFor } from "./nav";
+import { useNavBadges } from "./nav-badges";
 
 const COLLAPSED_KEY = "sidebar.collapsed";
 
@@ -59,6 +60,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const role = useSession().data?.role;
   const { pathname } = useLocation();
   const groups = navFor(role);
+  const badges = useNavBadges();
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const live = groups.filter((g) => g.items.some((i) => !i.soon));
   const soon = groups.flatMap((g) => (g.items.every((i) => i.soon) ? [g] : []));
@@ -82,7 +84,12 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                     {({ isActive: exact }) => (
                       <>
                         <Dot active={exact || Boolean(item.also?.test(pathname))} />
-                        <span className="truncate">{item.label}</span>
+                        <span className="flex-1 truncate">{item.label}</span>
+                        {item.badge && badges[item.badge] > 0 && (
+                          <span className="rounded-full bg-foreground/10 px-1.5 text-[11px] font-semibold text-muted-foreground tabular-nums" aria-label={`${badges[item.badge]} sin sprint`}>
+                            {badges[item.badge]}
+                          </span>
+                        )}
                       </>
                     )}
                   </NavLink>

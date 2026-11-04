@@ -221,6 +221,7 @@ export default function TasksPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        stackOnMobile
         title="Tasks"
         description={<span className="max-sm:hidden">Tareas de developers y team leaders: cada una en un proyecto, con su sprint, subtareas y horas.</span>}
         actions={

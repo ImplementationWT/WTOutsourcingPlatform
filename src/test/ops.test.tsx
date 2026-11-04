@@ -120,7 +120,7 @@ describe("menú por áreas", () => {
     renderAt("/operativa", BOSS, (async () => json(page([]))) as typeof fetch);
     const nav = within(screen.getByRole("navigation", { name: "Áreas" }));
     const links = nav.getAllByRole("link").map((a) => a.textContent);
-    expect(links).toEqual(["Contactos", "Leads", "Propuestas", "Meetings", "Actividades", "Demos", "Proyectos", "Tasks", "Dashboard", "Apps y repositorios", "Integraciones"]);
+    expect(links).toEqual(["Contactos", "Leads", "Propuestas", "Meetings", "Actividades", "Demos", "Mi trabajo", "Proyectos", "Tasks", "Dashboard", "Apps y repositorios", "Integraciones", "Backlog / Sprints"]);
     expect(screen.getByRole("link", { name: /Contactos/ }).getAttribute("href")).toBe("/comercial/contactos");
     expect(screen.queryByRole("link", { name: /Empresas/ })).toBeNull();
     expect(screen.queryByRole("link", { name: /^Deals$/ })).toBeNull();
