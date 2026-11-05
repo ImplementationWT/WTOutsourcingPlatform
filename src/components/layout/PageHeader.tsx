@@ -29,7 +29,7 @@ export function PageHeader({
           <h1 className="text-page-title break-words">{title}</h1>
           {badges && <div className="flex flex-wrap items-center gap-1.5">{badges}</div>}
         </div>
-        {description && <div className="max-w-2xl text-sm text-muted-foreground sm:text-[15px] sm:leading-6">{description}</div>}
+        {description && <div className="font-subtitle max-w-2xl text-sm text-muted-foreground sm:text-[15px] sm:leading-6">{description}</div>}
       </div>
       {actions && <div className={cn("flex shrink-0 flex-wrap items-center justify-end gap-2", stackOnMobile && "max-sm:justify-start")}>{actions}</div>}
     </header>

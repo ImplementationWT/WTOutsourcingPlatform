@@ -11,7 +11,7 @@ export function Kpi({ label, value, unit, sub, className }: { label: string; val
           {value}
           {unit && <span className="text-sm font-medium tracking-normal text-muted-foreground">{unit}</span>}
         </p>
-        {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+        {sub && <p className="font-subtitle text-xs text-muted-foreground">{sub}</p>}
       </div>
     </div>
   );

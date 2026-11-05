@@ -116,7 +116,9 @@
   --color-accent-2-fg: color-mix(in oklch, var(--status-accent) var(--status-fg-mix), var(--foreground));
   --shadow-card: var(--shadow-card);
   --font-heading: var(--font-sans);
-  --font-sans: 'Inter Variable', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Google Sans', 'Inter Variable', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Subtítulos (descripción de la página, de una ventana o de un gráfico): siguen en Inter. */
+  --font-subtitle: 'Inter Variable', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-legacy: 'Work Sans Variable', -apple-system, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
   /* Rojo de la marca como escala (acentos, estados activos, foco). */

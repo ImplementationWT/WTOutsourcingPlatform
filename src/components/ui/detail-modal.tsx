@@ -19,7 +19,7 @@ export function DetailModal({ title, badges, description, actions, onClose, chil
                 <Dialog.Title className="min-w-0 truncate text-2xl font-bold tracking-tight sm:text-[2rem]">{title}</Dialog.Title>
                 {badges}
               </div>
-              {description && <Dialog.Description render={<div />} className="mt-1.5 text-sm text-muted-foreground">{description}</Dialog.Description>}
+              {description && <Dialog.Description render={<div />} className="font-subtitle mt-1.5 text-sm text-muted-foreground">{description}</Dialog.Description>}
             </div>
             {actions}
             <Dialog.Close aria-label="Cerrar" className="inline-flex size-11 shrink-0 items-center justify-center rounded-[10px] border border-border bg-card transition-colors hover:border-line-strong hover:bg-muted">

@@ -73,20 +73,21 @@ function Field({ label, children, className }: { label: string; children: ReactN
 /** Valor de un campo en lectura, alineado con los controles. */
 const Value = ({ children }: { children: ReactNode }) => <p className="flex min-h-control items-center font-medium">{children}</p>;
 
-/** Cliente: el contacto del proyecto, con enlace a su ficha para quien ve Contactos. */
+/** Cliente: el nombre del contacto del proyecto (la empresa va en «Account»), con enlace a su ficha para quien ve Contactos. */
 function ClientValue({ project }: { project: OpsProject }) {
+  const name = project.client?.name ?? clientLabel(project);
   const role = useSession().data?.role;
   const linkable = role === "boss" || role === "commercial" || role === "finance";
   if (project.client && linkable) {
     return (
       <Value>
         <Link className="text-primary underline-offset-4 hover:underline" to={`/comercial/contactos/${project.client.id}`}>
-          {clientLabel(project)}
+          {name}
         </Link>
       </Value>
     );
   }
-  return <Value>{clientLabel(project)}</Value>;
+  return <Value>{name}</Value>;
 }
 
 /**

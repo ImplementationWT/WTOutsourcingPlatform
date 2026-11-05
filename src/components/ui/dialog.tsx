@@ -54,7 +54,7 @@ function Header({ title, description, onClose }: { title: React.ReactNode; descr
     <div className="flex items-start gap-3 border-b border-border px-5 py-4">
       <div className="min-w-0 flex-1">
         <Dialog.Title className="text-section-title">{title}</Dialog.Title>
-        {description && <Dialog.Description className="mt-1 text-sm text-muted-foreground">{description}</Dialog.Description>}
+        {description && <Dialog.Description className="font-subtitle mt-1 text-sm text-muted-foreground">{description}</Dialog.Description>}
       </div>
       <Button size="icon-sm" variant="ghost" aria-label="Cerrar" onClick={onClose}>
         <X />

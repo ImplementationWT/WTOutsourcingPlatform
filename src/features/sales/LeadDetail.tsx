@@ -201,7 +201,7 @@ function UpdatesColumn({ base, canWrite, onPosted }: { base: string; canWrite: b
     <section aria-label="Updates" className="flex flex-col rounded-[14px] border border-border bg-card lg:min-h-0">
       <div className="border-b border-border px-5 py-4">
         <h2 className="text-lg font-bold">Updates</h2>
-        <p className="text-xs text-muted-foreground">Notas internas sobre este lead</p>
+        <p className="font-subtitle text-xs text-muted-foreground">Notas internas sobre este lead</p>
       </div>
       {canWrite && (
         <div className="border-b border-border p-4">
