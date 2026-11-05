@@ -26,6 +26,8 @@ export interface SessionUser {
   name: string;
   role: UserRole;
   teamId: string | null;
+  /** Correo de trabajo (Configuración lo muestra; opcional). */
+  email?: string | null;
   /**
    * Debe cambiar la contraseña antes de usar el panel. En la API se llama así (y no
    * mustChangePassword) porque la redacción global oculta cualquier clave con "password".
@@ -39,6 +41,7 @@ export const toSessionUser = (user: UserDoc): SessionUser => ({
   name: user.name,
   role: user.role,
   teamId: user.teamId,
+  email: user.email ?? null,
   mustChangeCredentials: user.mustChangePassword
 });
 

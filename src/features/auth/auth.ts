@@ -14,6 +14,8 @@ export interface SessionUser {
   name: string;
   role: UserRole;
   teamId: string | null;
+  /** Correo de trabajo (opcional). */
+  email?: string | null;
   /** Primer ingreso o contraseña restablecida: debe cambiarla antes de usar el panel. */
   mustChangeCredentials: boolean;
 }
