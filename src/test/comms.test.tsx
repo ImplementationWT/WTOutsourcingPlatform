@@ -11,11 +11,12 @@ import { withSession } from "./session";
 const COMMERCIAL: SessionUser = { id: "u-com", username: "marta", name: "Marta", role: "commercial", teamId: null, mustChangeCredentials: false };
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 const ago = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
-const comm = (id: string, extra: Partial<Communication>): Communication => ({ id, kind: "email", direction: "sent", subject: "", body: "", owner: { id: "u-com", name: "Marta" }, contactName: "Lucía", date: ago(1), project: null, lead: null, followUpDate: null, followUpDone: false, ...extra });
+const comm = (id: string, extra: Partial<Communication>): Communication => ({ id, kind: "email", direction: "sent", subject: "", body: "", owner: { id: "u-com", name: "Marta" }, contactName: "Lucía", date: ago(1), project: null, lead: null, followUpDate: null, followUpDone: false, source: "manual", email: null, ...extra });
 const list = [
   comm("c1", { subject: "Propuesta enviada", lead: { id: "l1", name: "Acme" }, followUpDate: ago(2), body: "Quedó en revisar." }),
   comm("c2", { kind: "call", direction: "received", subject: "Revisión de avances", project: { id: "p1", name: "Portal" } }),
   comm("c3", { kind: "whatsapp", subject: "Recordatorio", project: { id: "p1", name: "Portal" } }),
+  comm("c4", { direction: "received", subject: "¿Revisamos la propuesta?", lead: { id: "l1", name: "Acme" }, source: "gmail", email: { from: "juan@acme.com", to: ["marta@whatever.tech"], cc: [], sentAt: new Date().toISOString(), threadId: "t1", matchedBy: "lead", sentFromApp: false } }),
 ];
 
 function renderPage() {
@@ -24,6 +25,9 @@ function renderPage() {
     const url = String(input);
     calls.push({ url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : undefined });
     if (url === "/api/communications") return json({ communications: list, canCreate: true, people: [{ id: "u-com", name: "Marta" }] });
+    if (url === "/api/me/mail") return json({ available: true, pushEnabled: true, email: "marta@whatever.tech", canConnect: true, connection: { email: "marta@whatever.tech", status: "active", lastSyncAt: new Date().toISOString(), lastError: null, push: true } });
+    if (url === "/api/communications/c4/thread") return json({ communications: [list[3]] });
+    if (url === "/api/me/mail/send") return json({ messageId: "m2", threadId: "t1", communicationId: "c5" });
     if (url === "/api/communications/summary") return json({ cold: [{ kind: "project", id: "p9", name: "Refyt", days: 12, since: "contact" }, { kind: "lead", id: "l2", name: "Nueva SAC", days: 4, since: "arrival" }], followUpsDue: 1, lastWeek: 3 });
     return json({ rows: [], total: 0, page: 1, pageSize: 100, facets: {}, totals: {}, ok: true });
   }) as typeof fetch;
@@ -61,6 +65,20 @@ describe("Comunicaciones", () => {
     fireEvent.click(screen.getByRole("tab", { name: /Todas/ }));
     fireEvent.change(screen.getByLabelText("Buscar comunicación"), { target: { value: "recordatorio" } });
     expect(screen.getAllByRole("article")).toHaveLength(1);
+  });
+
+  it("Gmail: muestra el buzón conectado y responde en el hilo desde el correo propio", async () => {
+    const calls = renderPage();
+    const card = await screen.findByRole("region", { name: "Tu Gmail" });
+    expect(within(card).getByText("marta@whatever.tech")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "Ver detalle de ¿Revisamos la propuesta?" }));
+    expect(screen.getByText("Asociado por el correo del lead")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Responder" }));
+    expect((screen.getByLabelText("Para") as HTMLInputElement).value).toBe("juan@acme.com");
+    expect((screen.getByLabelText("Asunto") as HTMLInputElement).value).toBe("Re: ¿Revisamos la propuesta?");
+    fireEvent.change(screen.getByLabelText("Mensaje"), { target: { value: "Claro, mañana." } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/api/me/mail/send")?.body).toMatchObject({ to: ["juan@acme.com"], replyToId: "c4", body: "Claro, mañana." }));
   });
 
   it("marcar el seguimiento hecho desde el detalle", async () => {

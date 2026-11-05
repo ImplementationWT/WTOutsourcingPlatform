@@ -32,6 +32,25 @@ export interface CommunicationDoc {
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
+  // ---- Correos sincronizados (Gmail). Campos opcionales: los registros manuales no los tienen. ----
+  /** Origen: a mano (por defecto) o sincronizado/enviado desde el buzón de `ownerUserId`. */
+  source?: "manual" | "gmail";
+  provider?: "gmail";
+  providerMessageId?: string;
+  providerThreadId?: string;
+  /** Message-ID RFC 822 (para responder dentro del hilo). */
+  rfcMessageId?: string | null;
+  from?: string;
+  to?: string[];
+  cc?: string[];
+  /** Hora exacta de envío o recepción. */
+  sentAt?: Date;
+  contactId?: string | null;
+  dealId?: string | null;
+  /** Cómo se encontró el cliente (scope §11). */
+  matchedBy?: "contact" | "lead" | "thread" | "domain" | "manual";
+  /** Se envió desde la aplicación (no solo se sincronizó). */
+  sentFromApp?: boolean;
 }
 
 /** Días sin contacto antes de avisar: proyectos (7) y leads activos (2). */
@@ -69,26 +88,31 @@ const daysSince = (date: string, now = today()) => Math.round((Date.parse(`${now
 const salesWriter = (user: SessionUser) => (SALES_ROLES as readonly string[]).includes(user.role);
 const salesReader = (user: SessionUser) => (SALES_READ_ROLES as readonly string[]).includes(user.role);
 
+/** Quién registra comunicaciones de un proyecto (CEO/CCO, Comercial y su equipo) o de un lead (CEO/CCO y Comercial). */
+export async function canWriteCommunication(store: AdminStore, user: SessionUser, c: Pick<CommunicationDoc, "projectId" | "leadId">) {
+  if (c.leadId) return salesWriter(user);
+  const project = c.projectId ? await store.opsProjects.findOne({ _id: c.projectId }, { projection: { teamId: 1 } }) : null;
+  return Boolean(project && canReadProject(user, project) && (user.role === "commercial" || canWorkOnProject(user, project)));
+}
+
+/** Proyectos que ve el usuario y si ve leads: define qué comunicaciones (y correos) ve. */
+export async function communicationScope(store: AdminStore, user: SessionUser) {
+  const projects = await store.opsProjects.find(projectScope(user), { projection: { _id: 1, name: 1, teamId: 1, stage: 1 } }).toArray();
+  return { projects, projectIds: projects.map((p) => p._id), leads: salesReader(user) };
+}
+
 /**
- * Comunicaciones (registro manual, sin integración con Gmail). Ligadas a un proyecto (lo ven quienes
- * ven el proyecto; escriben CEO/CCO, Comercial y el equipo) o a un lead (como Leads: escriben CEO/CCO
- * y Comercial, Financiera lee).
+ * Comunicaciones: registros manuales y correos de Gmail (los sincroniza y envía src/mail). Ligadas a
+ * un proyecto (lo ven quienes ven el proyecto; escriben CEO/CCO, Comercial y el equipo) o a un lead
+ * (como Leads: escriben CEO/CCO y Comercial, Financiera lee).
  */
 export async function registerCommunicationRoutes(app: FastifyInstance, { store }: { store: AdminStore }) {
   const comms = store.db.collection<CommunicationDoc>("core_communications");
 
-  /** Proyectos que ve el usuario (ids) y si ve leads. */
-  async function scope(user: SessionUser) {
-    const projects = await store.opsProjects.find(projectScope(user), { projection: { _id: 1, name: 1, teamId: 1, stage: 1 } }).toArray();
-    return { projects, projectIds: projects.map((p) => p._id), leads: salesReader(user) };
-  }
+  const scope = (user: SessionUser) => communicationScope(store, user);
   const visibleFilter = (s: Awaited<ReturnType<typeof scope>>) => ({ deletedAt: null, $or: [{ projectId: { $in: s.projectIds } }, ...(s.leads ? [{ leadId: { $type: "string" as const } }] : [])] });
 
-  async function canWrite(user: SessionUser, c: Pick<CommunicationDoc, "projectId" | "leadId">) {
-    if (c.leadId) return salesWriter(user);
-    const project = c.projectId ? await store.opsProjects.findOne({ _id: c.projectId }, { projection: { teamId: 1 } }) : null;
-    return Boolean(project && canReadProject(user, project) && (user.role === "commercial" || canWorkOnProject(user, project)));
-  }
+  const canWrite = (user: SessionUser, c: Pick<CommunicationDoc, "projectId" | "leadId">) => canWriteCommunication(store, user, c);
 
   async function view(rows: CommunicationDoc[]) {
     const userIds = [...new Set(rows.map((r) => r.ownerUserId).filter((v): v is string => Boolean(v)))];
@@ -114,7 +138,12 @@ export async function registerCommunicationRoutes(app: FastifyInstance, { store 
       project: r.projectId ? { id: r.projectId, name: projectName.get(r.projectId) ?? null } : null,
       lead: r.leadId ? { id: r.leadId, name: leadName.get(r.leadId) ?? null } : null,
       followUpDate: r.followUpDate,
-      followUpDone: r.followUpDone
+      followUpDone: r.followUpDone,
+      source: r.source ?? "manual",
+      email:
+        r.source === "gmail"
+          ? { from: r.from ?? "", to: r.to ?? [], cc: r.cc ?? [], sentAt: r.sentAt?.toISOString() ?? null, threadId: r.providerThreadId ?? null, matchedBy: r.matchedBy ?? null, sentFromApp: Boolean(r.sentFromApp) }
+          : null
     }));
   }
 
@@ -188,6 +217,18 @@ export async function registerCommunicationRoutes(app: FastifyInstance, { store 
     return doc;
   }
 
+  /** Hilo de un correo: los mensajes guardados del mismo hilo y del mismo buzón, en orden. */
+  app.get("/api/communications/:id/thread", { preHandler: requireAuth }, async (request, reply) => {
+    const params = idParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "Id inválido." });
+    const s = await scope(request.user!);
+    const doc = await comms.findOne({ _id: params.data.id, ...visibleFilter(s) });
+    if (!doc) return reply.code(404).send({ error: "Comunicación no encontrada." });
+    if (!doc.providerThreadId) return { communications: await view([doc]) };
+    const rows = await comms.find({ ownerUserId: doc.ownerUserId, providerThreadId: doc.providerThreadId, ...visibleFilter(s) }).sort({ sentAt: 1 }).limit(200).toArray();
+    return { communications: await view(rows) };
+  });
+
   app.post("/api/communications", { preHandler: requireAuth }, async (request, reply) => {
     const body = createSchema.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ error: body.error.issues[0]?.message ?? "Datos inválidos." });
@@ -235,6 +276,10 @@ export async function registerCommunicationRoutes(app: FastifyInstance, { store 
     if (!body.success) return reply.code(400).send({ error: body.error.issues[0]?.message ?? "Datos inválidos." });
     const doc = await found(request, reply);
     if (!doc) return reply;
+    // Un correo sincronizado es fiel a Gmail: solo se le pone o cierra el seguimiento.
+    if (doc.source === "gmail" && Object.keys(body.data).some((k) => k !== "followUpDate" && k !== "followUpDone")) {
+      return reply.code(400).send({ error: "Un correo de Gmail no se edita; solo puedes ponerle seguimiento." });
+    }
     await comms.updateOne({ _id: doc._id }, { $set: { ...body.data, updatedAt: new Date() } });
     return { communication: (await view([(await comms.findOne({ _id: doc._id }))!]))[0] };
   });

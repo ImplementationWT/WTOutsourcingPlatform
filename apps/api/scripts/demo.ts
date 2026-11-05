@@ -6,6 +6,8 @@ import { MongoClient } from "mongodb";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { buildApp } from "../src/app.js";
 import { createSitesClient } from "../src/sales/sites-client.js";
+import { loadGmail, type Env } from "../src/config/env.js";
+import { createGmailProvider } from "../src/mail/google.js";
 import { hashPassword } from "../src/auth/password.js";
 import { JobEngine } from "../src/jobs/engine.js";
 import { AdminStore } from "../src/store/admin-store.js";
@@ -124,8 +126,11 @@ agent.onMessage = (sessionId, text) => {
   })();
 };
 
+// Gmail real (opcional): GMAIL_SERVICE_ACCOUNT y GOOGLE_BASE_CREDENTIAL_PATH (ver docs/gmail.md).
+const gmail = loadGmail({ ...process.env, GMAIL_DOMAIN: process.env.GMAIL_DOMAIN || "whatever.tech" } as unknown as Env);
 const app = await buildApp({
   store,
+  mail: gmail ? { provider: createGmailProvider({ serviceAccount: gmail.serviceAccount, base: gmail.base }), domain: gmail.domain } : { domain: "whatever.tech" },
   deps: fakes.deps,
   logLevel: "warn",
   auth: { adminUsername: "admin", adminPasswordHash: await hashPassword(PASSWORD), sessionSecret: "demo-".repeat(10), secureCookies: false },

@@ -34,6 +34,8 @@ start() {
     -v "$APP_DIR/anthropic.key:/run/secrets/anthropic.key:ro" \
     -v "$APP_DIR/read-ai.key:/run/secrets/read-ai.key:ro" \
     -v "$APP_DIR/proposal-sites.key:/run/secrets/proposal-sites.key:ro" \
+    -v "$APP_DIR/google-base.json:/run/secrets/google-base.json:ro" \
+    -v "$APP_DIR/gmail-push.key:/run/secrets/gmail-push.key:ro" \
     --log-opt max-size=10m --log-opt max-file=5 \
     "$IMAGE:$1" >/dev/null
 }
@@ -54,6 +56,11 @@ if [ -f "$INCOMING/anthropic.key" ]; then mv "$INCOMING/anthropic.key" "$APP_DIR
 if [ -f "$INCOMING/read-ai.key" ]; then mv "$INCOMING/read-ai.key" "$APP_DIR/read-ai.key"; else : > "$APP_DIR/read-ai.key"; fi
 # Llave de servidor de WTProposalPlatform (Propuestas). Vacía si no está configurada en GitHub.
 if [ -f "$INCOMING/proposal-sites.key" ]; then mv "$INCOMING/proposal-sites.key" "$APP_DIR/proposal-sites.key"; else : > "$APP_DIR/proposal-sites.key"; fi
+# Gmail: credencial base de Google (ADC de la cuenta con Token Creator) y secreto del push de
+# Pub/Sub. Vacíos si no están configurados en GitHub (Gmail queda desactivado).
+for f in google-base.json gmail-push.key; do
+  if [ -f "$INCOMING/$f" ]; then mv "$INCOMING/$f" "$APP_DIR/$f"; else : > "$APP_DIR/$f"; fi
+done
 # Clave de la revelación única de contraseñas iniciales: se genera una vez en el servidor,
 # nunca sale de él y se conserva entre despliegues.
 [ -s "$APP_DIR/initial-password.key" ] || openssl rand -base64 32 > "$APP_DIR/initial-password.key"
@@ -70,8 +77,8 @@ if [ -f "$INCOMING/proposal-sites.key" ]; then mv "$INCOMING/proposal-sites.key"
 [ -s "$APP_DIR/provisioner_ed25519" ] ||
   ssh-keygen -q -t ed25519 -N "" -C "launchpad-provisioner" -f "$APP_DIR/provisioner_ed25519"
 # El contenedor corre como el usuario "node" (uid 1000) de la imagen, no como root.
-chown 1000:1000 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key" "$APP_DIR/provisioner_ed25519" "$APP_DIR/integration.key" "$APP_DIR/server-keys.key" "$APP_DIR/account-vault.key" "$APP_DIR/anthropic.key" "$APP_DIR/read-ai.key" "$APP_DIR/proposal-sites.key"
-chmod 400 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key" "$APP_DIR/provisioner_ed25519" "$APP_DIR/integration.key" "$APP_DIR/server-keys.key" "$APP_DIR/account-vault.key" "$APP_DIR/anthropic.key" "$APP_DIR/read-ai.key" "$APP_DIR/proposal-sites.key"
+chown 1000:1000 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key" "$APP_DIR/provisioner_ed25519" "$APP_DIR/integration.key" "$APP_DIR/server-keys.key" "$APP_DIR/account-vault.key" "$APP_DIR/anthropic.key" "$APP_DIR/read-ai.key" "$APP_DIR/proposal-sites.key" "$APP_DIR/google-base.json" "$APP_DIR/gmail-push.key"
+chmod 400 "$APP_DIR/github-app.pem" "$APP_DIR/initial-password.key" "$APP_DIR/provisioner_ed25519" "$APP_DIR/integration.key" "$APP_DIR/server-keys.key" "$APP_DIR/account-vault.key" "$APP_DIR/anthropic.key" "$APP_DIR/read-ai.key" "$APP_DIR/proposal-sites.key" "$APP_DIR/google-base.json" "$APP_DIR/gmail-push.key"
 
 echo "Cargando imagen $IMAGE:$RELEASE…"
 gunzip -c "$INCOMING/api-image.tar.gz" | docker load

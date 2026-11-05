@@ -11,6 +11,7 @@ import { createClaudeMeetingAnalyzer } from "./meetings/analyzer.js";
 import {
   appBaseDomain,
   loadAccountVaultKey,
+  loadGmail,
   loadProposalSites,
   loadReadAiSigningKey,
   loadAnthropicKey,
@@ -23,6 +24,7 @@ import {
 import { getProvider } from "./integrations/catalog.js";
 import { DEFAULT_TIMING } from "./jobs/types.js";
 import { registerSecret } from "./lib/redact.js";
+import { createGmailProvider } from "./mail/google.js";
 import { createSitesClient } from "./sales/sites-client.js";
 import { ServerDirectory } from "./servers/directory.js";
 import { AdminStore } from "./store/admin-store.js";
@@ -44,6 +46,8 @@ registerSecret(anthropicKey);
 const readAiSigningKey = loadReadAiSigningKey(env);
 const proposalSitesConfig = loadProposalSites(env);
 if (proposalSitesConfig) registerSecret(proposalSitesConfig.key);
+const gmail = loadGmail(env);
+if (gmail) for (const secret of [gmail.base.clientSecret, gmail.base.refreshToken, gmail.pushSecret]) registerSecret(secret);
 if (readAiSigningKey) registerSecret(readAiSigningKey.toString("base64"));
 if (server) registerSecret(server.provisionerKey);
 
@@ -94,6 +98,9 @@ const app = await buildApp({
   vaultKey: accountVaultKey,
   readAiSigningKey,
   proposalSites: proposalSitesConfig ? createSitesClient(proposalSitesConfig) : undefined,
+  mail: gmail
+    ? { provider: createGmailProvider({ serviceAccount: gmail.serviceAccount, base: gmail.base }), domain: gmail.domain, topic: gmail.topic, pushSecret: gmail.pushSecret }
+    : { domain: env.GMAIL_DOMAIN },
   // Reuniones de Comercial y Operativa: la misma clave de Anthropic que el AI Developer.
   meetingAnalyzer: anthropicKey ? createClaudeMeetingAnalyzer(anthropicKey, env.ANTHROPIC_WORKSPACE) : undefined,
   ai: anthropicKey
