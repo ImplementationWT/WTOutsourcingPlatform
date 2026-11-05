@@ -62,6 +62,11 @@ jobs:
           READ_AI_SIGNING_KEY: ${{ secrets.READ_AI_SIGNING_KEY }}
           # Propuestas (opcional): la PLATFORM_API_KEY de WTProposalPlatform (la misma en ambos repos).
           PROPOSAL_SITES_KEY: ${{ secrets.PROPOSAL_SITES_KEY }}
+          # Gmail (opcional): JSON de `gcloud auth application-default login` de la cuenta de Google
+          # que tiene Service Account Token Creator sobre la SA (vars.GMAIL_SERVICE_ACCOUNT), y el
+          # secreto que va en la URL de la suscripción push de Pub/Sub.
+          GOOGLE_BASE_CREDENTIAL: ${{ secrets.GOOGLE_BASE_CREDENTIAL }}
+          GMAIL_PUSH_SECRET: ${{ secrets.GMAIL_PUSH_SECRET }}
         run: |
           umask 077
           printf '%s\n' "$GH_APP_PRIVATE_KEY" > github-app.pem
@@ -71,6 +76,9 @@ jobs:
           printf '%s' "$READ_AI_SIGNING_KEY" > read-ai.key
           # Vacío si no hay llave: Propuestas muestra el aviso y /api/sites responde 503.
           printf '%s' "$PROPOSAL_SITES_KEY" > proposal-sites.key
+          # Vacíos si no hay credencial: Gmail queda desactivado y el resto sigue igual.
+          printf '%s' "$GOOGLE_BASE_CREDENTIAL" > google-base.json
+          printf '%s' "$GMAIL_PUSH_SECRET" > gmail-push.key
           # Formato --env-file de Docker: KEY=valor literal, sin comillas.
           cat > api.env <<EOF
           NODE_ENV=production
@@ -118,6 +126,13 @@ jobs:
             echo "PROPOSAL_SITES_URL=${{ vars.PROPOSAL_SITES_URL || 'https://panel.sites.whatever.tech' }}" >> api.env
             echo "PROPOSAL_SITES_KEY_PATH=/run/secrets/proposal-sites.key" >> api.env
           fi
+          if [ -n "$GOOGLE_BASE_CREDENTIAL" ] && [ -n "${{ vars.GMAIL_SERVICE_ACCOUNT }}" ]; then
+            echo "GMAIL_SERVICE_ACCOUNT=${{ vars.GMAIL_SERVICE_ACCOUNT }}" >> api.env
+            echo "GOOGLE_BASE_CREDENTIAL_PATH=/run/secrets/google-base.json" >> api.env
+            echo "GMAIL_DOMAIN=${{ vars.GMAIL_DOMAIN || 'whatever.tech' }}" >> api.env
+            if [ -n "${{ vars.GMAIL_PUBSUB_TOPIC }}" ]; then echo "GMAIL_PUBSUB_TOPIC=${{ vars.GMAIL_PUBSUB_TOPIC }}" >> api.env; fi
+            if [ -n "$GMAIL_PUSH_SECRET" ]; then echo "GMAIL_PUSH_SECRET_PATH=/run/secrets/gmail-push.key" >> api.env; fi
+          fi
 
       - name: Configurar SSH
         env:
@@ -134,7 +149,7 @@ jobs:
           SSH="ssh -p $SSH_PORT -o BatchMode=yes"
           rsync -az --delete --chmod=D755,F644 --chown=root:root -e "$SSH" dist/ "$SSH_TARGET:/var/www/launchpad/releases/$RELEASE/"
           rsync -az --chmod=F600 --chown=root:root -e "$SSH" \
-            api-image.tar.gz api.env github-app.pem anthropic.key read-ai.key proposal-sites.key deploy/activate.sh \
+            api-image.tar.gz api.env github-app.pem anthropic.key read-ai.key proposal-sites.key google-base.json gmail-push.key deploy/activate.sh \
             "$SSH_TARGET:/opt/wt-launchpad/incoming/"
 
       - name: Activar release
@@ -145,4 +160,4 @@ jobs:
 
       - name: Limpiar credenciales del runner
         if: always()
-        run: rm -f github-app.pem anthropic.key read-ai.key proposal-sites.key api.env ~/.ssh/id_ed25519
+        run: rm -f github-app.pem anthropic.key read-ai.key proposal-sites.key google-base.json gmail-push.key api.env ~/.ssh/id_ed25519

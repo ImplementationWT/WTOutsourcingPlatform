@@ -682,7 +682,7 @@ export function LeadDetailModal({ id, onClose }: { id: string; onClose: () => vo
                     {tab === "meetings" && <MeetingsBoard target={{ kind: "lead", id: data.lead.id, name: data.lead.title }} canWrite={canWrite} />}
                     {tab === "proposals" && <LeadSites data={data} canWrite={canWrite} />}
                     {/* El tablero de Comunicaciones filtrado por este lead (mismos datos y seguimientos). */}
-                    {tab === "comms" && <CommsTab scope={{ leadId: data.lead.id }} defaultContact={data.lead.contactName ?? ""} />}
+                    {tab === "comms" && <CommsTab scope={{ leadId: data.lead.id }} defaultContact={data.lead.contactName ?? ""} defaultEmail={data.lead.email ?? ""} />}
                   </div>
                 </section>
                 <UpdatesColumn base={leadBase(data.lead.id)} canWrite={canWrite} onPosted={refresh} />

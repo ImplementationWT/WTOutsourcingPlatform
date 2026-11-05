@@ -22,6 +22,9 @@ export interface Communication {
   lead: { id: string; name: string | null } | null;
   followUpDate: string | null;
   followUpDone: boolean;
+  /** Manual o sincronizado desde el Gmail de `owner`. */
+  source: "manual" | "gmail";
+  email: { from: string; to: string[]; cc: string[]; sentAt: string | null; threadId: string | null; matchedBy: "contact" | "lead" | "thread" | "domain" | "manual" | null; sentFromApp: boolean } | null;
 }
 export interface CommsList {
   communications: Communication[];
@@ -76,3 +79,48 @@ export function followUp(c: Pick<Communication, "followUpDate" | "followUpDone">
   if (d === 0) return { text: "Seguimiento hoy", tone: "warn" };
   return { text: `Seguimiento ${c.followUpDate.slice(8, 10)}/${c.followUpDate.slice(5, 7)}`, tone: "info" };
 }
+
+export const useThread = (id: string | null) => useQuery({ queryKey: [...commsKey, "thread", id], queryFn: () => apiFetch<{ communications: Communication[] }>(`/api/communications/${id}/thread`), enabled: Boolean(id) });
+
+// ---- Gmail del usuario (siempre el buzón propio: /api/me/mail) ----
+
+export interface MailConnection {
+  email: string;
+  status: "active" | "error" | "disconnected";
+  lastSyncAt: string | null;
+  lastError: string | null;
+  push: boolean;
+}
+export interface MyMail {
+  /** El servidor tiene configurada la integración. */
+  available: boolean;
+  pushEnabled: boolean;
+  /** Correo corporativo del usuario (null si no tiene uno del dominio). */
+  email: string | null;
+  canConnect: boolean;
+  connection: MailConnection | null;
+}
+export const mailKey = ["me", "mail"] as const;
+export const useMyMail = () => useQuery({ queryKey: mailKey, queryFn: () => apiFetch<MyMail>("/api/me/mail"), staleTime: 30_000 });
+/** El usuario tiene su Gmail conectado y puede enviar. */
+export const mailReady = (m: MyMail | undefined) => Boolean(m?.connection && m.connection.status !== "disconnected");
+
+export interface SendInput {
+  to: string[];
+  cc: string[];
+  subject: string;
+  body: string;
+  projectId?: string | null;
+  leadId?: string | null;
+  replyToId?: string | null;
+}
+export const mailApi = {
+  connect: () => apiFetch<{ connection: MailConnection }>("/api/me/mail/connect", send("POST")),
+  disconnect: () => apiFetch("/api/me/mail/disconnect", send("POST")),
+  sync: () => apiFetch<{ connection: MailConnection }>("/api/me/mail/sync", send("POST")),
+  send: (input: SendInput) => apiFetch<{ messageId: string; threadId: string; communicationId: string | null }>("/api/me/mail/send", send("POST", input)),
+};
+
+/** «a@x.com, b@y.com; c@z.com» → lista de correos. */
+export const splitEmails = (text: string) => text.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean);
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;

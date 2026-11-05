@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Plus } from "lucide-react";
+import { ChevronDown, Mail, Plus, Reply } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Modal } from "@/components/ui/dialog";
@@ -9,10 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useSession } from "@/features/auth/auth";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatShortDateTime } from "@/lib/format";
 import { errorText, toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
-import { commsApi, commsKey, DIRECTION_LABELS, followUp, KIND_LABELS, KIND_TONE, KINDS, useComms, type CommInput, type Communication, type CommsScope, type Direction, type Kind } from "./api";
+import { commsApi, commsKey, DIRECTION_LABELS, followUp, KIND_LABELS, KIND_TONE, KINDS, mailReady, useComms, useMyMail, useThread, type CommInput, type Communication, type CommsScope, type Direction, type Kind } from "./api";
+import { ComposeDialog, GmailCard } from "./Mail";
 
 /** Relación de una comunicación nueva: fija (desde un proyecto o lead) o a elegir en la pantalla general. */
 export interface RelationOption {
@@ -141,10 +142,37 @@ export function CommDialog({
   );
 }
 
+/** Mensajes guardados del hilo de un correo, del más viejo al más nuevo. */
+function Thread({ id }: { id: string }) {
+  const { data, isLoading } = useThread(id);
+  if (isLoading) return <p className="text-xs text-muted-foreground">Cargando hilo…</p>;
+  const list = data?.communications ?? [];
+  if (list.length < 2) return null;
+  return (
+    <ol aria-label="Hilo" className="space-y-2 border-l-2 border-border pl-3">
+      {list.map((m) => (
+        <li key={m.id} className="text-sm">
+          <p className="text-xs text-muted-foreground">
+            <b className="text-foreground">{m.direction === "sent" ? (m.owner?.name ?? m.email?.from) : m.email?.from}</b> · {m.email?.sentAt ? formatShortDateTime(m.email.sentAt) : formatDate(m.date)}
+          </p>
+          <p className="line-clamp-4 whitespace-pre-line">{m.body || "Sin contenido."}</p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+const MATCHED: Record<string, string> = { contact: "por el contacto", lead: "por el correo del lead", thread: "por el hilo", domain: "por el dominio", manual: "elegido al enviar" };
+
 /** Una comunicación: se despliega para leer el resumen, marcar el seguimiento o eliminarla. */
 export function CommCard({ c, showRelation, canEdit }: { c: Communication; showRelation: boolean; canEdit: boolean }) {
   const queryClient = useQueryClient();
+  const me = useSession().data?.id;
+  const mail = useMyMail().data;
   const [open, setOpen] = useState(false);
+  const [replying, setReplying] = useState(false);
+  // Solo se responde desde el buzón propio (el hilo de Gmail es de quien lo recibió).
+  const canReply = c.source === "gmail" && c.owner?.id === me && mailReady(mail);
   const f = followUp(c);
   const refresh = () => queryClient.invalidateQueries({ queryKey: commsKey });
   const act = async (action: () => Promise<unknown>, done?: string, undo?: () => Promise<unknown>) => {
@@ -160,7 +188,10 @@ export function CommCard({ c, showRelation, canEdit }: { c: Communication; showR
   return (
     <article className="rounded-2xl border border-border bg-card">
       <button type="button" aria-expanded={open} aria-label={`Ver detalle de ${c.subject || KIND_LABELS[c.kind]}`} onClick={() => setOpen(!open)} className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3 text-left">
-        <StatusBadge tone={KIND_TONE[c.kind]}>{KIND_LABELS[c.kind]}</StatusBadge>
+        <StatusBadge tone={KIND_TONE[c.kind]}>
+          {c.source === "gmail" && <Mail aria-hidden className="size-3" />}
+          {c.source === "gmail" ? "Gmail" : KIND_LABELS[c.kind]}
+        </StatusBadge>
         <span className="min-w-0 flex-1 basis-48">
           <b className="block truncate">{c.subject || "(sin asunto)"}</b>
           <span className="block truncate text-xs text-muted-foreground">
@@ -174,38 +205,81 @@ export function CommCard({ c, showRelation, canEdit }: { c: Communication; showR
       </button>
       {open && (
         <div className="space-y-3 border-t border-border px-4 py-3">
-          <p className="text-sm whitespace-pre-line">{c.body || "Sin contenido."}</p>
-          {canEdit && (
+          {c.email && (
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <dt className="text-muted-foreground">De</dt>
+              <dd className="break-all">{c.email.from}</dd>
+              <dt className="text-muted-foreground">Para</dt>
+              <dd className="break-all">{c.email.to.join(", ") || "—"}</dd>
+              {c.email.cc.length > 0 && (
+                <>
+                  <dt className="text-muted-foreground">CC</dt>
+                  <dd className="break-all">{c.email.cc.join(", ")}</dd>
+                </>
+              )}
+              {c.email.matchedBy && (
+                <>
+                  <dt className="text-muted-foreground">Cliente</dt>
+                  <dd>
+                    Asociado {MATCHED[c.email.matchedBy]}
+                    {c.email.sentFromApp ? " · enviado desde la app" : ""}
+                  </dd>
+                </>
+              )}
+            </dl>
+          )}
+          <p className="max-h-96 overflow-y-auto text-sm whitespace-pre-line">{c.body || "Sin contenido."}</p>
+          {c.email?.threadId && <Thread id={c.id} />}
+          {(canEdit || canReply) && (
             <div className="flex flex-wrap gap-2">
+              {canReply && (
+                <Button size="sm" onClick={() => setReplying(true)}>
+                  <Reply /> Responder
+                </Button>
+              )}
               {f && (
                 <Button size="sm" variant="outline" onClick={() => void act(() => commsApi.update(c.id, { followUpDone: true }), "Seguimiento hecho", () => commsApi.update(c.id, { followUpDone: false }))}>
                   Marcar seguimiento hecho
                 </Button>
               )}
-              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => void act(() => commsApi.remove(c.id), "Comunicación eliminada", () => commsApi.restore(c.id))}>
-                Eliminar
-              </Button>
+              {canEdit && (
+                <Button size="sm" variant="ghost" className="text-destructive" onClick={() => void act(() => commsApi.remove(c.id), "Comunicación eliminada", () => commsApi.restore(c.id))}>
+                  {c.source === "gmail" ? "Quitar de la app" : "Eliminar"}
+                </Button>
+              )}
             </div>
           )}
         </div>
       )}
+      {replying && <ComposeDialog replyTo={c} onClose={() => setReplying(false)} />}
     </article>
   );
 }
 
 /** Pestaña Comunicaciones del proyecto o del lead. */
-export function CommsTab({ scope, defaultContact }: { scope: { projectId: string } | { leadId: string }; defaultContact?: string }) {
+export function CommsTab({ scope, defaultContact, defaultEmail }: { scope: { projectId: string } | { leadId: string }; defaultContact?: string; defaultEmail?: string }) {
   const { data } = useComms(scope);
+  const mail = useMyMail().data;
   const [adding, setAdding] = useState(false);
+  const [composing, setComposing] = useState(false);
   const list = data?.communications ?? [];
+  const ready = mailReady(mail);
   return (
     <div className="space-y-3">
+      {mail?.available && !ready && <GmailCard />}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">Registro manual. Más adelante se podrá conectar Gmail para traer los correos automáticamente.</p>
+        <p className="font-subtitle text-sm text-muted-foreground">{mail?.available ? "Correos de Gmail con este cliente y registros manuales." : "Registro manual de emails, mensajes y llamadas."}</p>
         {data?.canCreate && (
-          <Button onClick={() => setAdding(true)}>
-            <Plus /> Registrar comunicación
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {ready && (
+              <Button onClick={() => setComposing(true)}>
+                <Mail /> Redactar email
+              </Button>
+            )}
+            <Button variant={ready ? "outline" : "default"} onClick={() => setAdding(true)}>
+              <Plus /> Registrar comunicación
+            </Button>
+          </div>
         )}
       </div>
       {data && !list.length && (
@@ -218,6 +292,7 @@ export function CommsTab({ scope, defaultContact }: { scope: { projectId: string
         <CommCard key={c.id} c={c} showRelation={false} canEdit={Boolean(data?.canCreate)} />
       ))}
       {adding && <CommDialog open onOpenChange={setAdding} fixed={scope} people={data?.people ?? []} defaultContact={defaultContact} />}
+      {composing && <ComposeDialog fixed={scope} defaultTo={defaultEmail} onClose={() => setComposing(false)} />}
     </div>
   );
 }

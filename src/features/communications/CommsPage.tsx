@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Plus, Search } from "lucide-react";
+import { AlertTriangle, Mail, Plus, Search } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,8 +9,9 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { useOpsProjects } from "@/features/ops/api";
 import { useLeads } from "@/features/sales/api";
 import { cn } from "@/lib/utils";
-import { followUp, useComms, useCommsSummary, type ColdItem, type Communication } from "./api";
+import { followUp, mailReady, useComms, useCommsSummary, useMyMail, type ColdItem, type Communication } from "./api";
 import { CommCard, CommDialog, type RelationOption } from "./CommsList";
+import { ComposeDialog, GmailCard } from "./Mail";
 
 type Tab = "all" | "emails" | "messages" | "calls" | "followups";
 const TABS: { id: Tab; label: string; match: (c: Communication) => boolean }[] = [
@@ -24,7 +25,7 @@ const TABS: { id: Tab; label: string; match: (c: Communication) => boolean }[] =
 const coldText = (c: ColdItem) => (c.since === "never" ? "Sin comunicaciones registradas" : c.since === "arrival" ? `Sin respuesta desde que llegó hace ${c.days} d` : `Sin contacto hace ${c.days} d`);
 
 /**
- * Comunicaciones: emails, mensajes y llamadas con clientes y leads (registro manual). Avisa de los
+ * Comunicaciones: emails (los de Gmail llegan solos), mensajes y llamadas con clientes y leads. Avisa de los
  * proyectos sin contacto hace más de 7 días y de los leads sin respuesta hace más de 2.
  */
 export default function CommsPage() {
@@ -35,6 +36,8 @@ export default function CommsPage() {
   const [tab, setTab] = useState<Tab>("all");
   const [q, setQ] = useState("");
   const [dialog, setDialog] = useState<{ relation: string } | null>(null);
+  const [composing, setComposing] = useState(false);
+  const ready = mailReady(useMyMail().data);
   if (isLoading || !data) return <Skeleton className="h-64 w-full" />;
 
   const relations: RelationOption[] = [
@@ -53,15 +56,24 @@ export default function CommsPage() {
       <PageHeader
         stackOnMobile
         title="Comunicaciones"
-        description={<span className="max-sm:hidden">Emails, mensajes y llamadas con clientes y leads. Registra cada contacto y programa el siguiente seguimiento.</span>}
+        description={<span className="max-sm:hidden">Emails, mensajes y llamadas con clientes y leads. Tus correos de Gmail con clientes llegan solos; registra el resto y programa el siguiente seguimiento.</span>}
         actions={
           data.canCreate ? (
-            <Button size="lg" onClick={() => setDialog({ relation: "" })}>
-              <Plus /> Registrar <span className="max-sm:hidden">comunicación</span>
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {ready && (
+                <Button size="lg" variant="outline" onClick={() => setComposing(true)}>
+                  <Mail /> Redactar <span className="max-sm:hidden">email</span>
+                </Button>
+              )}
+              <Button size="lg" onClick={() => setDialog({ relation: "" })}>
+                <Plus /> Registrar <span className="max-sm:hidden">comunicación</span>
+              </Button>
+            </div>
           ) : undefined
         }
       />
+
+      <GmailCard />
 
       <KpiRow label="Indicadores">
         <Kpi label="Esta semana" value={summary?.lastWeek ?? "—"} sub="Comunicaciones registradas" />
@@ -112,6 +124,7 @@ export default function CommsPage() {
         ))}
       </div>
 
+      {composing && <ComposeDialog relations={relations} onClose={() => setComposing(false)} />}
       {dialog && <CommDialog open onOpenChange={(o) => !o && setDialog(null)} relations={relations} people={data.people} initialRelation={dialog.relation} />}
     </div>
   );

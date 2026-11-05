@@ -97,6 +97,13 @@ export const envSchema = z.object({
   PROPOSAL_SITES_URL: optional(z.string().regex(/^https?:\/\/[^\s/]+$/, "debe ser el origen, p. ej. https://panel.sites.whatever.tech")),
   PROPOSAL_SITES_KEY_PATH: optional(z.string().min(1)),
   READ_AI_SIGNING_KEY_PATH: optional(z.string().min(1)),
+  // Gmail con delegación de dominio, sin llave de Service Account (src/mail/google.ts): la cuenta
+  // de Google del backend (ADC authorized_user) firma como la SA vía IAM Credentials.
+  GMAIL_SERVICE_ACCOUNT: optional(z.string().email("debe ser el correo de la Service Account (…@….iam.gserviceaccount.com)")),
+  GOOGLE_BASE_CREDENTIAL_PATH: optional(z.string().min(1)),
+  GMAIL_DOMAIN: optional(z.string().regex(/^[a-z0-9.-]+\.[a-z]{2,}$/i, "debe ser un dominio, p. ej. whatever.tech")).default("whatever.tech"),
+  GMAIL_PUBSUB_TOPIC: optional(z.string().regex(/^projects\/[a-z0-9-]+\/topics\/[A-Za-z0-9._~%+-]{3,255}$/, "debe ser projects/<proyecto>/topics/<tópico>")),
+  GMAIL_PUSH_SECRET_PATH: optional(z.string().min(1)),
 
   // Sesión del panel
   PANEL_ADMIN_USERNAME: z.string().min(3),
@@ -215,6 +222,29 @@ export function loadProposalSites(env: Env) {
   if (!key) return undefined;
   if (key.length < 32) throw new Error("Configuración inválida:\n  - PROPOSAL_SITES_KEY_PATH: el archivo debe contener la PLATFORM_API_KEY de WTProposalPlatform (32+ caracteres)");
   return { baseUrl: env.PROPOSAL_SITES_URL, key };
+}
+
+/**
+ * Gmail (delegación de dominio sin llave): Service Account, credencial base del backend (el JSON de
+ * `gcloud auth application-default login`), dominio, tópico de Pub/Sub y secreto del push. Devuelve
+ * undefined si falta la SA o la credencial (archivo ausente o vacío): Gmail queda desactivado.
+ */
+export function loadGmail(env: Env) {
+  if (!env.GMAIL_SERVICE_ACCOUNT || !env.GOOGLE_BASE_CREDENTIAL_PATH) return undefined;
+  const text = readFileSync(env.GOOGLE_BASE_CREDENTIAL_PATH, "utf8").trim();
+  if (!text) return undefined;
+  const invalid = () => new Error("Configuración inválida:\n  - GOOGLE_BASE_CREDENTIAL_PATH: el archivo debe ser el JSON de `gcloud auth application-default login` (type authorized_user)");
+  let json: Record<string, unknown>;
+  try {
+    json = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    throw invalid();
+  }
+  const { type, client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken } = json;
+  if (type !== "authorized_user" || typeof clientId !== "string" || typeof clientSecret !== "string" || typeof refreshToken !== "string") throw invalid();
+  const pushSecret = env.GMAIL_PUSH_SECRET_PATH ? readFileSync(env.GMAIL_PUSH_SECRET_PATH, "utf8").trim() || undefined : undefined;
+  if (pushSecret && pushSecret.length < 24) throw new Error("Configuración inválida:\n  - GMAIL_PUSH_SECRET_PATH: el secreto debe tener 24+ caracteres");
+  return { serviceAccount: env.GMAIL_SERVICE_ACCOUNT, base: { clientId, clientSecret, refreshToken }, domain: env.GMAIL_DOMAIN, topic: env.GMAIL_PUBSUB_TOPIC, pushSecret };
 }
 
 /** Clave de la API de Anthropic (archivo), o undefined si el AI Developer no está configurado. */

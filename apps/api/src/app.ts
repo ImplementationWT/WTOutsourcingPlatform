@@ -33,6 +33,9 @@ import { registerTableroRoutes } from "./routes/tableros.js";
 import { registerFileRoutes } from "./routes/files.js";
 import { registerNotificationRoutes } from "./core/notifications.js";
 import { registerSiteRoutes } from "./routes/sites.js";
+import { registerMailRoutes } from "./routes/mail.js";
+import { MailService } from "./mail/service.js";
+import type { MailProvider } from "./mail/provider.js";
 import { registerTaskRoutes } from "./routes/tasks.js";
 import { registerViewRoutes } from "./routes/views.js";
 import { ServerDirectory } from "./servers/directory.js";
@@ -58,9 +61,11 @@ export interface AppOptions {
   readAiSigningKey?: Buffer;
   /** WTProposalPlatform (sitios de las propuestas); sin ella, /api/sites responde 503. */
   proposalSites?: SitesClient;
+  /** Correo de cada persona (Gmail); sin proveedor, /api/me/mail dice que no está disponible. */
+  mail?: { provider?: MailProvider; domain: string; topic?: string; pushSecret?: string };
 }
 
-export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStream, ai, servers: givenServers, vaultKey, meetingAnalyzer, readAiSigningKey, proposalSites }: AppOptions) {
+export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStream, ai, servers: givenServers, vaultKey, meetingAnalyzer, readAiSigningKey, proposalSites, mail: mailOptions }: AppOptions) {
   const app = Fastify({
     logger: loggerOptions({ level: logLevel, stream: logStream }),
     // La API solo escucha en 127.0.0.1 detrás de nginx: se confía únicamente en ese salto, así
@@ -151,11 +156,17 @@ export async function buildApp({ store, deps: baseDeps, auth, logLevel, logStrea
   await registerFileRoutes(app, { store });
   await registerNotificationRoutes(app, { store });
   await registerMeetingInboxRoutes(app, { store, processing: meetings, signingKey: readAiSigningKey });
+  const mail = new MailService(store, mailOptions?.provider, { domain: mailOptions?.domain ?? "whatever.tech", topic: mailOptions?.topic }, app.log.child({ component: "mail" }));
+  await registerMailRoutes(app, { mail, pushSecret: mailOptions?.pushSecret });
+  // Recuperación: cada 5 minutos se sincronizan los buzones conectados (avisos perdidos, reinicios).
+  const mailSweep = mail.available ? setInterval(() => void mail.sweep().catch((error) => app.log.warn({ err: error }, "mail sweep failed")), 5 * 60_000) : undefined;
+  mailSweep?.unref();
 
   app.addHook("onClose", async () => {
     if (previewSweep) clearInterval(previewSweep);
-    await Promise.all([engine.idle(), teardown.idle(), meetings.idle()]);
+    if (mailSweep) clearInterval(mailSweep);
+    await Promise.all([engine.idle(), teardown.idle(), meetings.idle(), mail.idle()]);
   });
 
-  return Object.assign(app, { engine, teardown, store, aiDeveloper, servers, users, meetings });
+  return Object.assign(app, { engine, teardown, store, aiDeveloper, servers, users, meetings, mail });
 }
