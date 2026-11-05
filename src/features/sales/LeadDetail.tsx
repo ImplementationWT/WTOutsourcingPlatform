@@ -26,6 +26,7 @@ import {
   PIPELINE_LEAD_STATUSES,
   LEAD_TEMPERATURE_LABELS,
   LEAD_TEMPERATURES,
+  announceProject,
   leadBase,
   salesKeys,
   updateLead,
@@ -88,10 +89,16 @@ function previousOf(lead: LeadDetail, patch: Partial<LeadInput>): Partial<LeadIn
 /** Guarda un cambio del lead con aviso «Guardado» y «Deshacer». */
 function useSaveLead(lead: LeadDetail) {
   const refresh = useRefresh(lead.id);
+  const queryClient = useQueryClient();
   return async (patch: Partial<LeadInput>, what = "Cambio guardado") => {
     const before = previousOf(lead, patch);
-    await updateLead(lead.id, patch);
+    const res = await updateLead(lead.id, patch);
     await refresh();
+    // Ganado crea el proyecto: se avisa en lugar de ofrecer «Deshacer» (el proyecto ya existe).
+    if (res.project) {
+      await queryClient.invalidateQueries({ queryKey: ["ops"] });
+      return void announceProject(res.project);
+    }
     toast.success(what, {
       undo: async () => {
         await updateLead(lead.id, before);

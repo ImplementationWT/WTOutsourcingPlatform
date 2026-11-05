@@ -199,3 +199,26 @@ describe("detalle del proyecto (prototipo)", () => {
     expect((await store.meetings.findOne({ _id: "m-2" }))?.projectId).toBeNull();
   });
 });
+
+describe("lead ganado", () => {
+  it("al ganar el lead se crea su proyecto con nombre, cliente y empresa, Medium, Kick Off y Happy; los deals pasan al proyecto; solo una vez", async () => {
+    const { as, store } = await world();
+    const marta = await as("marta");
+    const lead = (await marta("POST", "/api/sales/leads", { name: "Portal de pedidos", company: "Manpersa SAC", contactName: "Francisco Wong", email: "fw@manpersa.pe", phone: "+51 987 654 321" })).body.lead;
+    const deal = (await marta("POST", "/api/deals", { title: "Portal MVP", leadId: lead.id })).body.deal;
+    const won = await marta("PATCH", `/api/sales/leads/${lead.id}`, { status: "won" });
+    expect(won.status).toBe(200);
+    expect(won.body.project).toMatchObject({ name: "Portal de pedidos" });
+    const project = await store.opsProjects.findOne({ _id: won.body.project.id });
+    expect(project).toMatchObject({ leadId: lead.id, stage: "kickoff", priority: "medium", health: "happy", customerName: "Manpersa SAC" });
+    // El cliente es un contacto nuevo con los datos del lead, y queda enlazado al lead.
+    const contact = await store.contacts.findOne({ _id: project!.contactIds[0] });
+    expect(contact).toMatchObject({ name: "Francisco Wong", company: "Manpersa SAC", emails: ["fw@manpersa.pe"], phone: "+51 987 654 321" });
+    expect(await store.leads.findOne({ _id: lead.id })).toMatchObject({ projectId: project!._id, contactId: contact!._id });
+    expect((await store.deals.findOne({ _id: deal.id }))?.projectId).toBe(project!._id);
+    // Volver a marcarlo Ganado no crea otro proyecto.
+    await marta("PATCH", `/api/sales/leads/${lead.id}`, { status: "proposal_sent" });
+    expect((await marta("PATCH", `/api/sales/leads/${lead.id}`, { status: "won" })).body.project).toBeUndefined();
+    expect(await store.opsProjects.countDocuments({ leadId: lead.id })).toBe(1);
+  });
+});

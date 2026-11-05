@@ -239,3 +239,16 @@ usaron valores nuevos de enums, correr el script de reversa de cada paso antes d
   - **Rollback:**
     - quitar las dos variables: la pantalla muestra el aviso, sin tocar datos;
     - las propuestas creadas aquí guardan su URL, así que siguen visibles en el lead como enlaces.
+
+## Lead ganado → proyecto (decidido)
+
+Al pasar un lead a **Ganado** se crea su proyecto automáticamente (`apps/api/src/sales/win-lead.ts`), una sola vez por lead:
+
+- **Datos del lead:**
+  - **Nombre:** el del lead, o su empresa si no tiene.
+  - **Cliente:** su contacto. Si solo estaba escrito, se crea en Contactos con su correo, teléfono y empresa, y se enlaza al lead.
+  - **Account:** la empresa del contacto.
+- **Valores iniciales:** Priority **Medium**, Stage **Kick Off** y Sentiment **Happy** (health `happy`).
+- **Equipo:** el que tiene menos proyectos activos, con su Team Leader. El CEO/CCO lo cambia en el detalle.
+- **Deals y propuestas del lead:** pasan al proyecto.
+- **Bitácora:** queda una nota en el lead y otra en el proyecto, más un registro en la auditoría.

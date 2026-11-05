@@ -26,6 +26,7 @@ import {
 import { runTableQuery, tableQuerySchema } from "../lib/table-query.js";
 import { createProposalSchema, PROPOSAL_LABELS, proposalView, statusDates, updateProposalSchema } from "../sales/proposals.js";
 import type { AdminStore } from "../store/admin-store.js";
+import { projectFromWonLead } from "../sales/win-lead.js";
 
 /** Contexto de una reunión comercial para el modelo. */
 export const leadMeetingContext = (lead: Pick<LeadDoc, "company" | "contactName" | "status">) =>
@@ -394,9 +395,11 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
       await note(user, lead._id, changes.join("\n"));
       await auditSales(user, lead, patch.status && patch.status !== lead.status ? "sales.lead_status_changed" : "sales.lead_updated", patch.status ? { from: lead.status, to: patch.status } : undefined);
     }
+    // Ganado: nace el proyecto con lo que coincide del lead (solo la primera vez).
+    const project = patch.status === "won" && lead.status !== "won" ? await projectFromWonLead(store, user, { ...lead, ...rest }) : null;
     const fresh = (await store.leads.findOne({ _id: lead._id }))!;
     const view = await leadViews([fresh]);
-    return { lead: view(fresh, true) };
+    return { lead: view(fresh, true), ...(project ? { project: { id: project._id, name: project.name } } : {}) };
   });
 
   // ---- demos -------------------------------------------------------------------

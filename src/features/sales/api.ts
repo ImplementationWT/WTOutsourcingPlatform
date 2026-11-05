@@ -1,5 +1,6 @@
 import type { ChipColor } from "@/components/ui/chip";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "@/lib/toast";
 import type { Tone } from "@/components/ui/tones";
 import { useTablePage } from "@/components/data-table/use-table-page";
 import { useSession } from "@/features/auth/auth";
@@ -182,7 +183,12 @@ export interface LeadInput {
 }
 
 export const createLead = (input: Partial<Omit<LeadInput, "status" | "lostReason">>) => apiFetch<{ lead: LeadDetail }>("/api/sales/leads", send("POST", input));
-export const updateLead = (id: string, patch: Partial<LeadInput>) => apiFetch<{ lead: LeadDetail }>(base(id), send("PATCH", patch));
+/** Al pasar a Ganado, la API crea el proyecto y lo devuelve en `project`. */
+export const updateLead = (id: string, patch: Partial<LeadInput>) => apiFetch<{ lead: LeadDetail; project?: { id: string; name: string } }>(base(id), send("PATCH", patch));
+
+/** Aviso del proyecto creado al ganar un lead. */
+export const announceProject = (project: { name: string } | undefined) =>
+  project && toast.success(`Lead ganado · proyecto creado: ${project.name}`, { description: "Está en Operativa → Proyectos, en Kick Off." });
 export const addDemoLearning = (id: string, demoId: string, text: string) => apiFetch<{ demo: Demo }>(`${base(id)}/demos/${demoId}/learnings`, send("POST", { text }));
 
 export const createDemo = (id: string, input: { title: string; scheduledAt: string; url?: string | null; notes?: string }) => apiFetch<{ demo: Demo }>(`${base(id)}/demos`, send("POST", input));

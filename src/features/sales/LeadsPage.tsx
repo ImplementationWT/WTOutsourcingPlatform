@@ -24,6 +24,7 @@ import {
   PIPELINE_LEAD_STATUSES,
   LEAD_TEMPERATURE_LABELS,
   LEAD_TEMPERATURES,
+  announceProject,
   salesKeys,
   updateLead,
   useLeads,
@@ -181,8 +182,12 @@ export default function LeadsPage() {
   const status = table.state.filters.status as LeadStatus | undefined;
   const openLead = (id: string | null) => navigate({ pathname: id ? `/comercial/leads/${id}` : "/comercial", search });
   const save = async (lead: Lead, patch: Partial<LeadInput>) => {
-    await updateLead(lead.id, patch);
+    const res = await updateLead(lead.id, patch);
     await queryClient.invalidateQueries({ queryKey: salesKeys.all });
+    if (res.project) {
+      await queryClient.invalidateQueries({ queryKey: ["ops"] });
+      announceProject(res.project);
+    }
   };
   const muted = <span className="text-muted-foreground">—</span>;
   const person = (p: Lead["setter"]) => p?.name ?? <span className="text-muted-foreground">Sin asignar</span>;
