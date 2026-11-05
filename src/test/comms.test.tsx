@@ -19,13 +19,15 @@ const list = [
   comm("c4", { direction: "received", subject: "¿Revisamos la propuesta?", lead: { id: "l1", name: "Acme" }, source: "gmail", email: { from: "juan@acme.com", to: ["marta@whatever.tech"], cc: [], sentAt: new Date().toISOString(), threadId: "t1", matchedBy: "lead", sentFromApp: false } }),
 ];
 
-function renderPage() {
+function renderPage({ syncing = false } = {}) {
   const calls: { url: string; method: string; body: unknown }[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : undefined });
     if (url === "/api/communications") return json({ communications: list, canCreate: true, people: [{ id: "u-com", name: "Marta" }] });
-    if (url === "/api/me/mail") return json({ available: true, pushEnabled: true, email: "marta@whatever.tech", canConnect: true, connection: { email: "marta@whatever.tech", status: "active", lastSyncAt: new Date().toISOString(), lastError: null, push: true } });
+    if (url === "/api/me/mail") return json({ available: true, pushEnabled: true, email: "marta@whatever.tech", canConnect: true, connection: { email: "marta@whatever.tech", status: "active", lastSyncAt: new Date().toISOString(), lastError: null, push: true, syncing } });
+    if (url === "/api/me/mail/signature") return json({ text: "Marta Ríos\nWhatever Tech" });
+    if (url.startsWith("/api/me/mail/recipients")) return json({ suggestions: [{ email: "manuel@whatever.tech", name: "Manuel", source: "team" }, { email: "juan@acme.com", name: "Juan Pérez", source: "history" }] });
     if (url === "/api/communications/c4/thread") return json({ communications: [list[3]] });
     if (url === "/api/me/mail/send") return json({ messageId: "m2", threadId: "t1", communicationId: "c5" });
     if (url === "/api/communications/summary") return json({ cold: [{ kind: "project", id: "p9", name: "Refyt", days: 12, since: "contact" }, { kind: "lead", id: "l2", name: "Nueva SAC", days: 4, since: "arrival" }], followUpsDue: 1, lastWeek: 3 });
@@ -78,7 +80,34 @@ describe("Comunicaciones", () => {
     expect((screen.getByLabelText("Asunto") as HTMLInputElement).value).toBe("Re: ¿Revisamos la propuesta?");
     fireEvent.change(screen.getByLabelText("Mensaje"), { target: { value: "Claro, mañana." } });
     fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
-    await waitFor(() => expect(calls.find((c) => c.url === "/api/me/mail/send")?.body).toMatchObject({ to: ["juan@acme.com"], replyToId: "c4", body: "Claro, mañana." }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/api/me/mail/send")?.body).toMatchObject({ to: ["juan@acme.com"], replyToId: "c4", body: "Claro, mañana.", signature: true }));
+  });
+
+  it("Gmail: al escribir un destinatario sugiere correos y la firma se puede quitar", async () => {
+    const calls = renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Ver detalle de ¿Revisamos la propuesta?" }));
+    fireEvent.click(screen.getByRole("button", { name: "Responder" }));
+    const to = screen.getByLabelText("Para") as HTMLInputElement;
+    fireEvent.focus(to);
+    fireEvent.change(to, { target: { value: "juan@acme.com, manu" } });
+    const option = await screen.findByRole("option", { name: /Manuel/ });
+    expect(option.textContent).toContain("Equipo");
+    // La sugerencia de juan@acme.com no aparece: ya está escrito.
+    expect(screen.queryByRole("option", { name: /Juan Pérez/ })).toBeNull();
+    fireEvent.keyDown(to, { key: "Enter" });
+    expect(to.value).toBe("juan@acme.com, manuel@whatever.tech, ");
+    expect(await screen.findByText(/Marta Ríos/)).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Incluir mi firma de Gmail"));
+    fireEvent.change(screen.getByLabelText("Mensaje"), { target: { value: "Hola" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/api/me/mail/send")?.body).toMatchObject({ to: ["juan@acme.com", "manuel@whatever.tech"], signature: false }));
+  });
+
+  it("Gmail: mientras se sincroniza muestra el spinner", async () => {
+    renderPage({ syncing: true });
+    const card = await screen.findByRole("region", { name: "Tu Gmail" });
+    expect(await within(card).findByText("Sincronizando")).toBeTruthy();
+    expect(within(card).getByRole("button", { name: /Sincronizando…/ })).toHaveProperty("disabled", true);
   });
 
   it("marcar el seguimiento hecho desde el detalle", async () => {

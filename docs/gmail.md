@@ -8,6 +8,14 @@ Desde ese momento:
   desconocidos) **no se guardan**.
 - Puede **redactar** correos y **responder dentro del hilo** desde la app; salen desde su propia cuenta.
 - Cada envío queda auditado (`email.sent`: quién, desde qué cuenta, a quién, qué cliente, hilo y mensaje).
+- Al escribir un destinatario se sugieren correos: a quién ya le escribió (su propio buzón en la app),
+  contactos y leads (si ve Comercial) y la gente de la app (también por usuario: «manu» →
+  manuel@whatever.tech). `GET /api/me/mail/recipients?q=`.
+- Los correos salen con su **firma de Gmail** (Configuración › Firma de su cuenta). El servidor la lee
+  con `gmail.readonly` (`settings/sendAs`, sin scopes nuevos), la guarda 10 minutos en memoria y la
+  agrega como HTML + texto. Al redactar se ve en texto y se puede quitar para ese correo.
+- La tarjeta de Gmail muestra un spinner mientras el servidor sincroniza (al conectar, por push o
+  cada 5 minutos) y recarga los correos al terminar.
 
 ## Cómo funciona (delegación de dominio sin llave)
 

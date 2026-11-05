@@ -1,4 +1,7 @@
+import { htmlToText } from "./message.js";
 import { MailError, type Mailbox, type MailProvider, type RawMessage } from "./provider.js";
+
+export { htmlToText };
 
 /**
  * Gmail con delegación de dominio SIN llave de Service Account:
@@ -142,24 +145,6 @@ interface GmailPart {
   headers?: { name: string; value: string }[];
 }
 
-/** HTML a texto legible (sin etiquetas, estilos ni scripts). */
-export function htmlToText(html: string) {
-  return html
-    .replace(/<(style|script|head)[^>]*>[\s\S]*?<\/\1>/gi, "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|tr|li|h[1-6]|blockquote)>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
 /** Texto del mensaje: la primera parte text/plain que no sea adjunto; si no hay, el HTML convertido. */
 export function bodyText(payload: GmailPart) {
   let plain: string | null = null;
@@ -250,6 +235,13 @@ function gmailMailbox(email: string, tokens: ReturnType<typeof createDelegatedTo
     },
     async stopWatch() {
       await call("/stop", { method: "POST" });
+    },
+    async signature() {
+      // Firma de la dirección principal (Gmail › Configuración › Firma). gmail.readonly basta.
+      const r = await call<{ sendAs?: { sendAsEmail: string; isPrimary?: boolean; signature?: string }[] }>("/settings/sendAs");
+      const list = r.sendAs ?? [];
+      const own = list.find((a) => a.sendAsEmail.toLowerCase() === email) ?? list.find((a) => a.isPrimary);
+      return own?.signature?.trim() || null;
     }
   };
 }

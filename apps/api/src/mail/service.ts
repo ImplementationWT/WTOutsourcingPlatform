@@ -4,7 +4,8 @@ import type { SessionUser } from "../auth/users.js";
 import type { CommunicationDoc } from "../routes/communications.js";
 import type { AdminStore } from "../store/admin-store.js";
 import { matchCustomer, type CustomerMatch } from "./matching.js";
-import { addresses, buildMime, displayName, domainOf, replySubject } from "./message.js";
+import { MODULE_ACCESS } from "../auth/modules.js";
+import { addresses, buildMime, displayName, domainOf, htmlToText, replySubject } from "./message.js";
 import { MailError, type Mailbox, type MailProvider, type RawMessage } from "./provider.js";
 
 /** Buzón conectado de una persona. Una por usuario; el buzón es siempre el correo de su cuenta. */
@@ -35,6 +36,17 @@ export interface MailConfig {
 /** Etiquetas que nunca se registran. */
 const SKIP_LABELS = new Set(["SPAM", "TRASH", "DRAFT", "CHAT"]);
 const MAX_BODY = 20_000;
+/** La firma se relee de Gmail cada 10 minutos (si la persona la cambia, se nota pronto). */
+const SIGNATURE_TTL_MS = 10 * 60_000;
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const VALID_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/** Sugerencia de destinatario: de dónde sale (para mostrarlo) y su nombre si se conoce. */
+export interface RecipientSuggestion {
+  email: string;
+  name: string | null;
+  source: "history" | "contact" | "lead" | "team";
+}
 
 export class MailServiceError extends Error {
   constructor(
@@ -57,6 +69,7 @@ export class MailService {
   readonly comms;
   private readonly running = new Map<string, Promise<void>>();
   private readonly again = new Set<string>();
+  private readonly signatures = new Map<string, { html: string | null; at: number }>();
 
   constructor(
     readonly store: AdminStore,
@@ -162,6 +175,11 @@ export class MailService {
     return run;
   }
 
+  /** ¿Se está sincronizando ahora el buzón de este usuario? (el panel muestra el spinner). */
+  syncing(userId: string) {
+    return this.running.has(userId);
+  }
+
   /** Espera a que terminen las sincronizaciones en curso (tests y apagado). */
   async idle() {
     while (this.running.size) await Promise.all([...this.running.values()]);
@@ -248,10 +266,84 @@ export class MailService {
   }
 
   /**
+   * Firma HTML de Gmail del buzón conectado (null si no tiene o no se pudo leer). Se guarda en memoria
+   * unos minutos; nunca se persiste.
+   */
+  async signatureOf(userId: string) {
+    const conn = await this.connectionOf(userId);
+    if (!conn || conn.status === "disconnected" || !this.provider) return null;
+    const cached = this.signatures.get(conn.email);
+    if (cached && Date.now() - cached.at < SIGNATURE_TTL_MS) return cached.html;
+    const box = this.provider.mailbox(conn.email);
+    if (!box.signature) return null;
+    try {
+      const html = await box.signature();
+      this.signatures.set(conn.email, { html, at: Date.now() });
+      return html;
+    } catch (error) {
+      this.log.warn({ code: error instanceof MailError ? error.code : "unknown", status: error instanceof MailError ? error.status : undefined }, "gmail signature unavailable");
+      return null;
+    }
+  }
+
+  /** Firma en texto (vista previa del panel: nunca se pinta el HTML de la firma en la app). */
+  async signatureText(userId: string) {
+    const html = await this.signatureOf(userId);
+    return html ? htmlToText(html) || null : null;
+  }
+
+  /**
+   * Destinatarios que empiezan o contienen `q`: primero a quienes la persona ya les escribió (su
+   * propio buzón en la app), luego contactos y leads (si ve Comercial) y por último la gente de la app.
+   */
+  async recipients(user: SessionUser, q: string, limit = 8): Promise<RecipientSuggestion[]> {
+    const needle = q.trim().toLowerCase();
+    if (needle.length < 2) return [];
+    const re = new RegExp(escapeRegex(needle), "i");
+    const mine = (await this.connectionOf(user.id))?.email ?? (await this.corporateEmail(user.id));
+    const out = new Map<string, RecipientSuggestion>();
+    const add = (raw: string | null | undefined, name: string | null | undefined, source: RecipientSuggestion["source"]) => {
+      const email = raw?.trim().toLowerCase();
+      if (!email || email === mine || out.has(email) || !VALID_EMAIL.test(email)) return;
+      const label = name?.trim() || null;
+      if (!email.includes(needle) && !label?.toLowerCase().includes(needle)) return;
+      out.set(email, { email, name: label, source });
+    };
+
+    const history = await this.comms
+      .find({ ownerUserId: user.id, source: "gmail", deletedAt: null, $or: [{ from: re }, { to: re }, { cc: re }, { contactName: re }] }, { projection: { from: 1, to: 1, cc: 1, contactName: 1, direction: 1 } })
+      .sort({ sentAt: -1 })
+      .limit(60)
+      .toArray();
+    for (const c of history) {
+      // El nombre del contacto es el de la otra persona: el remitente si se recibió, el primer destinatario si se envió.
+      const counterpart = c.direction === "received" ? c.from : c.to?.[0];
+      for (const e of [c.from, ...(c.to ?? []), ...(c.cc ?? [])]) add(e, e === counterpart ? c.contactName : null, "history");
+    }
+
+    if ((MODULE_ACCESS.communications as readonly string[]).includes(user.role)) {
+      const [contacts, leads] = await Promise.all([
+        this.store.contacts.find({ $or: [{ emails: re }, { name: re }] }, { projection: { name: 1, emails: 1 } }).limit(20).toArray(),
+        this.store.leads.find({ $or: [{ email: re }, { corporateEmail: re }, { contactName: re }] }, { projection: { email: 1, corporateEmail: 1, contactName: 1 } }).limit(20).toArray()
+      ]);
+      for (const c of contacts) for (const e of c.emails ?? []) add(e, c.name, "contact");
+      for (const l of leads) for (const e of [l.email, l.corporateEmail]) add(e, l.contactName, "lead");
+    }
+
+    const team = await this.store.users.find({ active: true, email: { $type: "string" }, $or: [{ email: re }, { name: re }, { username: re }] }, { projection: { email: 1, name: 1 } }).limit(20).toArray();
+    for (const u of team) {
+      // Coincide por usuario («manu» → manuel@…): se acepta aunque el texto no esté en el correo ni el nombre.
+      const email = u.email?.trim().toLowerCase();
+      if (email && email !== mine && !out.has(email) && VALID_EMAIL.test(email)) out.set(email, { email, name: u.name, source: "team" });
+    }
+    return [...out.values()].slice(0, limit);
+  }
+
+  /**
    * Envía un correo desde el buzón del usuario. Con `replyTo` (un correo de SU buzón) responde en ese
    * hilo y hereda su proyecto o lead; si no, el correo queda en el proyecto o lead indicado.
    */
-  async send(user: SessionUser, input: { to: string[]; cc: string[]; subject: string; body: string; projectId: string | null; leadId: string | null; replyTo: CommunicationDoc | null }) {
+  async send(user: SessionUser, input: { to: string[]; cc: string[]; subject: string; body: string; projectId: string | null; leadId: string | null; replyTo: CommunicationDoc | null; signature?: boolean }) {
     const conn = await this.connectionOf(user.id);
     if (!conn || conn.status === "disconnected") throw new MailServiceError(409, "Conecta tu Gmail antes de enviar correos.");
     // El buzón sigue siendo el de su cuenta (si cambió el correo del usuario, debe reconectar).
@@ -259,7 +351,9 @@ export class MailService {
     const box = this.mailbox(conn.email);
     const reply = input.replyTo;
     const subject = reply ? (input.subject.trim() || replySubject(reply.subject)) : input.subject.trim();
-    const mime = buildMime({ from: conn.email, fromName: user.name, to: input.to, cc: input.cc, subject, body: input.body, inReplyTo: reply?.rfcMessageId ?? null });
+    // La firma se lee de Gmail en el servidor (no la manda el navegador); si no se puede leer, el correo sale sin ella.
+    const signatureHtml = input.signature === false ? null : await this.signatureOf(user.id);
+    const mime = buildMime({ from: conn.email, fromName: user.name, to: input.to, cc: input.cc, subject, body: input.body, inReplyTo: reply?.rfcMessageId ?? null, signatureHtml });
     let sent: { id: string; threadId: string };
     try {
       sent = await box.send(mime, reply?.providerThreadId);
@@ -278,9 +372,9 @@ export class MailService {
       action: "email.sent",
       clientId: projectId ? `ops:${projectId}` : `lead:${leadId}`,
       target: subject || "(sin asunto)",
-      details: { from: conn.email, to: input.to, cc: input.cc, messageId: sent.id, threadId: sent.threadId, reply: Boolean(reply), viaApp: true }
+      details: { from: conn.email, to: input.to, cc: input.cc, messageId: sent.id, threadId: sent.threadId, reply: Boolean(reply), viaApp: true, signature: Boolean(signatureHtml) }
     });
-    return { messageId: sent.id, threadId: sent.threadId, communicationId: doc?._id ?? null };
+    return { messageId: sent.id, threadId: sent.threadId, communicationId: doc?._id ?? null, signature: Boolean(signatureHtml) };
   }
 
   /** Aviso push de Gmail: sincroniza ese buzón si está conectado. */

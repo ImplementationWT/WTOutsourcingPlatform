@@ -35,6 +35,8 @@ export interface Mailbox {
   /** Avisos push (Gmail watch → Pub/Sub). Devuelve cuándo vence. */
   watch(topic: string): Promise<{ cursor: string; expiresAt: Date }>;
   stopWatch(): Promise<void>;
+  /** Firma HTML de la dirección principal (null si no tiene). */
+  signature?(): Promise<string | null>;
 }
 
 export interface MailProvider {

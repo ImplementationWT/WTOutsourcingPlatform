@@ -115,7 +115,8 @@ function fakeProvider() {
           return { id: m.id, threadId: m.threadId };
         },
         watch: async () => ({ cursor: String(b.cursor), expiresAt: new Date(Date.now() + 7 * 86_400_000) }),
-        stopWatch: async () => undefined
+        stopWatch: async () => undefined,
+        signature: async () => (email === "marta@whatever.tech" ? '<div>Marta Ríos<br><b>Whatever Tech</b></div>' : null)
       };
     }
   };
@@ -246,5 +247,52 @@ describe("buzón de cada persona", () => {
     expect((await app.inject({ method: "POST", url: `/api/mail/gmail/push?key=${"p".repeat(32)}`, payload: { message: { data } } })).statusCode).toBe(204);
     await app.mail.idle();
     expect(await app.store.db.collection("core_communications").countDocuments({ subject: "Por push" })).toBe(1);
+  });
+
+  it("firma de Gmail: va en el correo (texto y HTML) salvo que se quite; la vista previa es texto", async () => {
+    const { app, as, gmail, leadId } = await world();
+    const marta = await as("marta");
+    await marta("POST", "/api/me/mail/connect");
+    await app.mail.idle();
+    expect((await marta("GET", "/api/me/mail/signature")).body).toEqual({ text: "Marta Ríos\nWhatever Tech" });
+    const r = await marta("POST", "/api/me/mail/send", { to: ["juan@acme.com"], subject: "Hola", body: "Te escribo <pronto>", leadId });
+    expect(r.body.signature).toBe(true);
+    const mime = gmail.boxes.get("marta@whatever.tech")!.sent[0].mime;
+    expect(mime).toMatch(/^Content-Type: multipart\/alternative; boundary="b_[0-9a-f]+"$/m);
+    // Cada parte va en base64: se decodifica para revisarla.
+    const parts = [...mime.matchAll(/Content-Transfer-Encoding: base64\r\n\r\n([A-Za-z0-9+/=\r\n]+?)\r\n--/g)].map((m) => Buffer.from(m[1].replace(/\r\n/g, ""), "base64").toString("utf8"));
+    expect(parts[0]).toBe("Te escribo <pronto>\r\n\r\n-- \r\nMarta Ríos\r\nWhatever Tech");
+    expect(parts[1]).toContain("Te escribo &lt;pronto&gt;");
+    expect(parts[1]).toContain('<div dir="ltr" class="gmail_signature"><div>Marta Ríos<br><b>Whatever Tech</b></div></div>');
+    expect((await app.store.auditLog.findOne({ action: "email.sent" }))!.details).toMatchObject({ signature: true });
+    const noSig = await marta("POST", "/api/me/mail/send", { to: ["juan@acme.com"], subject: "Sin firma", body: "x", leadId, signature: false });
+    expect(noSig.body.signature).toBe(false);
+    expect(gmail.boxes.get("marta@whatever.tech")!.sent[1].mime).toMatch(/^Content-Type: text\/plain; charset="UTF-8"$/m);
+  });
+
+  it("sugerencias de destinatarios: a quién ya le escribió, leads y la gente de la app (por usuario)", async () => {
+    const { app, as, gmail, store } = await world();
+    gmail.deliver("marta@whatever.tech", { labelIds: ["INBOX"], headers: { from: "Juan Pérez <juan@acme.com>", to: "marta@whatever.tech", subject: "Hola" }, text: "x" });
+    const marta = await as("marta");
+    await marta("POST", "/api/me/mail/connect");
+    await app.mail.idle();
+    await store.users.updateOne({ username: "nina" }, { $set: { email: "ninoska@whatever.tech" } });
+    const juan = (await marta("GET", "/api/me/mail/recipients?q=jua")).body.suggestions;
+    expect(juan[0]).toEqual({ email: "juan@acme.com", name: "Juan Pérez", source: "history" });
+    // «nin» encuentra a Nina por su usuario aunque el correo sea otro; el propio buzón nunca aparece.
+    expect((await marta("GET", "/api/me/mail/recipients?q=nin")).body.suggestions).toEqual([{ email: "ninoska@whatever.tech", name: "Nina", source: "team" }]);
+    expect((await marta("GET", "/api/me/mail/recipients?q=marta")).body.suggestions).toEqual([]);
+    expect((await marta("GET", "/api/me/mail/recipients?q=j")).body.suggestions).toEqual([]);
+    // Caracteres especiales no rompen la búsqueda.
+    expect((await marta("GET", "/api/me/mail/recipients?q=" + encodeURIComponent("(.*"))).status).toBe(200);
+  });
+
+  it("el estado del buzón dice si se está sincronizando", async () => {
+    const { app, as } = await world();
+    const marta = await as("marta");
+    const connected = (await marta("POST", "/api/me/mail/connect")).body.connection;
+    expect(connected.syncing).toBe(true);
+    await app.mail.idle();
+    expect((await marta("GET", "/api/me/mail")).body.connection.syncing).toBe(false);
   });
 });

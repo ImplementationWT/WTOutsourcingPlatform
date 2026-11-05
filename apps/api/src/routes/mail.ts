@@ -15,14 +15,15 @@ const sendSchema = z
     body: z.string().max(50_000).refine((b) => b.trim().length > 0, "Escribe el mensaje."),
     projectId: z.string().uuid().nullable().default(null),
     leadId: z.string().uuid().nullable().default(null),
-    replyToId: z.string().uuid().nullable().default(null)
+    replyToId: z.string().uuid().nullable().default(null),
+    signature: z.boolean().default(true)
   })
   .strict()
   .refine((v) => v.replyToId || Boolean(v.projectId) !== Boolean(v.leadId), "Relaciona el correo con un proyecto o con un lead.")
   .refine((v) => v.replyToId || v.subject.length > 0, "Escribe el asunto.");
 
-const view = (c: MailConnectionDoc | null) =>
-  c && { email: c.email, status: c.status, lastSyncAt: c.lastSyncAt?.toISOString() ?? null, lastError: c.lastError, push: Boolean(c.watchExpiresAt && c.watchExpiresAt > new Date()) };
+const view = (c: MailConnectionDoc | null, syncing = false) =>
+  c && { email: c.email, status: c.status, lastSyncAt: c.lastSyncAt?.toISOString() ?? null, lastError: c.lastError, push: Boolean(c.watchExpiresAt && c.watchExpiresAt > new Date()), syncing: syncing && c.status !== "disconnected" };
 
 function fail(reply: FastifyReply, error: unknown) {
   if (error instanceof MailServiceError) return reply.code(error.status).send({ error: error.message });
@@ -40,12 +41,22 @@ export async function registerMailRoutes(app: FastifyInstance, { mail, pushSecre
   app.get("/api/me/mail", { preHandler: requireAuth }, async (request) => {
     const user = request.user!;
     const [corporate, conn] = await Promise.all([mail.corporateEmail(user.id), mail.connectionOf(user.id)]);
-    return { available: mail.available, pushEnabled: mail.pushEnabled, email: corporate, canConnect: mail.available && Boolean(corporate), connection: view(conn) };
+    return { available: mail.available, pushEnabled: mail.pushEnabled, email: corporate, canConnect: mail.available && Boolean(corporate), connection: view(conn, mail.syncing(user.id)) };
+  });
+
+  /** Firma de Gmail en texto, para la vista previa al redactar. */
+  app.get("/api/me/mail/signature", { preHandler: requireAuth }, async (request) => ({ text: await mail.signatureText(request.user!.id) }));
+
+  /** Sugerencias de destinatarios mientras se escribe (a quién ya le escribió, contactos, leads y la gente de la app). */
+  app.get("/api/me/mail/recipients", { preHandler: requireAuth }, async (request) => {
+    const q = z.string().max(100).catch("").parse((request.query as { q?: unknown }).q);
+    return { suggestions: await mail.recipients(request.user!, q) };
   });
 
   app.post("/api/me/mail/connect", { preHandler: requireAuth }, async (request, reply) => {
     try {
-      return { connection: view(await mail.connect(request.user!)) };
+      const user = request.user!;
+      return { connection: view(await mail.connect(user), mail.syncing(user.id)) };
     } catch (error) {
       return fail(reply, error);
     }

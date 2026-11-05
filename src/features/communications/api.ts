@@ -90,6 +90,8 @@ export interface MailConnection {
   lastSyncAt: string | null;
   lastError: string | null;
   push: boolean;
+  /** El servidor está trayendo correos de Gmail ahora mismo. */
+  syncing: boolean;
 }
 export interface MyMail {
   /** El servidor tiene configurada la integración. */
@@ -101,7 +103,22 @@ export interface MyMail {
   connection: MailConnection | null;
 }
 export const mailKey = ["me", "mail"] as const;
-export const useMyMail = () => useQuery({ queryKey: mailKey, queryFn: () => apiFetch<MyMail>("/api/me/mail"), staleTime: 30_000 });
+/** Mientras el servidor sincroniza, se consulta cada 2 s para quitar el spinner al terminar. */
+export const useMyMail = () =>
+  useQuery({ queryKey: mailKey, queryFn: () => apiFetch<MyMail>("/api/me/mail"), staleTime: 30_000, refetchInterval: (q) => (q.state.data?.connection?.syncing ? 2_000 : false) });
+
+/** Firma de Gmail en texto (vista previa al redactar); null si no tiene. */
+export const useSignature = (enabled: boolean) => useQuery({ queryKey: [...mailKey, "signature"], queryFn: () => apiFetch<{ text: string | null }>("/api/me/mail/signature"), enabled, staleTime: 5 * 60_000 });
+
+export interface RecipientSuggestion {
+  email: string;
+  name: string | null;
+  source: "history" | "contact" | "lead" | "team";
+}
+export const RECIPIENT_SOURCE: Record<RecipientSuggestion["source"], string> = { history: "Le escribiste", contact: "Contacto", lead: "Lead", team: "Equipo" };
+/** Sugerencias para lo que se está escribiendo (desde 2 letras). */
+export const useRecipients = (q: string) =>
+  useQuery({ queryKey: [...mailKey, "recipients", q.toLowerCase()], queryFn: () => apiFetch<{ suggestions: RecipientSuggestion[] }>(`/api/me/mail/recipients?${new URLSearchParams({ q })}`), enabled: q.trim().length >= 2, staleTime: 60_000, placeholderData: (prev) => prev });
 /** El usuario tiene su Gmail conectado y puede enviar. */
 export const mailReady = (m: MyMail | undefined) => Boolean(m?.connection && m.connection.status !== "disconnected");
 
@@ -113,12 +130,14 @@ export interface SendInput {
   projectId?: string | null;
   leadId?: string | null;
   replyToId?: string | null;
+  /** Incluir la firma de Gmail (por defecto sí). */
+  signature?: boolean;
 }
 export const mailApi = {
   connect: () => apiFetch<{ connection: MailConnection }>("/api/me/mail/connect", send("POST")),
   disconnect: () => apiFetch("/api/me/mail/disconnect", send("POST")),
   sync: () => apiFetch<{ connection: MailConnection }>("/api/me/mail/sync", send("POST")),
-  send: (input: SendInput) => apiFetch<{ messageId: string; threadId: string; communicationId: string | null }>("/api/me/mail/send", send("POST", input)),
+  send: (input: SendInput) => apiFetch<{ messageId: string; threadId: string; communicationId: string | null; signature: boolean }>("/api/me/mail/send", send("POST", input)),
 };
 
 /** «a@x.com, b@y.com; c@z.com» → lista de correos. */
