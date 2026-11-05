@@ -12,14 +12,14 @@ const COMMERCIAL: SessionUser = { id: "u-com", username: "marta", name: "Marta",
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const site = { id: "a".repeat(24), name: "demo-manpersa", url: "https://demo-manpersa.sites.whatever.tech", status: "live", homepage: "index.html", files: [{ path: "index.html", size: 10 }], totalSize: 10, access: { mode: "public" }, domain: "ready", createdAt: "2026-10-29T10:00:00Z", updatedAt: "2026-10-29T10:00:00Z", deletedAt: null, proposalId: "p1", lead: { id: "l1", name: "Manpersa SAC" }, project: null };
 
-function renderPage(configured = true) {
+function renderPage(configured = true, liveSites = [site]) {
   const calls: { url: string; method: string; body?: BodyInit | null }[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, method: init?.method ?? "GET", body: init?.body });
     if (url === "/api/sites/config") return json(configured ? { configured: true, sitesSuffix: ".sites.whatever.tech", maxUploadMb: 50 } : { configured: false });
     if (url.startsWith("/api/sites/name-availability")) return json({ available: true });
-    if (url.startsWith("/api/sites?status=live")) return json({ items: [site], counts: { live: 1, archived: 0, deleted: 2 }, canWrite: true });
+    if (url.startsWith("/api/sites?status=live")) return json({ items: liveSites, counts: { live: liveSites.length, archived: 0, deleted: 2 }, canWrite: true });
     if (url.includes("/stats")) return json({ series: [{ day: "2026-11-03", people: 2, visits: 3, views: 4 }], period: { people: 2, visits: 3, views: 4 }, allTime: { people: 9, views: 20 }, log: [{ visitor: "v1", start: new Date().toISOString(), end: new Date().toISOString(), pages: 2, device: "desktop", os: "macOS", browser: "Chrome", referrer: null }] });
     if (url.startsWith("/api/sales/leads")) return json({ rows: [{ id: "l1", title: "Manpersa SAC" }], total: 1, page: 1, pageSize: 100, facets: {}, totals: {} });
     if (url.startsWith("/api/sites?") && init?.method === "POST") return json({ site }, 201);
@@ -72,6 +72,18 @@ describe("Propuestas (sitios en WTProposalPlatform)", () => {
     expect(dialog.getByText("Visitante 1")).toBeTruthy();
     expect(dialog.getByText(/macOS · Chrome · desde Directo/)).toBeTruthy();
     expect(dialog.getByText("Histórico: 9 · dispositivos distintos que lo abrieron")).toBeTruthy();
+  });
+
+  it("pagina las tarjetas de 10 en 10 (10, 25 o 50 por página)", async () => {
+    const many = Array.from({ length: 23 }, (_, i) => ({ ...site, id: String(i).padStart(24, "0"), url: `https://p${i}.sites.whatever.tech` }));
+    renderPage(true, many);
+    expect(await screen.findByText("23 propuestas · página 1 de 3")).toBeTruthy();
+    expect(screen.getAllByRole("link", { name: /sites\.whatever\.tech/ })).toHaveLength(10);
+    fireEvent.click(screen.getByRole("button", { name: "Página siguiente" }));
+    fireEvent.click(screen.getByRole("button", { name: "Página siguiente" }));
+    expect(screen.getByText("23 propuestas · página 3 de 3")).toBeTruthy();
+    expect(screen.getAllByRole("link", { name: /sites\.whatever\.tech/ })).toHaveLength(3);
+    expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("sin la plataforma configurada lo explica en lugar de la lista", async () => {

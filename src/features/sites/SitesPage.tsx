@@ -67,7 +67,7 @@ export default function SitesPage() {
               {error instanceof Error ? error.message : "No se pudieron cargar las propuestas."}
             </p>
           ) : (
-            <SitesList sites={sites} isLoading={isLoading} canWrite={canWrite} empty={q ? "Ninguna propuesta coincide con la búsqueda." : status === "live" ? "Aún no hay propuestas publicadas. Sube la primera con «Subir propuesta»." : "No hay propuestas aquí."} />
+            <SitesList key={`${status}|${q}`} sites={sites} isLoading={isLoading} canWrite={canWrite} empty={q ? "Ninguna propuesta coincide con la búsqueda." : status === "live" ? "Aún no hay propuestas publicadas. Sube la primera con «Subir propuesta»." : "No hay propuestas aquí."} />
           )}
         </>
       )}

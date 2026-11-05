@@ -1,15 +1,19 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Archive, BarChart3, Copy, Download, ExternalLink, Eye, FileCode2, Lock, MoreHorizontal, Pencil, RotateCcw, Settings2, Trash2 } from "lucide-react";
+import { Archive, BarChart3, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, Eye, FileCode2, Lock, MoreHorizontal, Pencil, RotateCcw, Settings2, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { useConfirm } from "@/components/ui/confirm-context";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate } from "@/lib/format";
 import { errorText, toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { sitesApi, useSitesRefresh, type Site } from "./api";
 import { CustomizeSiteDialog, SiteStatsDialog, UpdateSiteDialog } from "./SiteDialogs";
+
+const PAGE_SIZES = [10, 25, 50] as const;
 
 const iconButton = "inline-flex size-9 shrink-0 items-center justify-center rounded-[10px] border border-border bg-card text-foreground transition-[background-color,border-color,transform] hover:border-line-strong hover:bg-muted active:scale-[.97]";
 
@@ -150,17 +154,56 @@ export function SitesList({ sites, isLoading, canWrite, showLinks = true, empty 
   const [updating, setUpdating] = useState<Site | null>(null);
   const [stats, setStats] = useState<Site | null>(null);
   const [customizing, setCustomizing] = useState<Site | null>(null);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZES[0]);
+  const [page, setPage] = useState(1);
+  const total = sites?.length ?? 0;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  // Si la lista se achica (archivar, borrar, filtrar), no quedarse en una página vacía.
+  const current = Math.min(page, pages);
+  const shown = sites?.slice((current - 1) * pageSize, current * pageSize) ?? [];
   if (isLoading) return <Skeleton className="h-20 w-full rounded-xl" />;
   return (
     <>
       {!sites?.length ? (
         <p className="rounded-xl border border-dashed border-line-strong px-6 py-10 text-center text-sm text-muted-foreground">{empty}</p>
       ) : (
-        <ul className="space-y-3">
-          {sites.map((s) => (
-            <SiteCard key={s.id} site={s} canWrite={canWrite} showLinks={showLinks} onUpdate={() => setUpdating(s)} onStats={() => setStats(s)} onCustomize={() => setCustomizing(s)} />
-          ))}
-        </ul>
+        <>
+          <ul className="space-y-3">
+            {shown.map((s) => (
+              <SiteCard key={s.id} site={s} canWrite={canWrite} showLinks={showLinks} onUpdate={() => setUpdating(s)} onStats={() => setStats(s)} onCustomize={() => setCustomizing(s)} />
+            ))}
+          </ul>
+          <nav aria-label="Paginación de propuestas" className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+            <p>
+              {total} propuesta{total === 1 ? "" : "s"}
+              {pages > 1 && ` · página ${current} de ${pages}`}
+            </p>
+            <div className="flex items-center gap-2">
+              <Select
+                label="Propuestas por página"
+                value={String(pageSize)}
+                options={PAGE_SIZES.map((n) => ({ value: String(n), label: `${n} por página` }))}
+                size="sm"
+                className="w-auto"
+                onValueChange={(v) => {
+                  if (!v) return;
+                  setPageSize(Number(v));
+                  setPage(1);
+                }}
+              />
+              {pages > 1 && (
+                <>
+                  <Button size="icon-sm" variant="outline" aria-label="Página anterior" disabled={current <= 1} onClick={() => setPage(current - 1)}>
+                    <ChevronLeft />
+                  </Button>
+                  <Button size="icon-sm" variant="outline" aria-label="Página siguiente" disabled={current >= pages} onClick={() => setPage(current + 1)}>
+                    <ChevronRight />
+                  </Button>
+                </>
+              )}
+            </div>
+          </nav>
+        </>
       )}
       <UpdateSiteDialog site={updating} onClose={() => setUpdating(null)} />
       <SiteStatsDialog site={stats} onClose={() => setStats(null)} />
