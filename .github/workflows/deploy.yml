@@ -60,6 +60,8 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           # Reuniones (opcional): signing key del webhook de Read.ai (la muestra Read.ai al crearlo).
           READ_AI_SIGNING_KEY: ${{ secrets.READ_AI_SIGNING_KEY }}
+          # Propuestas (opcional): la PLATFORM_API_KEY de WTProposalPlatform (la misma en ambos repos).
+          PROPOSAL_SITES_KEY: ${{ secrets.PROPOSAL_SITES_KEY }}
         run: |
           umask 077
           printf '%s\n' "$GH_APP_PRIVATE_KEY" > github-app.pem
@@ -67,6 +69,8 @@ jobs:
           printf '%s' "$ANTHROPIC_API_KEY" > anthropic.key
           # Vacío si no hay signing key: el webhook de Read.ai responde 503 y el resto sigue igual.
           printf '%s' "$READ_AI_SIGNING_KEY" > read-ai.key
+          # Vacío si no hay llave: Propuestas muestra el aviso y /api/sites responde 503.
+          printf '%s' "$PROPOSAL_SITES_KEY" > proposal-sites.key
           # Formato --env-file de Docker: KEY=valor literal, sin comillas.
           cat > api.env <<EOF
           NODE_ENV=production
@@ -110,6 +114,10 @@ jobs:
           if [ -n "$ANTHROPIC_API_KEY" ]; then
             echo "ANTHROPIC_API_KEY_SECRET_REF=/run/secrets/anthropic.key" >> api.env
           fi
+          if [ -n "$PROPOSAL_SITES_KEY" ]; then
+            echo "PROPOSAL_SITES_URL=${{ vars.PROPOSAL_SITES_URL || 'https://panel.sites.whatever.tech' }}" >> api.env
+            echo "PROPOSAL_SITES_KEY_PATH=/run/secrets/proposal-sites.key" >> api.env
+          fi
 
       - name: Configurar SSH
         env:
@@ -126,7 +134,7 @@ jobs:
           SSH="ssh -p $SSH_PORT -o BatchMode=yes"
           rsync -az --delete --chmod=D755,F644 --chown=root:root -e "$SSH" dist/ "$SSH_TARGET:/var/www/launchpad/releases/$RELEASE/"
           rsync -az --chmod=F600 --chown=root:root -e "$SSH" \
-            api-image.tar.gz api.env github-app.pem anthropic.key read-ai.key deploy/activate.sh \
+            api-image.tar.gz api.env github-app.pem anthropic.key read-ai.key proposal-sites.key deploy/activate.sh \
             "$SSH_TARGET:/opt/wt-launchpad/incoming/"
 
       - name: Activar release
@@ -137,4 +145,4 @@ jobs:
 
       - name: Limpiar credenciales del runner
         if: always()
-        run: rm -f github-app.pem anthropic.key read-ai.key api.env ~/.ssh/id_ed25519
+        run: rm -f github-app.pem anthropic.key read-ai.key proposal-sites.key api.env ~/.ssh/id_ed25519

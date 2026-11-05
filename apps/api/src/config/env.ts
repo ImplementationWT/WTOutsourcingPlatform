@@ -211,6 +211,8 @@ export function loadReadAiSigningKey(env: Env) {
 export function loadProposalSites(env: Env) {
   if (!env.PROPOSAL_SITES_URL || !env.PROPOSAL_SITES_KEY_PATH) return undefined;
   const key = readFileSync(env.PROPOSAL_SITES_KEY_PATH, "utf8").trim();
+  // Archivo vacío (secreto sin configurar en GitHub): Propuestas queda desactivada.
+  if (!key) return undefined;
   if (key.length < 32) throw new Error("Configuración inválida:\n  - PROPOSAL_SITES_KEY_PATH: el archivo debe contener la PLATFORM_API_KEY de WTProposalPlatform (32+ caracteres)");
   return { baseUrl: env.PROPOSAL_SITES_URL, key };
 }
