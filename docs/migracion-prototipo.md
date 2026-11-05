@@ -213,7 +213,7 @@ usaron valores nuevos de enums, correr el script de reversa de cada paso antes d
 - **Estilo:**
   - paleta de `Sistema.dc.html` como tokens (claro y oscuro) en `src/index.css`;
   - Inter, chips `chip-*`, formularios `proto-form`, KPIs y botón Claro/Oscuro.
-  - Las pantallas protegidas y la insignia del usuario conservan Work Sans (`skin-legacy`).
+  - Tipografía: títulos en Bricolage Grotesque, texto y subtítulos en Geist, código en Geist Mono, en toda la app. Las pantallas protegidas y la insignia del usuario usan la misma fuente (autorizado expresamente el 2026-11-05; solo la fuente, `--font-legacy`), el resto de su estilo no cambia (`skin-legacy`).
 - **Leads y Proyectos:** lista agrupada (grupos plegables) y detalle en ventana grande, como en el
   prototipo. `/comercial/leads/:id` y `/operativa/:id` abren la lista con el detalle encima.
 - **Propuestas (decisión: conectar con WTProposalPlatform):**

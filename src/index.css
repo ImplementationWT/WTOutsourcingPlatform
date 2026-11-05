@@ -1,9 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/inter";
-@import "@fontsource-variable/work-sans";
-@import "@fontsource-variable/jetbrains-mono";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -115,12 +112,14 @@
   --color-info-fg: color-mix(in oklch, var(--status-info) var(--status-fg-mix), var(--foreground));
   --color-accent-2-fg: color-mix(in oklch, var(--status-accent) var(--status-fg-mix), var(--foreground));
   --shadow-card: var(--shadow-card);
-  --font-heading: var(--font-sans);
-  --font-sans: 'Google Sans', 'Inter Variable', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  /* Subtítulos (descripción de la página, de una ventana o de un gráfico): siguen en Inter. */
-  --font-subtitle: 'Inter Variable', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-legacy: 'Work Sans Variable', -apple-system, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+  /* Tipografía (Google Fonts, index.html): títulos en Bricolage Grotesque, texto en Geist, código en Geist Mono. */
+  --font-heading: 'Bricolage Grotesque', var(--font-sans);
+  --font-sans: Geist, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Subtítulos (descripción de la página, de una ventana o de un gráfico): Geist, como el texto. */
+  --font-subtitle: var(--font-sans);
+  /* Pantallas protegidas: misma tipografía que el resto (autorizado expresamente; solo cambia la fuente). */
+  --font-legacy: var(--font-sans);
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   /* Rojo de la marca como escala (acentos, estados activos, foco). */
   --color-brand-50: #fff1f3;
   --color-brand-100: #ffe0e5;
@@ -253,7 +252,7 @@ html:not(.dark) {
   html {
     @apply font-sans;}
   h1, h2, h3 {
-    @apply tracking-tight;}
+    @apply font-heading tracking-tight;}
   code, kbd, pre, samp {
     @apply font-mono;}
   input::placeholder, textarea::placeholder {
@@ -261,7 +260,7 @@ html:not(.dark) {
 
 /*
  * Pantallas protegidas (Dashboard de Infraestructura, Apps, Integraciones…) y la insignia del
- * usuario conservan su tipografía original: el estilo del prototipo no las toca.
+ * usuario: conservan su estilo; la fuente es la misma del resto de la app (--font-legacy).
  */
 .skin-legacy {
   font-family: var(--font-legacy);
@@ -343,10 +342,10 @@ html:not(.dark) {
 
 /* Escala tipográfica única: título de página, subtítulo de sección, cuerpo y etiqueta. */
 @utility text-page-title {
-  @apply text-[1.75rem] leading-tight font-bold tracking-tight sm:text-[2rem];
+  @apply font-heading text-[1.75rem] leading-tight font-bold tracking-tight sm:text-[2rem];
 }
 @utility text-section-title {
-  @apply text-base font-semibold tracking-tight;
+  @apply font-heading text-base font-semibold tracking-tight;
 }
 @utility text-body {
   @apply text-sm leading-6;
