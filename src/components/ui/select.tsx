@@ -32,7 +32,10 @@ export type { SelectOption };
 function OptionText({ option }: { option: SelectOption }) {
   return (
     <span className="col-start-2 min-w-0">
-      <span className="block truncate">{option.label}</span>
+      <span className="flex items-center gap-2 truncate">
+        {option.icon}
+        <span className="truncate">{option.label}</span>
+      </span>
       {option.description && <span className="block truncate text-xs text-muted-foreground">{option.description}</span>}
     </span>
   );
@@ -59,7 +62,14 @@ export function Select({
 }: SelectProps) {
   const all = React.useMemo<SelectOption[]>(() => (emptyLabel !== undefined ? [{ value: EMPTY, label: emptyLabel }, ...options] : [...options]), [options, emptyLabel]);
   const selected = all.find((o) => o.value === (value ?? EMPTY)) ?? null;
-  const shown = renderValue ? renderValue(selected && selected.value !== EMPTY ? selected : null) : null;
+  const shown = renderValue
+    ? renderValue(selected && selected.value !== EMPTY ? selected : null)
+    : selected?.icon && (
+        <span className="flex min-w-0 items-center gap-2">
+          {selected.icon}
+          <span className="truncate">{selected.label}</span>
+        </span>
+      );
   const text = selected ? selected.label : placeholder;
   const change = (next: string | null) => onValueChange(next === null || next === EMPTY ? null : next);
   const useSearch = searchable ?? options.length > 7;

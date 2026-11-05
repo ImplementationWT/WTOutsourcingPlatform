@@ -1,3 +1,4 @@
+import type * as React from "react";
 import { cn } from "@/lib/utils";
 
 export interface SelectOption {
@@ -5,6 +6,8 @@ export interface SelectOption {
   label: string;
   /** Texto secundario debajo de la etiqueta (p. ej. el equipo o el rol). */
   description?: string;
+  /** Ícono a la izquierda de la etiqueta (p. ej. la bandera de un país), en la lista y en el botón. */
+  icon?: React.ReactNode;
   disabled?: boolean;
 }
 

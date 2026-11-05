@@ -10,6 +10,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { EditableText } from "@/components/ui/editable";
 import { Input, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/dialog";
+import { Flag } from "@/components/ui/flag";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { activityKeys, createUpdate, dateText, updatesQuery } from "@/features/activity/api";
@@ -362,6 +363,9 @@ function NewContactDialog({ company, onClose, onSave }: { company: string; onClo
   );
 }
 
+/** Prefijos con la bandera de su país. */
+const PHONE_OPTIONS = PHONE_PREFIXES.map((p) => ({ ...p, icon: <Flag code={p.value.split(":")[0]} /> }));
+
 /**
  * Teléfono en dos casillas: prefijo (lista de países) y número. Se guarda junto («+51 987 654 321»);
  * sin prefijo guardado, se propone el del país del lead.
@@ -391,8 +395,16 @@ function PhoneField({ value, country, canWrite, onSave }: { value: string | null
           value={option?.value ?? null}
           placeholder="+"
           searchable
-          options={PHONE_PREFIXES}
-          renderValue={(o) => <span className="tabular-nums">+{o ? o.value.split(":")[1] : ""}</span>}
+          options={PHONE_OPTIONS}
+          renderValue={(o) =>
+            o ? (
+              <span className="flex items-center gap-2 tabular-nums">
+                <Flag code={o.value.split(":")[0]} />+{o.value.split(":")[1]}
+              </span>
+            ) : (
+              "+"
+            )
+          }
           disabled={!canWrite}
           onValueChange={(v) => {
             const next = v?.split(":")[1] ?? null;
@@ -522,7 +534,7 @@ function InfoTab({ data, canWrite, persist }: { data: LeadData; canWrite: boolea
             />
           </Field>
           <Field label="País">
-            <Select label="País" value={countryByName(lead.country)?.name ?? lead.country} placeholder="Elige un país" searchable options={[...COUNTRIES.map((c) => ({ value: c.name, label: c.name })), ...(lead.country && !countryByName(lead.country) ? [{ value: lead.country, label: lead.country }] : [])]} disabled={!canWrite} onValueChange={(v) => v && v !== lead.country && void persist({ country: v }, `País: ${v}`)} />
+            <Select label="País" value={countryByName(lead.country)?.name ?? lead.country} placeholder="Elige un país" searchable options={[...COUNTRIES.map((c) => ({ value: c.name, label: c.name, icon: <Flag code={c.code} /> })), ...(lead.country && !countryByName(lead.country) ? [{ value: lead.country, label: lead.country }] : [])]} disabled={!canWrite} onValueChange={(v) => v && v !== lead.country && void persist({ country: v }, `País: ${v}`)} />
           </Field>
           <Field label="Correo corporativo">
             <CopyField kind="email" label="Correo corporativo" value={lead.corporateEmail} canWrite={canWrite} onSave={(v) => persist({ corporateEmail: v }, "Correo corporativo guardado")} />
