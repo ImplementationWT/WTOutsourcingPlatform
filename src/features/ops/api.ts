@@ -114,7 +114,7 @@ export const HEALTH_CHIP: Record<Health, ChipColor> = { champion: "green", very_
 export const STAGE_HUE: Record<Stage, string> = { kickoff: "#38bdf8", structure: "#f97316", automation_layer: "#e0a50f", stabilization: "#84cc16", maintenance: "#3b82f6", no_pending_items: "#6b8e23", completed: "#22e06b" };
 /** Fondo y texto de una etapa mezclando su tono (se lee en claro y en oscuro). */
 export const stageStyle = (stage: Stage) => ({
-  background: `color-mix(in srgb, ${STAGE_HUE[stage]} 20%, transparent)`,
+  backgroundColor: `color-mix(in srgb, ${STAGE_HUE[stage]} 20%, transparent)`,
   color: `color-mix(in srgb, ${STAGE_HUE[stage]} 60%, var(--foreground))`,
 });
 
@@ -137,6 +137,8 @@ export interface OpsProject {
   clientSlug: string | null;
   sowUrl: string | null;
   kickoffDate: string | null;
+  /** Tarifa por hora del proyecto (centavos); sin ella se calcula de los deals. */
+  hourlyRateCents?: number | null;
   leadId: string | null;
   stage: Stage;
   /** Desde qué día (AAAA-MM-DD) está en la etapa actual. */
@@ -304,6 +306,7 @@ export const opsBase = base;
 /** Campos editables del proyecto (el Sentiment no: se deriva del Health). */
 export interface ProjectInput {
   name: string;
+  hourlyRateCents: number | null;
   customerName: string;
   contactIds: string[];
   leadUserId: string | null;

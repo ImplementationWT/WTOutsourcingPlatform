@@ -177,3 +177,21 @@ describe("reuniones del lead", () => {
     expect((await store.meetings.findOne({ _id: "m-1" }))?.leadId).toBeNull();
   });
 });
+
+describe("detalle del proyecto (prototipo)", () => {
+  it("el Hourly Rate del proyecto es la tarifa de sus deals nuevos; desasignar una reunión del proyecto es de quien lo gestiona", async () => {
+    const { as, store } = await world();
+    const ana = await as("ana");
+    const project = (await ana("POST", "/api/ops/projects", { name: "Arzuman Brothers", customerName: "Arzuman" })).body.project;
+    expect((await ana("PATCH", `/api/ops/projects/${project.id}`, { hourlyRateCents: 5000 })).status).toBe(200);
+    expect((await ana("GET", `/api/ops/projects/${project.id}`)).body.project.hourlyRateCents).toBe(5000);
+    const deal = (await ana("POST", "/api/deals", { title: "Warranty Services Apps", projectId: project.id, hours: 180 })).body.deal;
+    expect(deal).toMatchObject({ rateCents: 5000, amountCents: 900_000 });
+    const at = new Date();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- reunión mínima para la prueba
+    await store.meetings.insertOne({ _id: "m-2", title: "Kick off", heldAt: at, leadId: null, projectId: project.id, teamId: null, createdAt: at, updatedAt: at } as any);
+    expect((await (await as("otto"))("POST", `/api/ops/projects/${project.id}/meetings/m-2/unassign`)).status).toBe(403);
+    expect((await ana("POST", `/api/ops/projects/${project.id}/meetings/m-2/unassign`)).status).toBe(200);
+    expect((await store.meetings.findOne({ _id: "m-2" }))?.projectId).toBeNull();
+  });
+});

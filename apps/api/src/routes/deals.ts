@@ -260,7 +260,9 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
     if (!links) return reply;
     const at = new Date();
     const hours = input.hours ?? 0;
-    const rateCents = input.rateCents ?? 0;
+    // Sin tarifa, la del proyecto (Hourly Rate del detalle).
+    const projectRate = input.rateCents === undefined && input.projectId ? (await store.opsProjects.findOne({ _id: input.projectId }, { projection: { hourlyRateCents: 1 } }))?.hourlyRateCents : null;
+    const rateCents = input.rateCents ?? projectRate ?? 0;
     const probability = input.probability ?? 50;
     const amountCents = dealAmountCents(hours, rateCents);
     const deal: DealDoc = {

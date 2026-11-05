@@ -126,6 +126,8 @@ export interface OpsProjectDoc {
   sentimentScore?: number;
   priority: Priority;
   kickoffDate?: string | null; // YYYY-MM-DD
+  /** Tarifa por hora del proyecto (centavos): la de los deals nuevos; sin ella, se calcula de los deals. */
+  hourlyRateCents?: number | null;
   /** Ya no se usa (solo queda el SOW); puede seguir en documentos viejos. */
   projectPlanUrl?: string | null;
   /** SOW: enlace al archivo (no hay almacenamiento de archivos aún). */

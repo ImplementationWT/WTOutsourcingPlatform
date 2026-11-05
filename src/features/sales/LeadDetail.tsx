@@ -38,7 +38,7 @@ import {
 } from "./api";
 import { LeadStatusBadge } from "./SalesBadges";
 import { LeadActivities } from "./LeadActivities";
-import { LeadMeetings } from "./LeadMeetings";
+import { MeetingsBoard } from "@/features/activity/MeetingsBoard";
 import { useSession } from "@/features/auth/auth";
 import { slugify, useSites, useSitesConfig } from "@/features/sites/api";
 import { UploadSiteDialog } from "@/features/sites/SiteDialogs";
@@ -681,7 +681,7 @@ export function LeadDetailModal({ id, onClose }: { id: string; onClose: () => vo
                   <div role="tabpanel" className="proto-form min-h-64 flex-1 p-4 sm:p-6 lg:min-h-0 lg:overflow-y-auto">
                     {tab === "info" && <InfoTab data={data} canWrite={canWrite} persist={persist} />}
                     {tab === "activities" && <LeadActivities leadId={data.lead.id} canWrite={canWrite} me={me} />}
-                    {tab === "meetings" && <LeadMeetings leadId={data.lead.id} leadName={data.lead.title} canWrite={canWrite} />}
+                    {tab === "meetings" && <MeetingsBoard target={{ kind: "lead", id: data.lead.id, name: data.lead.title }} canWrite={canWrite} />}
                     {tab === "proposals" && <LeadSites data={data} canWrite={canWrite} />}
                     {/* El tablero de Comunicaciones filtrado por este lead (mismos datos y seguimientos). */}
                     {tab === "comms" && <CommsTab scope={{ leadId: data.lead.id }} defaultContact={data.lead.contactName ?? ""} />}

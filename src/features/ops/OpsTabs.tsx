@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useConfirm } from "@/components/ui/confirm-context";
-import { Check, Copy, Eye, EyeOff, KeyRound, Loader2, Plus, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, Eye, EyeOff, KeyRound, Loader2, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -201,43 +201,6 @@ export function TasksTab({ projectId, teamId, canWork, canManage, currentUserId 
 
 // ---- Cuentas (vault) ----------------------------------------------------------------
 
-/** Valor revelado: solo vive en este componente, se oculta solo y no pasa por la caché de consultas. */
-function RevealedValue({ username, credential, onHide }: { username: string | null; credential: string; onHide: () => void }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    const timer = window.setTimeout(onHide, 30_000);
-    return () => window.clearTimeout(timer);
-  }, [onHide]);
-  return (
-    <div role="status" className="mt-2 rounded-md border border-warn/30 bg-warn/10 p-3 text-sm">
-      {username && (
-        <p className="text-xs text-muted-foreground">
-          Usuario: <span className="font-mono text-foreground">{username}</span>
-        </p>
-      )}
-      <div className="mt-1 flex flex-wrap items-center gap-2">
-        <code className="rounded border border-foreground/15 bg-foreground/5 px-2 py-1 font-mono break-all">{credential}</code>
-        <Button
-          size="xs"
-          variant="outline"
-          onClick={async () => {
-            await navigator.clipboard?.writeText(credential).catch(() => undefined);
-            setCopied(true);
-          }}
-        >
-          {copied ? <Check /> : <Copy />}
-          {copied ? "Copiada" : "Copiar"}
-        </Button>
-        <Button size="xs" variant="ghost" onClick={onHide}>
-          <EyeOff />
-          Ocultar
-        </Button>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">Se oculta sola en 30 segundos. Este acceso quedó registrado.</p>
-    </div>
-  );
-}
-
 function AccountRow({ projectId, account, canManage }: { projectId: string; account: VaultAccount; canManage: boolean }) {
   const confirm = useConfirm();
   const refresh = useRefresh(projectId);
@@ -259,74 +222,97 @@ function AccountRow({ projectId, account, canManage }: { projectId: string; acco
     }
   }
 
+  // Lo revelado se oculta solo a los 30 s (y nunca queda en la caché de consultas).
+  useEffect(() => {
+    if (!revealed) return;
+    const timer = window.setTimeout(() => setRevealed(null), 30_000);
+    return () => window.clearTimeout(timer);
+  }, [revealed]);
+  const box = "flex h-10 min-w-0 items-center rounded-[10px] border border-border bg-muted px-3 text-sm";
   return (
-    <li className="rounded-lg border border-foreground/10 p-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-medium">
-            {account.label} <span className="text-xs font-normal text-muted-foreground">· {ACCOUNT_KIND_LABELS[account.kind]}</span>
+    <li className="space-y-2">
+      <div className={ACCOUNT_COLS}>
+        <p className={cn(box, "font-bold")} title={ACCOUNT_KIND_LABELS[account.kind]}>
+          <span className="truncate">{account.label}</span>
+        </p>
+        <p className={box}>
+          <span className="truncate">{revealed?.username ?? account.username ?? "—"}</span>
+        </p>
+        <div className="flex min-w-0 items-center gap-1">
+          <p className={cn(box, "min-w-0 flex-1 font-mono", !revealed && "tracking-widest")}>
+            <span className="truncate">{revealed ? revealed.credential : account.credentialSet ? "•••••••••••••" : "Sin valor"}</span>
           </p>
-          <p className="truncate text-xs text-muted-foreground">
-            {account.username ?? "Sin usuario"}
-            {account.rotatedAt ? ` · rotada ${dateText(account.rotatedAt)}` : ""}
+          {account.credentialSet &&
+            (revealed ? (
+              <button type="button" aria-label="Ocultar" title="Ocultar" onClick={() => setRevealed(null)} className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground">
+                <EyeOff className="size-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                aria-label="Ver"
+                title="Ver la contraseña (queda registrado)"
+                disabled={busy !== null}
+                onClick={() =>
+                  run("reveal", async () => {
+                    setRevealed(await revealAccount(projectId, account.id));
+                  })
+                }
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                {busy === "reveal" ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
+              </button>
+            ))}
+          {revealed && (
+            <button type="button" aria-label="Copiar la contraseña" title="Copiar" onClick={() => void navigator.clipboard?.writeText(revealed.credential).catch(() => undefined)} className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground">
+              <Copy className="size-4" />
+            </button>
+          )}
+        </div>
+        <div className="flex min-w-0 items-center gap-1">
+          <p className={cn(box, "min-w-0 flex-1")}>
+            <span className="truncate">{account.url ?? "—"}</span>
           </p>
           {account.url && (
-            <a className="text-xs text-primary underline-offset-4 hover:underline" href={account.url} target="_blank" rel="noreferrer">
-              {account.url}
+            <a href={account.url} target="_blank" rel="noreferrer" aria-label={`Abrir ${account.label}`} title="Abrir la página" className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground">
+              <ExternalLink className="size-4" />
             </a>
           )}
         </div>
-        {account.credentialSet ? (
-          <Button
-            size="xs"
-            variant="outline"
-            disabled={busy !== null}
-            onClick={() =>
-              run("reveal", async () => {
-                setRevealed(await revealAccount(projectId, account.id));
-              })
-            }
-          >
-            {busy === "reveal" ? <Loader2 className="animate-spin" /> : <Eye />}
-            Ver
-          </Button>
-        ) : (
-          <Badge variant="outline">Sin valor guardado</Badge>
-        )}
-        {canManage && (
-          <>
-            <Button size="xs" variant="outline" disabled={busy !== null} onClick={() => setRotating((v) => !v)}>
-              <KeyRound />
-              Rotar
-            </Button>
-            <Button
-              size="icon-xs"
-              variant="ghost"
-              aria-label={`Eliminar ${account.label}`}
-              disabled={busy !== null}
-              onClick={async () => {
-                const ok = await confirm({
-                  title: `¿Eliminar la cuenta «${account.label}»?`,
-                  description: "Se borran su usuario y su clave guardados en el vault. No se puede deshacer.",
-                  confirmLabel: "Eliminar cuenta",
-                  tone: "danger",
-                });
-                if (!ok) return;
-                void run("delete", async () => {
-                  await deleteAccount(projectId, account.id);
-                  await refresh();
-                });
-              }}
-            >
-              <Trash2 />
-            </Button>
-          </>
-        )}
+        <div className="flex items-center">
+          {canManage && (
+            <>
+              <button type="button" aria-label={`Rotar ${account.label}`} title="Rotar la contraseña" disabled={busy !== null} onClick={() => setRotating((v) => !v)} className="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground">
+                <KeyRound className="size-4" />
+              </button>
+              <button
+                type="button"
+                aria-label={`Eliminar ${account.label}`}
+                disabled={busy !== null}
+                className="inline-flex size-9 items-center justify-center rounded-lg text-[var(--chip-red-fg)] hover:bg-accent-soft"
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: `¿Eliminar la cuenta «${account.label}»?`,
+                    description: "Se borran su usuario y su clave guardados en el vault. No se puede deshacer.",
+                    confirmLabel: "Eliminar cuenta",
+                    tone: "danger",
+                  });
+                  if (!ok) return;
+                  void run("delete", async () => {
+                    await deleteAccount(projectId, account.id);
+                    await refresh();
+                  });
+                }}
+              >
+                <Trash2 className="size-4" />
+              </button>
+            </>
+          )}
+        </div>
       </div>
-      {revealed && <RevealedValue username={revealed.username} credential={revealed.credential} onHide={() => setRevealed(null)} />}
       {rotating && (
         <form
-          className="mt-2 flex flex-wrap items-center gap-2"
+          className="flex flex-wrap items-center gap-2 pl-1"
           onSubmit={(e) => {
             e.preventDefault();
             if (!next) return;
@@ -339,17 +325,21 @@ function AccountRow({ projectId, account, canManage }: { projectId: string; acco
             });
           }}
         >
-          <Input aria-label="Nuevo valor" type="password" autoComplete="new-password" className="max-w-xs" value={next} onChange={(e) => setNext(e.target.value)} placeholder="Nuevo valor" />
-          <Button size="sm" type="submit" disabled={!next || busy !== null}>
+          <Input aria-label="Nuevo valor" type="password" autoComplete="new-password" className="h-10 max-w-xs rounded-[10px] bg-muted" value={next} onChange={(e) => setNext(e.target.value)} placeholder="Nueva contraseña" />
+          <Button type="submit" disabled={!next || busy !== null}>
             {busy === "rotate" && <Loader2 className="animate-spin" />}
             Guardar
           </Button>
+          {account.rotatedAt && <span className="text-xs text-muted-foreground">Rotada {dateText(account.rotatedAt)}</span>}
         </form>
       )}
       <ErrorLine error={error} />
     </li>
   );
 }
+
+/** Columnas de la tabla de cuentas (prototipo): nombre, usuario, contraseña, link y acciones. */
+const ACCOUNT_COLS = "grid grid-cols-[minmax(9rem,1fr)_minmax(9rem,1fr)_minmax(10rem,1.1fr)_minmax(11rem,1.2fr)_4.75rem] items-center gap-2.5";
 
 export function AccountsTab({ projectId, canManage }: { projectId: string; canManage: boolean }) {
   const refresh = useRefresh(projectId);
@@ -360,6 +350,7 @@ export function AccountsTab({ projectId, canManage }: { projectId: string; canMa
   const [username, setUsername] = useState("");
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   async function add(e: React.FormEvent) {
@@ -373,6 +364,7 @@ export function AccountsTab({ projectId, canManage }: { projectId: string; canMa
       setUrl("");
       setUsername("");
       setSecret("");
+      setAdding(false);
       await refresh();
     } catch (err) {
       setFormError(message(err, "No se pudo guardar la cuenta."));
@@ -385,40 +377,45 @@ export function AccountsTab({ projectId, canManage }: { projectId: string; canMa
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Pool de cuentas del proyecto: así nadie tiene que rotar ni compartir claves por chat. Los valores se guardan cifrados y cada vez que alguien los ve queda registrado.
-      </p>
-      {canManage && (
-        <form onSubmit={add} className="grid items-end gap-3 rounded-lg border border-foreground/10 p-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="max-w-xl text-sm text-muted-foreground">Accesos de este cliente: cada cuenta guarda un nombre, usuario, contraseña (oculta, cifrada y con registro de quién la ve) y el link de su página.</p>
+        {canManage && !adding && (
+          <Button size="lg" onClick={() => setAdding(true)}>
+            <Plus /> Nueva cuenta
+          </Button>
+        )}
+      </div>
+      {canManage && adding && (
+        <form onSubmit={add} aria-label="Nueva cuenta" className="grid items-end gap-3 rounded-xl border border-primary p-4 shadow-[0_0_0_3px_var(--accent-soft)] sm:grid-cols-2 lg:grid-cols-3">
           <div className="space-y-1.5">
-            <Label htmlFor="acc-label">Nombre</Label>
-            <Input id="acc-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Panel de hosting" />
+            <Label htmlFor="acc-label" className="text-caps-label">Nombre</Label>
+            <Input id="acc-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Hosting" />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="acc-kind">Tipo</Label>
-            <Select
-              id="acc-kind"
-              value={kind}
-              options={ACCOUNT_KINDS.map((k) => ({ value: k, label: ACCOUNT_KIND_LABELS[k] }))}
-              onValueChange={(v) => setKind((v ?? "") as AccountKind)}
-            />
+            <Label htmlFor="acc-kind" className="text-caps-label">Tipo</Label>
+            <Select id="acc-kind" value={kind} options={ACCOUNT_KINDS.map((k) => ({ value: k, label: ACCOUNT_KIND_LABELS[k] }))} onValueChange={(v) => setKind((v ?? "") as AccountKind)} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="acc-url">Enlace (opcional)</Label>
+            <Label htmlFor="acc-url" className="text-caps-label">Link de página</Label>
             <Input id="acc-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="acc-user">Usuario (opcional)</Label>
+            <Label htmlFor="acc-user" className="text-caps-label">Usuario</Label>
             <Input id="acc-user" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="acc-secret">Clave o token</Label>
+            <Label htmlFor="acc-secret" className="text-caps-label">Contraseña</Label>
             <Input id="acc-secret" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="new-password" />
           </div>
-          <Button type="submit" disabled={label.trim().length < 2 || busy}>
-            {busy ? <Loader2 className="animate-spin" /> : <Plus />}
-            Guardar cuenta
-          </Button>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => setAdding(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={label.trim().length < 2 || busy}>
+              {busy ? <Loader2 className="animate-spin" /> : <Plus />}
+              Guardar cuenta
+            </Button>
+          </div>
         </form>
       )}
       <ErrorLine error={formError ?? (error ? message(error, "No se pudieron cargar las cuentas.") : null)} />
@@ -427,11 +424,20 @@ export function AccountsTab({ projectId, canManage }: { projectId: string; canMa
       ) : !accounts?.length ? (
         <Empty>Este proyecto aún no tiene cuentas guardadas.</Empty>
       ) : (
-        <ul className="space-y-2">
-          {accounts.map((a) => (
-            <AccountRow key={a.id} projectId={projectId} account={a} canManage={canManage} />
-          ))}
-        </ul>
+        <div className="overflow-x-auto">
+          <div className="min-w-[52rem] space-y-2.5">
+            <div className={cn(ACCOUNT_COLS, "border-b border-border pb-2.5 text-[10.5px] font-semibold tracking-[0.06em] text-muted-foreground uppercase")}>
+              {["Nombre", "Usuario", "Contraseña", "Link de página", "Act"].map((h) => (
+                <span key={h}>{h}</span>
+              ))}
+            </div>
+            <ul className="space-y-2.5">
+              {accounts.map((a) => (
+                <AccountRow key={a.id} projectId={projectId} account={a} canManage={canManage} />
+              ))}
+            </ul>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -246,8 +246,10 @@ describe("detalle del proyecto", () => {
     expect(await screen.findByRole("button", { name: "Pasar a Maintenance" })).toBeTruthy();
     expect(screen.getByLabelText("Health")).toBeTruthy();
     expect(screen.queryByLabelText("Sentiment score")).toBeNull();
-    expect(screen.getByText("Sentiment (del Health)")).toBeTruthy();
+    expect(screen.getByText("Sentiment")).toBeTruthy();
     for (const label of ["Contactos", "Developers", "Kickoff", "Tipo de pago", "SOW"]) expect(screen.getByLabelText(label)).toBeTruthy();
+    // Hourly rate se edita en el indicador.
+    expect(screen.getByLabelText("Hourly rate")).toBeTruthy();
     expect(screen.getByRole("tab", { name: /^Etapas/ })).toBeTruthy();
     // Del proyecto solo queda el SOW: sin propuesta ni Project Plan.
     for (const label of ["Project Plan", "Propuesta"]) expect(screen.queryByLabelText(label)).toBeNull();

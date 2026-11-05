@@ -63,6 +63,7 @@ const projectFields = {
   // Del proyecto solo queda el SOW (sin propuesta ni Project Plan).
   sowUrl: optionalUrl,
   kickoffDate: isoDate.nullable(),
+  hourlyRateCents: z.number().int().min(0).max(100_000_000).nullable(),
   /** El cliente del proyecto es su contacto (el primero). */
   contactIds: z.array(z.string().uuid()).max(50),
   stage: z.enum(PROJECT_STAGES),
@@ -259,6 +260,7 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
         clientSlug: project.clientSlug,
         sowUrl: project.sowUrl ?? null,
         kickoffDate: project.kickoffDate ?? null,
+        hourlyRateCents: project.hourlyRateCents ?? null,
         leadId: project.leadId ?? null,
         stage: project.stage,
         stageSince: project.stageSince ?? project.updatedAt.toISOString().slice(0, 10),
@@ -449,6 +451,7 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
       clientSlug: input.clientSlug ?? null,
       sowUrl: input.sowUrl ?? null,
       kickoffDate: input.kickoffDate ?? null,
+      hourlyRateCents: input.hourlyRateCents ?? null,
       stage: input.stage ?? "kickoff",
       stageSince: today(),
       stageHistory: [{ stage: input.stage ?? "kickoff", at: today(), by: user.username }],
@@ -488,6 +491,24 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
       finance = { paidHours: paid?.hours ?? 0, paidCents: Math.round(paid?.cents ?? 0) };
     }
     return { project: present(project), permissions: { manage: canManageProject(user, project), work: canWorkOnProject(user, project) }, finance };
+  });
+
+  /**
+   * Desasignar una reunión del proyecto (pestaña Reuniones): vuelve a «Sin asignar» en Meetings. El
+   * webhook y el procesamiento de Read.ai no cambian; para volver a ligarla, la asignación de siempre.
+   */
+  app.post("/api/ops/projects/:id/meetings/:meetingId/unassign", { preHandler: requireAuth }, async (request, reply) => {
+    const params = z.object({ id: z.string().uuid(), meetingId: z.string().min(1).max(100) }).safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "Id inválido." });
+    const user = request.user!;
+    const project = await store.opsProjects.findOne({ _id: params.data.id });
+    if (!project) return reply.code(404).send({ error: "Proyecto no encontrado." });
+    if (!canManageProject(user, project)) return forbidden(reply);
+    const meeting = await store.meetings.findOne({ _id: params.data.meetingId, projectId: project._id }, { projection: { title: 1 } });
+    if (!meeting) return reply.code(404).send({ error: "La reunión no está asignada a este proyecto." });
+    await store.meetings.updateOne({ _id: meeting._id }, { $set: { projectId: null, updatedAt: new Date() } });
+    await store.audit({ actor: user.username, action: "ops.meeting_unassigned", clientId: `ops:${project._id}`, target: project.name, details: { meeting: meeting.title } });
+    return { ok: true };
   });
 
   app.patch("/api/ops/projects/:id", { preHandler: requireAuth }, async (request, reply) => {

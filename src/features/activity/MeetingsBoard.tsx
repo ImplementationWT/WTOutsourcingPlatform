@@ -90,15 +90,23 @@ function MeetingCard({ m, actions }: { m: MeetingRow; actions: React.ReactNode }
 
 const iconButton = "inline-flex size-9 items-center justify-center rounded-[10px] border border-border bg-card transition-colors hover:border-line-strong hover:bg-muted";
 
-/** Pestaña Reuniones del lead (prototipo): las de este lead y las que aún no tienen lead ni proyecto. */
-export function LeadMeetings({ leadId, leadName, canWrite }: { leadId: string; leadName: string; canWrite: boolean }) {
+/**
+ * Pestaña Reuniones de un lead o de un proyecto (prototipo): las suyas y las que aún no tienen lead
+ * ni proyecto. Asignar a un proyecto es del CEO/CCO (regla de Meetings).
+ */
+export function MeetingsBoard({ target, canWrite }: { target: { kind: "lead" | "project"; id: string; name: string }; canWrite: boolean }) {
+  const leadId = target.id;
+  const leadName = target.name;
   const queryClient = useQueryClient();
   const isBoss = useSession().data?.role === "boss";
   const teams = useTeams().data ?? [];
   const { data, isLoading, error } = useQuery({ queryKey: ["meetings", "for-lead"], queryFn: () => apiFetch<{ rows: MeetingRow[] }>("/api/meetings?page=1&pageSize=100") });
   const [report, setReport] = useState<string | null>(null);
   const rows = data?.rows ?? [];
-  const mine = rows.filter((m) => m.lead?.id === leadId);
+  const mine = rows.filter((m) => (target.kind === "lead" ? m.lead?.id : m.project?.id) === target.id);
+  const unassignUrl = (m: MeetingRow) => (target.kind === "lead" ? `/api/sales/leads/${target.id}/meetings/${m.id}/unassign` : `/api/ops/projects/${target.id}/meetings/${m.id}/unassign`);
+  const assign = (m: MeetingRow) => apiFetch(`/api/meetings/${m.id}/assign`, send("POST", target.kind === "lead" ? { leadId } : { projectId: target.id }));
+  const canAssign = canWrite && (target.kind === "lead" || isBoss);
   const free = rows.filter((m) => !m.lead && !m.project);
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["meetings"] });
   const run = async (action: () => Promise<unknown>, done: string, undo?: () => Promise<unknown>) => {
@@ -134,7 +142,7 @@ export function LeadMeetings({ leadId, leadName, canWrite }: { leadId: string; l
     <div className="space-y-8">
       <section className="space-y-3">
         <h3 className="flex items-center gap-2 text-lg font-bold">
-          Reuniones de este lead <Chip color="blue">{mine.length}</Chip>
+          Reuniones de este {target.kind === "lead" ? "lead" : "proyecto"} <Chip color="blue">{mine.length}</Chip>
         </h3>
         {mine.length ? (
           <ul className="space-y-3">
@@ -147,7 +155,7 @@ export function LeadMeetings({ leadId, leadName, canWrite }: { leadId: string; l
                     {team(m)}
                     {reportButton(m)}
                     {canWrite && (
-                      <button type="button" aria-label={`Desasignar ${m.title}`} title="Desasignar de este lead" onClick={() => void run(() => apiFetch(`/api/sales/leads/${leadId}/meetings/${m.id}/unassign`, send("POST")), "Reunión desasignada", () => apiFetch(`/api/meetings/${m.id}/assign`, send("POST", { leadId })))} className={iconButton}>
+                      <button type="button" aria-label={`Desasignar ${m.title}`} title="Desasignar de este lead" onClick={() => void run(() => apiFetch(unassignUrl(m), send("POST")), "Reunión desasignada", canAssign ? () => assign(m) : undefined)} className={iconButton}>
                         <UserMinus className="size-4" />
                       </button>
                     )}
@@ -157,7 +165,7 @@ export function LeadMeetings({ leadId, leadName, canWrite }: { leadId: string; l
             ))}
           </ul>
         ) : (
-          <p className="rounded-xl border border-dashed border-line-strong px-6 py-6 text-center text-sm text-muted-foreground">Este lead aún no tiene reuniones. Asigna una de la lista de abajo.</p>
+          <p className="rounded-xl border border-dashed border-line-strong px-6 py-6 text-center text-sm text-muted-foreground">{target.kind === "lead" ? "Este lead" : "Este proyecto"} aún no tiene reuniones.{canAssign ? " Asigna una de la lista de abajo." : ""}</p>
         )}
       </section>
       <section className="space-y-3">
@@ -165,7 +173,7 @@ export function LeadMeetings({ leadId, leadName, canWrite }: { leadId: string; l
           <h3 className="flex items-center gap-2 text-lg font-bold">
             Sin asignar <Chip color="amber">{free.length}</Chip>
           </h3>
-          <p className="text-sm text-muted-foreground">Reuniones que llegaron del calendario y aún no están vinculadas a ningún lead.</p>
+          <p className="text-sm text-muted-foreground">Reuniones que llegaron del calendario y aún no están vinculadas a ningún {target.kind === "lead" ? "lead" : "proyecto"}.</p>
         </div>
         {free.length ? (
           <ul className="space-y-3">
@@ -177,8 +185,8 @@ export function LeadMeetings({ leadId, leadName, canWrite }: { leadId: string; l
                   <>
                     {team(m)}
                     {reportButton(m)}
-                    {canWrite && (
-                      <button type="button" aria-label={`Asignar ${m.title} a ${leadName}`} title="Asignar a este lead" onClick={() => void run(() => apiFetch(`/api/meetings/${m.id}/assign`, send("POST", { leadId })), `Reunión asignada a ${leadName}`, () => apiFetch(`/api/sales/leads/${leadId}/meetings/${m.id}/unassign`, send("POST")))} className="inline-flex size-9 items-center justify-center rounded-[10px] bg-primary text-primary-foreground hover:brightness-110">
+                    {canAssign && (
+                      <button type="button" aria-label={`Asignar ${m.title} a ${leadName}`} title={`Asignar a este ${target.kind === "lead" ? "lead" : "proyecto"}`} onClick={() => void run(() => assign(m), `Reunión asignada a ${leadName}`, () => apiFetch(unassignUrl(m), send("POST")))} className="inline-flex size-9 items-center justify-center rounded-[10px] bg-primary text-primary-foreground hover:brightness-110">
                         <UserPlus className="size-4" />
                       </button>
                     )}

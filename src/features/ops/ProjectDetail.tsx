@@ -1,18 +1,17 @@
 import { useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ExternalLink, Plus } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, ChevronDown, ExternalLink, Plus } from "lucide-react";
 import { ChartCard, ColumnChart, LineChart } from "@/components/charts/charts";
 import { useCrumbs } from "@/components/layout/crumbs";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { DetailModal, ProtoCard } from "@/components/ui/detail-modal";
 import { Kpi, KpiRow } from "@/components/ui/kpi";
-import { AvatarStack } from "@/components/ui/person-avatar";
+import { AvatarStack, PersonAvatar } from "@/components/ui/person-avatar";
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
-import { MultiPicker } from "@/components/ui/multi-picker";
-import { StatusBadge } from "@/components/ui/status-badge";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/features/auth/auth";
@@ -22,7 +21,9 @@ import { cn } from "@/lib/utils";
 import {
   clientLabel,
   HEALTH,
+  HEALTH_CHIP,
   HEALTH_LABELS,
+  stageStyle,
   MAX_DEVELOPERS,
   STAGE_LABELS,
   STAGES,
@@ -31,8 +32,6 @@ import {
   stageAge,
   todayIso,
   useStageSla,
-  NEXT_ACTION_LABELS,
-  NEXT_ACTIONS,
   opsKeys,
   PAYMENT_TYPE_LABELS,
   PAYMENT_TYPES,
@@ -42,12 +41,17 @@ import {
   useClientOptions,
   useOpsProject,
   useTeamMembers,
+  accountsQuery,
   type OpsProject,
   type StageSla,
 } from "./api";
 import { useProjectDeals } from "@/features/core/api";
-import { HealthBadge, PriorityBadge, SentimentBar, StageBadge, StageStepper } from "./OpsBadges";
-import { AccountsTab, DealsTab, MeetingsTab, ProposalsTab, UpdatesTab } from "./OpsTabs";
+import { HealthBadge, PriorityBadge, StageBadge, StageStepper } from "./OpsBadges";
+import { AccountsTab, MeetingsTab, ProposalsTab, UpdatesTab } from "./OpsTabs";
+import { ProjectDeals } from "./ProjectDeals";
+import { MeetingsBoard } from "@/features/activity/MeetingsBoard";
+import { useComms } from "@/features/communications/api";
+import { apiFetch } from "@/lib/api-client";
 import { ProjectTasksPanel } from "@/features/tasks/TasksPage";
 import { CommsTab } from "@/features/communications/CommsList";
 
@@ -123,51 +127,59 @@ function ProjectData({ project, canManage, onDeals }: { project: OpsProject; can
       <Value>{value ? labels[value] : (empty ?? "—")}</Value>
     );
 
-  const person = (label: string, value: OpsProject["lead"], role_: "lead" | "developer", key: "leadUserId" | "developerUserId") =>
-    canManage ? (
-      <Select
-        label={label}
-        value={value?.id ?? null}
-        emptyLabel="Sin asignar"
-        placeholder={value?.name ?? "Sin asignar"}
-        options={members.filter((m) => m.role === role_).map((m) => ({ value: m.id, label: m.name }))}
-        onValueChange={(v) => void save({ [key]: v })}
-      />
-    ) : (
-      <Value>{value?.name ?? "Sin asignar"}</Value>
-    );
-
   const grid = "grid gap-x-4 gap-y-4 sm:grid-cols-2 xl:grid-cols-3";
+  const fieldBox = "flex h-11 w-full min-w-0 items-center rounded-[10px] border border-border bg-muted px-3 text-sm";
+  const primary = project.contacts[0] ?? null;
+  const contactOptions = [...clients.map((c) => ({ value: c.id, label: c.name, description: c.company ?? undefined })), ...project.contacts.filter((c) => !clients.some((x) => x.id === c.id)).map((c) => ({ value: c.id, label: c.name ?? "—" }))];
+  const devOptions = [...members.filter((m) => m.role === "developer").map((m) => ({ id: m.id, name: m.name })), ...project.developers.filter((d) => !members.some((m) => m.id === d.id)).map((d) => ({ id: d.id, name: d.name ?? "—" }))];
+  const devIds = project.developers.map((d) => d.id);
+  const toggleDev = (id: string) => {
+    const next = devIds.includes(id) ? devIds.filter((x) => x !== id) : [...devIds, id];
+    if (next.length > MAX_DEVELOPERS) return toast.error(`Máximo ${MAX_DEVELOPERS} developers por proyecto.`);
+    void save({ developerUserIds: next });
+  };
   return (
     <div className="grid gap-5 lg:grid-cols-2">
       <ProtoCard title="Información del proyecto">
         <div className={grid}>
           <Field label="Priority">{select("Prioridad", project.priority, PRIORITIES, PRIORITY_LABELS, (v) => v && void save({ priority: v }))}</Field>
-          <Field label="Etapa">{select("Etapa", project.stage, STAGES, STAGE_LABELS, (v) => v && void save({ stage: v }))}</Field>
-          <Field label="Health">{select("Health", project.health, HEALTH, HEALTH_LABELS, (v) => v && void save({ health: v }))}</Field>
-          <Field label="Contactos" className="sm:col-span-2">
+          <Field label="Etapa">
+            <select aria-label="Etapa" value={project.stage} disabled={!canManage} onChange={(e) => void save({ stage: e.target.value as OpsProject["stage"] })} className="native-caret h-11 w-full cursor-pointer rounded-[10px] border-0 pl-3 text-sm font-semibold outline-none disabled:cursor-default" style={stageStyle(project.stage)}>
+              {STAGES.map((st) => (
+                <option key={st} value={st} className="bg-card text-foreground">
+                  {STAGE_LABELS[st]}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Sentiment">
+            <select aria-label="Health" value={project.health} disabled={!canManage} onChange={(e) => void save({ health: e.target.value as OpsProject["health"] })} className={cn("native-caret h-11 w-full cursor-pointer rounded-[10px] border-0 pl-3 text-sm font-semibold outline-none disabled:cursor-default", `chip-${HEALTH_CHIP[project.health]}`)}>
+              {HEALTH.map((h) => (
+                <option key={h} value={h} className="bg-card text-foreground">
+                  {HEALTH_LABELS[h]}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Contacto">
             {picksClient ? (
-              <MultiPicker
+              <Select
                 label="Contactos"
-                values={project.contacts.map((c) => c.id)}
-                min={1}
-                addLabel="Agregar contacto"
-                options={[...clients.map((c) => ({ value: c.id, label: c.name, description: c.company ?? undefined })), ...project.contacts.filter((c) => !clients.some((x) => x.id === c.id)).map((c) => ({ value: c.id, label: c.name ?? "—" }))]}
-                onChange={(ids) => void save({ contactIds: ids })}
+                value={primary?.id ?? null}
+                placeholder="Elige el contacto"
+                searchable
+                options={contactOptions.map((o) => ({ ...o, icon: <PersonAvatar person={{ id: o.value, name: o.label }} size={20} /> }))}
+                onValueChange={(v) => v && v !== primary?.id && void save({ contactIds: [v, ...project.contacts.map((c) => c.id).filter((id) => id !== v)] })}
               />
             ) : (
               <ClientValue project={project} />
             )}
           </Field>
           <Field label="Account">
-            <Value>{project.client?.company ?? "—"}</Value>
+            <p className={fieldBox} title="La empresa del contacto del proyecto">
+              <span className="truncate">{project.client?.company ?? "—"}</span>
+            </p>
           </Field>
-          <Field label="Sentiment (del Health)">
-            <div className="flex min-h-control items-center">
-              <SentimentBar value={project.sentimentScore} />
-            </div>
-          </Field>
-          <Field label="Siguiente acción">{select("Siguiente acción", project.nextAction, NEXT_ACTIONS, NEXT_ACTION_LABELS, (v) => void save({ nextAction: v }), "Sin definir")}</Field>
           <Field label="SOW">
             {canManage ? (
               <UrlInput label="SOW" value={project.sowUrl} onSave={(v) => void save({ sowUrl: v })} />
@@ -186,30 +198,48 @@ function ProjectData({ project, canManage, onDeals }: { project: OpsProject; can
       <ProtoCard title="Equipo y pagos">
         <div className={grid}>
           <Field label="Team">
-            <p className="flex h-control items-center rounded-[10px] chip-amber px-3 font-semibold">{project.team.name ?? "Sin equipo"}</p>
+            <p className="flex h-11 items-center rounded-[10px] chip-purple px-3 font-semibold">{project.team.name ?? "Sin equipo"}</p>
           </Field>
-          <Field label="Lead">{person("Team Leader", project.lead, "lead", "leadUserId")}</Field>
+          <Field label="Lead">
+            {canManage ? (
+              <Select label="Team Leader" value={project.lead?.id ?? null} placeholder={project.lead?.name ?? "Elige el Team Leader"} options={members.filter((m) => m.role === "lead").map((m) => ({ value: m.id, label: m.name, icon: <PersonAvatar person={{ id: m.id, name: m.name }} size={22} /> }))} onValueChange={(v) => v && void save({ leadUserId: v })} />
+            ) : (
+              <p className={cn(fieldBox, "gap-2 font-semibold")}>
+                {project.lead && <PersonAvatar person={project.lead} size={22} />}
+                {project.lead?.name ?? "Sin asignar"}
+              </p>
+            )}
+          </Field>
           <Field label={`Developers (máx. ${MAX_DEVELOPERS})`}>
             {canManage ? (
-              <MultiPicker
-                label="Developers"
-                values={project.developers.map((d) => d.id)}
-                max={MAX_DEVELOPERS}
-                addLabel="Agregar developer"
-                options={[...members.filter((m) => m.role === "developer").map((m) => ({ value: m.id, label: m.name })), ...project.developers.filter((d) => !members.some((m) => m.id === d.id)).map((d) => ({ value: d.id, label: d.name ?? "—" }))]}
-                onChange={(ids) => void save({ developerUserIds: ids })}
-              />
+              <DropdownMenu>
+                <DropdownMenuTrigger aria-label="Developers" className={cn(fieldBox, "gap-2 text-left hover:border-line-strong")}>
+                  <AvatarStack people={project.developers} size={22} empty="" />
+                  <span className="min-w-0 flex-1 truncate font-semibold">{project.developers.map((d) => d.name).join(", ") || <span className="font-normal text-muted-foreground">Elegir developers</span>}</span>
+                  <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" sideOffset={6} className="w-60">
+                  {devOptions.map((d) => (
+                    <DropdownMenuCheckboxItem key={d.id} checked={devIds.includes(d.id)} closeOnClick={false} onCheckedChange={() => toggleDev(d.id)}>
+                      <PersonAvatar person={d} size={20} /> {d.name}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  {!devOptions.length && <p className="px-2 py-1.5 text-sm text-muted-foreground">El equipo no tiene developers.</p>}
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : (
-              <div className="flex min-h-control items-center gap-2">
-                <AvatarStack people={project.developers} size={28} empty="Sin asignar" />
-                <span className="truncate font-medium">{project.developers.map((d) => d.name).join(", ")}</span>
-              </div>
+              <p className={cn(fieldBox, "gap-2")}>
+                <AvatarStack people={project.developers} size={22} empty="Sin asignar" />
+                <span className="truncate font-semibold">{project.developers.map((d) => d.name).join(", ")}</span>
+              </p>
             )}
           </Field>
           <Field label="Kickoff date">
-            {canManage ? <DatePicker label="Kickoff" value={project.kickoffDate} onValueChange={(v) => void save({ kickoffDate: v })} /> : <Value>{project.kickoffDate ? formatDate(project.kickoffDate) : "—"}</Value>}
+            {canManage ? <DatePicker label="Kickoff" placeholder="dd/mm/aaaa" value={project.kickoffDate} onValueChange={(v) => void save({ kickoffDate: v })} /> : <Value>{project.kickoffDate ? formatDate(project.kickoffDate) : "—"}</Value>}
           </Field>
-          <Field label="Tipo de pago">{select("Tipo de pago", project.paymentType, PAYMENT_TYPES, PAYMENT_TYPE_LABELS, (v) => void save({ paymentType: v }), "Sin definir")}</Field>
+          <Field label="Tipo de pago">
+            {canManage ? <Select label="Tipo de pago" value={project.paymentType} placeholder="Seleccionar" options={PAYMENT_TYPES.map((t) => ({ value: t, label: PAYMENT_TYPE_LABELS[t] }))} onValueChange={(v) => v && void save({ paymentType: v as OpsProject["paymentType"] })} /> : <Value>{project.paymentType ? PAYMENT_TYPE_LABELS[project.paymentType] : "—"}</Value>}
+          </Field>
           {canManage && (
             <Field label="Deals">
               <Button size="lg" className="w-full" onClick={onDeals}>
@@ -219,6 +249,48 @@ function ProjectData({ project, canManage, onDeals }: { project: OpsProject; can
           )}
         </div>
       </ProtoCard>
+    </div>
+  );
+}
+
+/** Hourly Rate editable (CEO/CCO y Team Leader): se escribe en dólares y es la tarifa de los deals nuevos. */
+function RateKpi({ projectId, cents }: { projectId: string; cents: number | null }) {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState<string | null>(null);
+  const save = async () => {
+    if (draft === null) return;
+    const value = draft.trim() === "" ? null : Math.round(Number(draft) * 100);
+    setDraft(null);
+    if (value !== null && (!Number.isFinite(value) || value < 0)) return toast.error("Escribe una tarifa válida.");
+    if (value === cents) return;
+    try {
+      await updateProject(projectId, { hourlyRateCents: value });
+      await Promise.all([queryClient.invalidateQueries({ queryKey: opsKeys.project(projectId) }), queryClient.invalidateQueries({ queryKey: opsKeys.allProjects })]);
+      toast.success(value === null ? "Hourly rate: se calcula de los deals" : `Hourly rate: ${moneyShort(value)} / h`, { description: "Los deals nuevos usan esta tarifa." });
+    } catch (err) {
+      toast.error("No se pudo guardar la tarifa.", { description: errorText(err, "Inténtalo de nuevo.") });
+    }
+  };
+  return (
+    <div className="flex min-w-0 flex-col justify-between gap-3.5 rounded-[14px] border border-border bg-card p-4 transition-colors hover:border-line-strong sm:p-[18px]">
+      <label htmlFor="hourly-rate" className="text-caps-label leading-snug">
+        Hourly rate
+      </label>
+      <p className="flex items-baseline gap-1 text-xl font-bold tracking-tight tabular-nums sm:text-[28px] sm:leading-tight">
+        <span>$</span>
+        <input
+          id="hourly-rate"
+          inputMode="decimal"
+          value={draft ?? (cents === null ? "" : String(cents / 100))}
+          placeholder="—"
+          onChange={(e) => setDraft(e.target.value.replace(/[^\d.]/g, ""))}
+          onBlur={() => void save()}
+          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+          className="w-full min-w-0 rounded-md bg-transparent outline-none hover:bg-muted focus:bg-muted"
+          style={{ width: `${Math.max(2, (draft ?? String((cents ?? 0) / 100)).length + 1)}ch` }}
+        />
+        <span className="text-sm font-medium tracking-normal text-muted-foreground">/h</span>
+      </p>
     </div>
   );
 }
@@ -254,13 +326,13 @@ function StageAlert({ project, sla, onHistory }: { project: OpsProject; sla: Sta
 function StagesTab({ project, sla }: { project: OpsProject; sla: StageSla | undefined }) {
   const history = project.stageHistory.length ? project.stageHistory : [{ stage: project.stage, at: project.stageSince, by: "—" }];
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto rounded-xl border border-border">
       <table className="w-full min-w-[36rem] text-sm">
         <caption className="sr-only">Historial de etapas</caption>
         <thead>
           <tr className="text-left">
             {["Etapa", "Entró", "Días", "Esperado", "Estado"].map((h) => (
-              <th key={h} scope="col" className="text-caps-label border-b border-border px-3 py-2 font-semibold">
+              <th key={h} scope="col" className="text-caps-label border-b border-border px-4 py-3 font-semibold">
                 {h}
               </th>
             ))}
@@ -276,18 +348,20 @@ function StagesTab({ project, sla }: { project: OpsProject; sla: StageSla | unde
             const status = limit === null ? "Sin límite" : over > 0 ? `+${over} d de atraso` : current ? "En tiempo" : "Cumplida";
             return (
               <tr key={`${h.stage}-${h.at}-${i}`} className="border-b border-border last:border-0">
-                <td className="px-3 py-2.5 font-medium">
-                  {STAGE_LABELS[h.stage]}
-                  {current && <span className="ml-1.5 text-xs text-muted-foreground">· actual</span>}
+                <td className="px-4 py-3">
+                  <span className="inline-flex items-center gap-1.5">
+                    <StageBadge value={h.stage} />
+                    {current && <span className="text-xs font-semibold">· actual</span>}
+                  </span>
                 </td>
-                <td className="px-3 py-2.5 whitespace-nowrap">
-                  {formatDate(h.at)}
+                <td className="px-4 py-3 whitespace-nowrap tabular-nums">
+                  {h.at.slice(0, 10)}
                   {"estimated" in h && h.estimated ? <span className="ml-1 text-xs text-muted-foreground">(estimado)</span> : null}
                 </td>
-                <td className="px-3 py-2.5 tabular-nums">{days} d</td>
-                <td className="px-3 py-2.5 tabular-nums">{limit === null ? "—" : `${limit} d`}</td>
-                <td className="px-3 py-2.5">
-                  <StatusBadge tone={tone}>{status}</StatusBadge>
+                <td className="px-4 py-3 tabular-nums">{days} d</td>
+                <td className="px-4 py-3 tabular-nums">{limit === null ? "—" : `${limit} d`}</td>
+                <td className="px-4 py-3">
+                  <Chip color={tone === "danger" ? "red" : tone === "warn" ? "amber" : tone === "ok" ? "green" : "gray"}>{status}</Chip>
                 </td>
               </tr>
             );
@@ -352,6 +426,10 @@ export function ProjectDetailModal({ id, onClose }: { id: string; onClose: () =>
   const [newDeal, setNewDeal] = useState(0);
   const sla = useStageSla().data?.days;
   const tabsRef = useRef<HTMLElement>(null);
+  // Contadores de las pestañas conectadas: Meetings, Comunicaciones y Cuentas del proyecto.
+  const meetings = useQuery({ queryKey: ["meetings", "for-lead"], queryFn: () => apiFetch<{ rows: { project: { id: string } | null }[] }>("/api/meetings?page=1&pageSize=100") });
+  const comms = useComms({ projectId: id });
+  const accounts = useQuery({ ...accountsQuery(id, Boolean(data?.permissions.work)) });
   const openTab = (t: TabId) => {
     setTab(t);
     tabsRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
@@ -387,17 +465,18 @@ export function ProjectDetailModal({ id, onClose }: { id: string; onClose: () =>
   const tabs: { id: TabId; label: string; visible: boolean; count?: number }[] = [
     { id: "deals", label: "Deals", visible: true, count: s.deals },
     { id: "tasks", label: "Tasks", visible: true, count: s.tasks },
-    { id: "meetings", label: "Reuniones", visible: true },
-    { id: "comms", label: "Comunicaciones", visible: true },
+    { id: "meetings", label: "Reuniones", visible: true, count: meetings.data?.rows?.filter((m) => m.project?.id === project.id).length },
+    { id: "comms", label: "Comunicaciones", visible: true, count: comms.data?.communications?.length },
     // Comercial y Financiera no ven las cuentas: la API tampoco se las da.
-    { id: "accounts", label: "Cuentas", visible: permissions.work },
+    { id: "accounts", label: "Cuentas", visible: permissions.work, count: accounts.data?.length },
     { id: "stages", label: "Etapas", visible: true, count: Math.max(1, project.stageHistory.length) },
     { id: "proposals", label: "Propuestas", visible: true },
     { id: "updates", label: "Updates", visible: true },
   ];
   const showLead = Boolean(project.leadId) && (session?.role === "boss" || session?.role === "commercial");
   const step = STAGES.indexOf(project.stage) + 1;
-  const rate = s.soldHours ? Math.round(s.amountCents / s.soldHours) : null;
+  // Hourly Rate: el del proyecto si se fijó; si no, el promedio de sus deals.
+  const rate = project.hourlyRateCents ?? (s.soldHours ? Math.round(s.amountCents / s.soldHours) : null);
   const finance = data.finance;
   const link = "inline-flex items-center gap-1 font-semibold text-accent-text underline-offset-4 hover:underline";
 
@@ -444,10 +523,9 @@ export function ProjectDetailModal({ id, onClose }: { id: string; onClose: () =>
         <StageAlert project={project} sla={sla} onHistory={() => openTab("stages")} />
 
         <KpiRow label="Indicadores del proyecto">
-          <Kpi label="Hourly rate" value={rate === null ? "—" : moneyShort(rate)} unit={rate === null ? undefined : "/h"} />
+          {permissions.manage ? <RateKpi projectId={project.id} cents={rate} /> : <Kpi label="Hourly rate" value={rate === null ? "—" : moneyShort(rate)} unit={rate === null ? undefined : "/h"} />}
           <Kpi label="Total closed deals" value={moneyShort(s.amountCents)} />
           <Kpi label="Total hours approved" value={s.soldHours.toLocaleString("en-US")} unit="h" />
-          <Kpi label="Horas facturables" value={s.billableHours.toLocaleString("en-US")} unit="h" />
           {finance && (
             <>
               <Kpi label="Hours paid" value={finance.paidHours.toLocaleString("en-US")} unit="h" />
@@ -485,11 +563,22 @@ export function ProjectDetailModal({ id, onClose }: { id: string; onClose: () =>
               ))}
           </div>
           <div role="tabpanel" className="min-h-64 p-5 sm:p-6">
-            {tab === "deals" && <DealsTab key={newDeal} projectId={project.id} startCreating={newDeal > 0} />}
+            {tab === "deals" && <ProjectDeals key={newDeal} projectId={project.id} teamId={project.team.id} startCreating={newDeal > 0} hideCreate={permissions.manage} />}
             {tab === "tasks" && <ProjectTasksPanel projectId={project.id} />}
             {tab === "accounts" && permissions.work && <AccountsTab projectId={project.id} canManage={permissions.manage} />}
             {tab === "proposals" && <ProposalsTab projectId={project.id} canManage={permissions.manage} />}
-            {tab === "meetings" && <MeetingsTab projectId={project.id} canWork={permissions.work} />}
+            {tab === "meetings" && (
+              <div className="space-y-6">
+                <MeetingsBoard target={{ kind: "project", id: project.id, name: project.name }} canWrite={permissions.manage} />
+                {/* El procesamiento con Claude (action items → tareas o change orders) sigue aquí. */}
+                <details className="rounded-xl border border-border">
+                  <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Action items de las reuniones (Claude)</summary>
+                  <div className="border-t border-border p-4">
+                    <MeetingsTab projectId={project.id} canWork={permissions.work} />
+                  </div>
+                </details>
+              </div>
+            )}
             {tab === "updates" && <UpdatesTab projectId={project.id} canWork={permissions.work} />}
             {tab === "stages" && <StagesTab project={project} sla={sla} />}
             {tab === "comms" && <CommsTab scope={{ projectId: project.id }} defaultContact={project.client?.name ?? ""} />}
