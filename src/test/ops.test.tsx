@@ -248,6 +248,8 @@ describe("detalle del proyecto", () => {
     expect(screen.queryByLabelText("Sentiment score")).toBeNull();
     expect(screen.getByText("Sentiment")).toBeTruthy();
     for (const label of ["Contactos", "Developers", "Kickoff", "Tipo de pago", "SOW"]) expect(screen.getByLabelText(label)).toBeTruthy();
+    // Pestañas del prototipo (sin Propuestas ni Updates).
+    expect(screen.getAllByRole("tab").map((t) => t.textContent?.replace(/\d+/g, "").trim())).toEqual(["Deals", "Tasks", "Reuniones", "Comunicaciones", "Cuentas", "Etapas"]);
     // Hourly rate se edita en el indicador.
     expect(screen.getByLabelText("Hourly rate")).toBeTruthy();
     expect(screen.getByRole("tab", { name: /^Etapas/ })).toBeTruthy();

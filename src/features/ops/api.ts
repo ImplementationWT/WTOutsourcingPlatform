@@ -139,6 +139,8 @@ export interface OpsProject {
   kickoffDate: string | null;
   /** Tarifa por hora del proyecto (centavos); sin ella se calcula de los deals. */
   hourlyRateCents?: number | null;
+  /** SOW subido como archivo. */
+  sowDoc?: { name: string; size: number; uploadedAt: string } | null;
   leadId: string | null;
   stage: Stage;
   /** Desde qué día (AAAA-MM-DD) está en la etapa actual. */
@@ -306,6 +308,7 @@ export const opsBase = base;
 /** Campos editables del proyecto (el Sentiment no: se deriva del Health). */
 export interface ProjectInput {
   name: string;
+  teamId: string;
   hourlyRateCents: number | null;
   customerName: string;
   contactIds: string[];

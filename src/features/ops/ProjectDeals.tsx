@@ -3,7 +3,8 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PersonAvatar } from "@/components/ui/person-avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { createDeal, SALES_STAGE_LABELS, SALES_STAGES, updateDeal, useDeals, type Deal, type DealInput, type SalesStage } from "@/features/core/api";
+import { createDeal, removeFile, SALES_STAGE_LABELS, SALES_STAGES, updateDeal, uploadFile, useDeals, type Deal, type DealInput, type SalesStage } from "@/features/core/api";
+import { FileField } from "@/components/ui/file-field";
 import { dealLocked, useDealRefresh } from "@/features/core/hooks";
 import { errorText, toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -23,7 +24,7 @@ const STAGE_COLOR: Record<SalesStage, string> = {
   on_hold: "#a1a1ab",
 };
 
-const cols = "grid grid-cols-[minmax(9rem,1.7fr)_minmax(7.5rem,1.1fr)_minmax(7rem,1fr)_4rem_4rem_5.5rem_minmax(7rem,1.2fr)_8.25rem_2.25rem] items-center gap-2";
+const cols = "grid grid-cols-[minmax(9rem,1.7fr)_minmax(7.5rem,1.1fr)_minmax(7rem,1fr)_4.75rem_4.75rem_5.5rem_minmax(8rem,1.2fr)_8.25rem_2.25rem] items-center gap-2";
 const field = "h-10 w-full min-w-0 rounded-[10px] border border-border bg-muted px-3 text-sm outline-none focus:border-foreground disabled:opacity-70";
 
 /** Texto o número que se guarda al salir del campo (o con Enter). */
@@ -47,7 +48,7 @@ function CellInput({ label, value, onSave, disabled, type = "text", placeholder,
   );
 }
 
-function DealRow({ deal, people, canEdit, onSave, onRemove }: { deal: Deal; people: { id: string; name: string }[]; canEdit: boolean; onSave: (patch: Partial<DealInput>) => void; onRemove: () => void }) {
+function DealRow({ deal, people, canEdit, onSave, onRemove, onUpload, onRemoveDoc }: { deal: Deal; people: { id: string; name: string }[]; canEdit: boolean; onSave: (patch: Partial<DealInput>) => void; onRemove: () => void; onUpload: (file: File) => Promise<unknown>; onRemoveDoc: () => Promise<unknown> }) {
   const locked = !canEdit || dealLocked(deal);
   const owners = deal.owner && !people.some((p) => p.id === deal.owner!.id) ? [...people, { id: deal.owner.id, name: deal.owner.name ?? "—" }] : people;
   return (
@@ -74,14 +75,7 @@ function DealRow({ deal, people, canEdit, onSave, onRemove }: { deal: Deal; peop
       <CellInput label={`Horas de ${deal.title}`} type="number" value={String(deal.hours)} disabled={locked} onSave={(v) => Number(v) >= 0 && onSave({ hours: Number(v) })} className="tabular-nums" />
       <CellInput label={`Tarifa de ${deal.title}`} type="number" value={String(deal.rateCents / 100)} disabled={locked} onSave={(v) => Number(v) >= 0 && onSave({ rateCents: Math.round(Number(v) * 100) })} className="tabular-nums" />
       <p className={cn(field, "flex items-center font-bold tabular-nums")}>{moneyShort(deal.amountCents, deal.currency)}</p>
-      <div className={cn(field, "flex items-center bg-card pr-1")}>
-        <CellInput label={`Documento de la propuesta de ${deal.title}`} value={deal.proposalUrl ?? ""} placeholder="Subir documento (enlace)" disabled={locked} onSave={(v) => onSave({ proposalUrl: v.trim() ? (/^https?:\/\//i.test(v.trim()) ? v.trim() : `https://${v.trim()}`) : null })} className="h-9 border-0 bg-transparent px-0" />
-        {deal.proposalUrl && (
-          <a href={deal.proposalUrl} target="_blank" rel="noreferrer" className="shrink-0 px-1 text-xs font-semibold text-accent-text hover:underline">
-            Abrir
-          </a>
-        )}
-      </div>
+      <FileField label={`Documento de la propuesta de ${deal.title}`} emptyText="Subir documento" file={deal.proposalDoc} href={`/api/deals/${deal.id}/proposal-doc`} disabled={locked} onUpload={onUpload} onRemove={onRemoveDoc} />
       <CellInput label={`Fecha de cierre de ${deal.title}`} type="date" value={deal.actualCloseDate ?? ""} disabled={locked} onSave={(v) => onSave({ actualCloseDate: v || null })} className="px-2 tabular-nums" />
       {!locked ? (
         <button type="button" aria-label={`Cancelar ${deal.title}`} title="Cancelar el deal" onClick={onRemove} className="inline-flex size-9 items-center justify-center rounded-lg text-[var(--chip-red-fg)] hover:bg-accent-soft">
@@ -115,6 +109,15 @@ export function ProjectDeals({ projectId, teamId, startCreating = false, hideCre
       if (done) toast.success(done, undo ? { undo: async () => { await updateDeal(deal.id, undo); await refresh(projectId); } } : undefined);
     } catch (err) {
       toast.error("No se pudo guardar el deal.", { description: errorText(err, "Inténtalo de nuevo.") });
+    }
+  };
+  const fileAction = async (fn: () => Promise<unknown>, done: string) => {
+    try {
+      await fn();
+      await refresh(projectId);
+      toast.success(done);
+    } catch (err) {
+      toast.error("No se pudo guardar el archivo.", { description: errorText(err, "Inténtalo de nuevo.") });
     }
   };
   const create = async () => {
@@ -154,7 +157,7 @@ export function ProjectDeals({ projectId, teamId, startCreating = false, hideCre
         </div>
       )}
       <div className="overflow-x-auto rounded-xl border border-border">
-        <div role="table" aria-label="Deals del proyecto" className="min-w-[58rem] p-2.5">
+        <div role="table" aria-label="Deals del proyecto" className="min-w-[60rem] p-2.5">
           <div role="row" className={cn(cols, "border-b border-border px-3 pb-2.5 text-[10.5px] font-semibold tracking-[0.06em] text-muted-foreground uppercase")}>
             {["Deal", "Resp", "Stage", "Hours", "Rate", "Total", "Proposal doc", "Closed date", "Act"].map((h) => (
               <span key={h} role="columnheader">
@@ -173,7 +176,16 @@ export function ProjectDeals({ projectId, teamId, startCreating = false, hideCre
               </p>
               <div className="space-y-2 border-l-[3px] py-2 pl-2" style={{ borderColor: STAGE_COLOR[g.stage] }}>
                 {g.deals.map((d) => (
-                  <DealRow key={d.id} deal={d} people={people} canEdit={d.canEdit} onSave={(patch) => void save(d, patch)} onRemove={() => void save(d, { status: "cancelled" }, `Deal cancelado: ${d.title}`, { status: d.status })} />
+                  <DealRow
+                    key={d.id}
+                    deal={d}
+                    people={people}
+                    canEdit={d.canEdit}
+                    onSave={(patch) => void save(d, patch)}
+                    onRemove={() => void save(d, { status: "cancelled" }, `Deal cancelado: ${d.title}`, { status: d.status })}
+                    onUpload={(file) => fileAction(() => uploadFile(`/api/deals/${d.id}/proposal-doc`, file), `Documento subido: ${file.name}`)}
+                    onRemoveDoc={() => fileAction(() => removeFile(`/api/deals/${d.id}/proposal-doc`), "Documento quitado")}
+                  />
                 ))}
               </div>
             </section>

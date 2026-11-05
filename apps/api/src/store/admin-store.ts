@@ -202,6 +202,7 @@ export class AdminStore {
       this.db.collection("core_communications").createIndex({ leadId: 1, date: -1 }),
       this.db.collection("core_communications").createIndex({ followUpDate: 1, followUpDone: 1 }),
       this.db.collection("fin_invoices").createIndex({ number: 1 }, { unique: true }),
+      this.db.collection("core_files").createIndex({ owner: 1 }, { unique: true }),
       this.db.collection("fin_invoices").createIndex({ projectId: 1, month: -1 }),
       this.db.collection("fin_payouts").createIndex({ userId: 1, month: 1 }, { unique: true }),
       // Los ids de envío solo sirven unos días (Read.ai reintenta durante minutos).

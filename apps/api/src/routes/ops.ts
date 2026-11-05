@@ -82,7 +82,7 @@ const createProjectSchema = z
   .refine((v) => Boolean(v.customerName || v.contactIds?.length), "Indica el cliente.");
 
 const updateProjectSchema = z
-  .object(projectFields)
+  .object({ ...projectFields, teamId: z.string().uuid() })
   .partial()
   .strict()
   .refine((patch) => Object.keys(patch).length > 0, "No hay nada que cambiar.");
@@ -259,6 +259,7 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
         client: project.contactIds?.[0] ? { id: project.contactIds[0], name: contactName.get(project.contactIds[0]) ?? null, company: contactCompany.get(project.contactIds[0]) ?? null } : null,
         clientSlug: project.clientSlug,
         sowUrl: project.sowUrl ?? null,
+        sowDoc: project.sowDoc ? { name: project.sowDoc.name, size: project.sowDoc.size, uploadedAt: project.sowDoc.uploadedAt } : null,
         kickoffDate: project.kickoffDate ?? null,
         hourlyRateCents: project.hourlyRateCents ?? null,
         leadId: project.leadId ?? null,
@@ -520,11 +521,24 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
     if (!project) return reply;
     const user = request.user!;
     if (!canManageProject(user, project)) return forbidden(reply);
-    const patch = body.data;
-    if (patch.leadUserId !== undefined && !(await teamMember(patch.leadUserId, project.teamId, ["lead"]))) return reply.code(400).send({ error: "El Team Leader debe ser un team leader activo del equipo del proyecto." });
-    if (patch.developerUserId !== undefined && !(await teamMember(patch.developerUserId, project.teamId, ["developer"]))) return reply.code(400).send({ error: "El Developer debe ser un developer activo del equipo del proyecto." });
+    const { teamId: newTeam, ...rest } = body.data;
+    const patch: typeof rest & { teamId?: string } = rest;
+    // Cambiar de equipo es del CEO/CCO: el Team Leader pasa a ser el del equipo nuevo y los
+    // developers se vuelven a elegir (deben ser de ese equipo).
+    const teamChanged = newTeam !== undefined && newTeam !== project.teamId;
+    if (teamChanged) {
+      if (user.role !== "boss") return reply.code(403).send({ error: "Solo el CEO/CCO cambia el equipo de un proyecto." });
+      const team = await store.teams.findOne({ _id: newTeam }, { projection: { leadUserId: 1 } });
+      if (!team) return reply.code(400).send({ error: "El equipo no existe." });
+      patch.teamId = newTeam;
+      if (patch.leadUserId === undefined) patch.leadUserId = team.leadUserId ?? null;
+      if (patch.developerUserIds === undefined) patch.developerUserIds = [];
+    }
+    const teamId = patch.teamId ?? project.teamId;
+    if (patch.leadUserId !== undefined && !(await teamMember(patch.leadUserId, teamId, ["lead"]))) return reply.code(400).send({ error: "El Team Leader debe ser un team leader activo del equipo del proyecto." });
+    if (patch.developerUserId !== undefined && !(await teamMember(patch.developerUserId, teamId, ["developer"]))) return reply.code(400).send({ error: "El Developer debe ser un developer activo del equipo del proyecto." });
     const developerUserIds = patch.developerUserIds ? [...new Set(patch.developerUserIds)] : patch.developerUserId !== undefined ? (patch.developerUserId ? [patch.developerUserId] : []) : undefined;
-    if (developerUserIds && !(await teamDevelopers(developerUserIds, project.teamId))) return reply.code(400).send({ error: "Los developers deben ser developers activos del equipo del proyecto." });
+    if (developerUserIds && !(await teamDevelopers(developerUserIds, teamId))) return reply.code(400).send({ error: "Los developers deben ser developers activos del equipo del proyecto." });
     if (!(await checkContacts(patch.contactIds, reply))) return reply;
     if (patch.clientSlug) {
       const app_ = await store.getClient(patch.clientSlug);
@@ -540,6 +554,7 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
       changes.push(`Health: ${LABELS.health[project.health]} → ${LABELS.health[patch.health]} (Sentiment ${sentimentOf(project.health)} → ${sentimentOf(patch.health)})`);
     }
     if (patch.priority && patch.priority !== project.priority) changes.push(`Prioridad: ${LABELS.priority[project.priority]} → ${LABELS.priority[patch.priority]}`);
+    if (teamChanged) changes.push("Cambió el equipo del proyecto.");
     if (patch.leadUserId !== undefined && patch.leadUserId !== project.leadUserId) changes.push("Cambió el Team Leader.");
     if (developerUserIds && developerUserIds.join() !== developersOf(project).join()) changes.push(developerUserIds.length > 1 ? "Cambiaron los developers." : "Cambió el Developer.");
 

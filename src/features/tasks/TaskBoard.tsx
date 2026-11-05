@@ -327,7 +327,7 @@ export function TaskBoard({
                       </span>
                       {g.sprint && g.project?.canManage && (
                         <Button size="sm" variant="ghost" className="ml-auto text-destructive" onClick={() => void removeSprint(g.sprint!)}>
-                          <Trash2 /> Eliminar sprint
+                          <Trash2 /> Eliminar
                         </Button>
                       )}
                     </div>

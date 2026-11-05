@@ -3,7 +3,7 @@ import { useTablePage } from "@/components/data-table/use-table-page";
 import { useSession } from "@/features/auth/auth";
 import type { DealStatus, Stage } from "@/features/ops/api";
 import type { LeadStatus } from "@/features/sales/api";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, ApiError } from "@/lib/api-client";
 
 // ---- catálogos (los mismos valores que valida la API) ---------------------------------
 
@@ -98,6 +98,8 @@ export interface Deal {
   channel: string | null;
   lostReason: string | null;
   proposalUrl: string | null;
+  /** Documento de la propuesta subido como archivo. */
+  proposalDoc?: FileRef | null;
   sowUrl: string | null;
   paidAt: string | null;
   updatedAt: string;
@@ -200,3 +202,25 @@ export const createChangeOrder = (id: string, input: { description: string; hour
   apiFetch<{ changeOrder: ChangeOrder }>(`/api/deals/${id}/change-orders`, send("POST", input));
 export const updateChangeOrder = (id: string, changeOrderId: string, patch: Partial<{ description: string; hours: number; rateCents: number; status: ChangeOrderStatus; signedBy: string | null }>) =>
   apiFetch<{ changeOrder: ChangeOrder }>(`/api/deals/${id}/change-orders/${changeOrderId}`, send("PATCH", patch));
+
+/** Archivo subido (documento de la propuesta o SOW). */
+export interface FileRef {
+  name: string;
+  size: number;
+  uploadedAt: string;
+}
+
+/** Sube un archivo de la computadora tal cual (hasta 15 MB): el tipo va en Content-Type y el nombre en X-File-Name. */
+export async function uploadFile(url: string, file: File): Promise<{ file: FileRef }> {
+  if (file.size > 15 * 1024 * 1024) throw new ApiError(413, "El archivo pesa más de 15 MB.");
+  let res: Response;
+  try {
+    res = await fetch(url, { method: "PUT", body: file, credentials: "same-origin", headers: { "content-type": file.type || "application/octet-stream", "x-file-name": encodeURIComponent(file.name) } });
+  } catch {
+    throw new ApiError(0, "No se pudo conectar con el servidor.");
+  }
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(res.status, (body as { error?: string } | null)?.error ?? (res.status === 413 ? "El archivo es demasiado grande." : `Error ${res.status}`), body);
+  return body as { file: FileRef };
+}
+export const removeFile = (url: string) => apiFetch<{ ok: true }>(url, { method: "DELETE" });

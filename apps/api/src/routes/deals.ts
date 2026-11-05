@@ -174,6 +174,7 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
       channel: deal.channel,
       lostReason: deal.lostReason,
       proposalUrl: deal.proposalUrl,
+      proposalDoc: deal.proposalDoc ? { name: deal.proposalDoc.name, size: deal.proposalDoc.size, uploadedAt: deal.proposalDoc.uploadedAt } : null,
       sowUrl: deal.sowUrl,
       paidAt: deal.paidAt ?? null,
       updatedAt: deal.updatedAt,

@@ -128,6 +128,8 @@ export interface OpsProjectDoc {
   kickoffDate?: string | null; // YYYY-MM-DD
   /** Tarifa por hora del proyecto (centavos): la de los deals nuevos; sin ella, se calcula de los deals. */
   hourlyRateCents?: number | null;
+  /** SOW subido como archivo (core_files). */
+  sowDoc?: { fileId: string; name: string; size: number; uploadedAt: Date };
   /** Ya no se usa (solo queda el SOW); puede seguir en documentos viejos. */
   projectPlanUrl?: string | null;
   /** SOW: enlace al archivo (no hay almacenamiento de archivos aún). */
@@ -201,6 +203,8 @@ export interface DealDoc {
   updatedAt: Date;
   /** Cuándo pasó a "paid" (base de las comisiones). */
   paidAt?: Date;
+  /** Documento de la propuesta subido como archivo (core_files). */
+  proposalDoc?: { fileId: string; name: string; size: number; uploadedAt: Date };
 }
 
 export interface OpsTaskDoc {

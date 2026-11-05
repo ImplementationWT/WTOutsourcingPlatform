@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { Plus, Search } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kpi, KpiRow } from "@/components/ui/kpi";
 import { Select } from "@/components/ui/select";
@@ -28,7 +28,7 @@ const TABS: { id: Tab; label: string }[] = [
  * Crear tarea y sprint con valores razonables. La tarea nueva se abre; el sprint nuevo avisa y
  * llama a `onSprint` para que la pantalla pase a la vista por sprint (en «Todas» no se ve vacío).
  */
-function useCreators(board: Board | undefined, open: (id: string) => void, onSprint?: (projectId: string) => void) {
+function useCreators(board: Board | undefined, onSprint?: (projectId: string) => void) {
   const run = useBoardAction();
   const target = (projectId?: string) => board?.projects.find((p) => p.id === projectId && p.canManage) ?? board?.projects.find((p) => p.canManage);
   return {
@@ -41,7 +41,8 @@ function useCreators(board: Board | undefined, open: (id: string) => void, onSpr
       const sprint = sprints.find((s) => s.id === sprintId) ?? sprints.find((s) => s.startDate <= today && today <= s.endDate) ?? null;
       const owner = ownerId && board.people.some((p) => p.id === ownerId && p.teamId === project.team.id) ? ownerId : (project.developerUserIds[0] ?? project.leadUserId);
       const created = await run(() => api.createTask({ projectId: project.id, title: "Nueva tarea", sprintId: sprint?.id ?? null, assigneeUserId: owner ?? null }));
-      if (created) open(created.task.id);
+      // La tarea nueva queda en la tabla para escribirle el nombre ahí (sin abrir el panel lateral).
+      if (created) toast.success("Tarea creada", { description: "Ponle nombre, owner y horas en la fila." });
     },
     async sprint(projectId?: string) {
       const project = target(projectId);
@@ -156,7 +157,7 @@ export function ProjectTasksPanel({ projectId }: { projectId: string }) {
   const { data: board } = useBoard();
   const { detail, open, close } = useDetail();
   const [view, setView] = useState<BoardView>("sprints");
-  const create = useCreators(board, (id) => open(id), () => setView("sprints"));
+  const create = useCreators(board, () => setView("sprints"));
   if (!board) return <Skeleton className="h-48 w-full" />;
   const project = board.projects.find((p) => p.id === projectId);
   const tasks = board.tasks.filter((t) => t.projectId === projectId);
@@ -171,9 +172,6 @@ export function ProjectTasksPanel({ projectId }: { projectId: string }) {
           ))}
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link to={`/operativa/tasks?project=${projectId}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
-            Ver en Tasks →
-          </Link>
           {project?.canManage && (
             <>
               <Button size="sm" variant="outline" onClick={() => void create.sprint(projectId)}>
@@ -199,7 +197,6 @@ export default function TasksPage() {
   const { detail, open, close } = useDetail();
   const create = useCreators(
     board,
-    (id) => open(id),
     (projectId) =>
       setParams(
         (cur) => {

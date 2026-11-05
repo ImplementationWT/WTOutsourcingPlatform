@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown, ExternalLink, Plus } from "lucide-react";
+import { AlertTriangle, ChevronDown, Plus } from "lucide-react";
 import { ChartCard, ColumnChart, LineChart } from "@/components/charts/charts";
 import { useCrumbs } from "@/components/layout/crumbs";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,6 @@ import { Kpi, KpiRow } from "@/components/ui/kpi";
 import { AvatarStack, PersonAvatar } from "@/components/ui/person-avatar";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/features/auth/auth";
@@ -47,7 +46,10 @@ import {
 } from "./api";
 import { useProjectDeals } from "@/features/core/api";
 import { HealthBadge, PriorityBadge, StageBadge, StageStepper } from "./OpsBadges";
-import { AccountsTab, MeetingsTab, ProposalsTab, UpdatesTab } from "./OpsTabs";
+import { AccountsTab, MeetingsTab } from "./OpsTabs";
+import { FileField } from "@/components/ui/file-field";
+import { removeFile, uploadFile } from "@/features/core/api";
+import { useTeams } from "@/features/admin/api";
 import { ProjectDeals } from "./ProjectDeals";
 import { MeetingsBoard } from "@/features/activity/MeetingsBoard";
 import { useComms } from "@/features/communications/api";
@@ -55,8 +57,8 @@ import { apiFetch } from "@/lib/api-client";
 import { ProjectTasksPanel } from "@/features/tasks/TasksPage";
 import { CommsTab } from "@/features/communications/CommsList";
 
-type TabId = "deals" | "tasks" | "proposals" | "accounts" | "meetings" | "comms" | "updates" | "stages";
-const TAB_IDS: readonly TabId[] = ["deals", "tasks", "proposals", "accounts", "meetings", "comms", "updates", "stages"];
+type TabId = "deals" | "tasks" | "accounts" | "meetings" | "comms" | "stages";
+const TAB_IDS: readonly TabId[] = ["deals", "tasks", "accounts", "meetings", "comms", "stages"];
 
 /** Campo con etiqueta en mayúsculas sobre el control (o el valor, en lectura). */
 function Field({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
@@ -70,18 +72,6 @@ function Field({ label, children, className }: { label: string; children: ReactN
 
 /** Valor de un campo en lectura, alineado con los controles. */
 const Value = ({ children }: { children: ReactNode }) => <p className="flex min-h-control items-center font-medium">{children}</p>;
-
-/** Enlace editable (SOW): guarda al salir del campo. */
-function UrlInput({ label, value, onSave }: { label: string; value: string | null; onSave: (v: string | null) => void }) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const commit = () => {
-    if (draft === null) return;
-    const next = draft.trim() || null;
-    setDraft(null);
-    if (next !== value) onSave(next);
-  };
-  return <Input aria-label={label} value={draft ?? value ?? ""} placeholder="https://…" onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />;
-}
 
 /** Cliente: el contacto del proyecto, con enlace a su ficha para quien ve Contactos. */
 function ClientValue({ project }: { project: OpsProject }) {
@@ -110,7 +100,17 @@ function ProjectData({ project, canManage, onDeals }: { project: OpsProject; can
   // El cliente lo eligen quienes crean proyectos (CEO/CCO y Team Leader).
   const picksClient = canManage && (role === "boss" || role === "lead");
   const clients = useClientOptions(picksClient).data ?? [];
+  const teams = useTeams().data ?? [];
 
+  const fileAction = async (fn: () => Promise<unknown>, done: string) => {
+    try {
+      await fn();
+      await Promise.all([queryClient.invalidateQueries({ queryKey: opsKeys.project(project.id) }), queryClient.invalidateQueries({ queryKey: opsKeys.allProjects })]);
+      toast.success(done);
+    } catch (err) {
+      toast.error("No se pudo guardar el archivo.", { description: errorText(err, "Inténtalo de nuevo.") });
+    }
+  };
   async function save(patch: Parameters<typeof updateProject>[1]) {
     try {
       await updateProject(project.id, patch);
@@ -181,28 +181,28 @@ function ProjectData({ project, canManage, onDeals }: { project: OpsProject; can
             </p>
           </Field>
           <Field label="SOW">
-            {canManage ? (
-              <UrlInput label="SOW" value={project.sowUrl} onSave={(v) => void save({ sowUrl: v })} />
-            ) : project.sowUrl ? (
-              <Value>
-                <a className="inline-flex items-center gap-1 text-accent-text underline-offset-4 hover:underline" href={project.sowUrl} target="_blank" rel="noreferrer">
-                  Abrir SOW <ExternalLink className="size-3.5" />
-                </a>
-              </Value>
-            ) : (
-              <Value>—</Value>
-            )}
+            <FileField label="SOW" emptyText="Subir SOW" file={project.sowDoc} href={`/api/ops/projects/${project.id}/sow`} disabled={!canManage} onUpload={(f) => fileAction(() => uploadFile(`/api/ops/projects/${project.id}/sow`, f), `SOW subido: ${f.name}`)} onRemove={() => fileAction(() => removeFile(`/api/ops/projects/${project.id}/sow`), "SOW quitado")} />
           </Field>
         </div>
       </ProtoCard>
       <ProtoCard title="Equipo y pagos">
         <div className={grid}>
           <Field label="Team">
-            <p className="flex h-11 items-center rounded-[10px] chip-purple px-3 font-semibold">{project.team.name ?? "Sin equipo"}</p>
+            {role === "boss" ? (
+              <select aria-label="Team" value={project.team.id} onChange={(e) => e.target.value !== project.team.id && void save({ teamId: e.target.value })} className="native-caret h-11 w-full cursor-pointer rounded-[10px] border-0 chip-purple pl-3 text-sm font-semibold outline-none">
+                {[...teams, ...(teams.some((t) => t.id === project.team.id) ? [] : [{ id: project.team.id, name: project.team.name ?? "Sin equipo" }])].map((t) => (
+                  <option key={t.id} value={t.id} className="bg-card text-foreground">
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="flex h-11 items-center rounded-[10px] chip-purple px-3 font-semibold">{project.team.name ?? "Sin equipo"}</p>
+            )}
           </Field>
           <Field label="Lead">
             {canManage ? (
-              <Select label="Team Leader" value={project.lead?.id ?? null} placeholder={project.lead?.name ?? "Elige el Team Leader"} options={members.filter((m) => m.role === "lead").map((m) => ({ value: m.id, label: m.name, icon: <PersonAvatar person={{ id: m.id, name: m.name }} size={22} /> }))} onValueChange={(v) => v && void save({ leadUserId: v })} />
+              <Select label="Team Leader" value={project.lead?.id ?? null} placeholder={project.lead?.name ?? (members.some((m) => m.role === "lead") ? "Elige el Team Leader" : "El equipo no tiene team leaders")} options={members.filter((m) => m.role === "lead").map((m) => ({ value: m.id, label: m.name, icon: <PersonAvatar person={{ id: m.id, name: m.name }} size={22} /> }))} onValueChange={(v) => v && void save({ leadUserId: v })} />
             ) : (
               <p className={cn(fieldBox, "gap-2 font-semibold")}>
                 {project.lead && <PersonAvatar person={project.lead} size={22} />}
@@ -224,7 +224,7 @@ function ProjectData({ project, canManage, onDeals }: { project: OpsProject; can
                       <PersonAvatar person={d} size={20} /> {d.name}
                     </DropdownMenuCheckboxItem>
                   ))}
-                  {!devOptions.length && <p className="px-2 py-1.5 text-sm text-muted-foreground">El equipo no tiene developers.</p>}
+                  {!devOptions.length && <p className="px-2 py-1.5 text-sm text-muted-foreground">Este equipo no tiene developers. Agrégalos en Usuarios (menú de usuario).</p>}
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
@@ -403,7 +403,7 @@ function SalesCharts({ projectId }: { projectId: string }) {
         <LineChart points={months.map((k, i) => ({ label: label(k), value: cumulative[i] }))} color="var(--viz-4)" format={usd} labelEvery={every} />
       </ChartCard>
       <ChartCard title="Client Monthly Sales" sub="Valor de los deals cerrados en cada mes" table={{ columns: ["Mes", "Ventas"], rows: months.map((k, i) => [label(k), usd(byMonth[i])]) }} className="rounded-[14px] shadow-none">
-        <ColumnChart columns={months.map((k, i) => ({ label: label(k), values: { won: byMonth[i] } }))} series={[{ key: "won", label: "Ventas", color: "var(--viz-4)" }]} format={usd} />
+        <ColumnChart columns={months.map((k, i) => ({ label: label(k), values: { won: byMonth[i] } }))} series={[{ key: "won", label: "Ventas", color: "var(--viz-4)" }]} format={usd} labelEvery={every} />
       </ChartCard>
     </div>
   );
@@ -470,8 +470,6 @@ export function ProjectDetailModal({ id, onClose }: { id: string; onClose: () =>
     // Comercial y Financiera no ven las cuentas: la API tampoco se las da.
     { id: "accounts", label: "Cuentas", visible: permissions.work, count: accounts.data?.length },
     { id: "stages", label: "Etapas", visible: true, count: Math.max(1, project.stageHistory.length) },
-    { id: "proposals", label: "Propuestas", visible: true },
-    { id: "updates", label: "Updates", visible: true },
   ];
   const showLead = Boolean(project.leadId) && (session?.role === "boss" || session?.role === "commercial");
   const step = STAGES.indexOf(project.stage) + 1;
@@ -566,7 +564,6 @@ export function ProjectDetailModal({ id, onClose }: { id: string; onClose: () =>
             {tab === "deals" && <ProjectDeals key={newDeal} projectId={project.id} teamId={project.team.id} startCreating={newDeal > 0} hideCreate={permissions.manage} />}
             {tab === "tasks" && <ProjectTasksPanel projectId={project.id} />}
             {tab === "accounts" && permissions.work && <AccountsTab projectId={project.id} canManage={permissions.manage} />}
-            {tab === "proposals" && <ProposalsTab projectId={project.id} canManage={permissions.manage} />}
             {tab === "meetings" && (
               <div className="space-y-6">
                 <MeetingsBoard target={{ kind: "project", id: project.id, name: project.name }} canWrite={permissions.manage} />
@@ -579,7 +576,6 @@ export function ProjectDetailModal({ id, onClose }: { id: string; onClose: () =>
                 </details>
               </div>
             )}
-            {tab === "updates" && <UpdatesTab projectId={project.id} canWork={permissions.work} />}
             {tab === "stages" && <StagesTab project={project} sla={sla} />}
             {tab === "comms" && <CommsTab scope={{ projectId: project.id }} defaultContact={project.client?.name ?? ""} />}
           </div>
