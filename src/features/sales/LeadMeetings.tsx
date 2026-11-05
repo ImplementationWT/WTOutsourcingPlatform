@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, ExternalLink, FileBarChart2, UserPlus } from "lucide-react";
+import { CalendarDays, ExternalLink, FileBarChart2, UserMinus, UserPlus } from "lucide-react";
 import { Chip, type ChipColor } from "@/components/ui/chip";
 import { Modal } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -101,11 +101,11 @@ export function LeadMeetings({ leadId, leadName, canWrite }: { leadId: string; l
   const mine = rows.filter((m) => m.lead?.id === leadId);
   const free = rows.filter((m) => !m.lead && !m.project);
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["meetings"] });
-  const run = async (action: () => Promise<unknown>, done: string) => {
+  const run = async (action: () => Promise<unknown>, done: string, undo?: () => Promise<unknown>) => {
     try {
       await action();
       await refresh();
-      toast.success(done);
+      toast.success(done, undo ? { undo: async () => { await undo(); await refresh(); } } : undefined);
     } catch (err) {
       toast.error("No se pudo completar la acción.", { description: errorText(err, "Inténtalo de nuevo.") });
     }
@@ -139,7 +139,21 @@ export function LeadMeetings({ leadId, leadName, canWrite }: { leadId: string; l
         {mine.length ? (
           <ul className="space-y-3">
             {mine.map((m) => (
-              <MeetingCard key={m.id} m={m} actions={<>{team(m)}{reportButton(m)}</>} />
+              <MeetingCard
+                key={m.id}
+                m={m}
+                actions={
+                  <>
+                    {team(m)}
+                    {reportButton(m)}
+                    {canWrite && (
+                      <button type="button" aria-label={`Desasignar ${m.title}`} title="Desasignar de este lead" onClick={() => void run(() => apiFetch(`/api/sales/leads/${leadId}/meetings/${m.id}/unassign`, send("POST")), "Reunión desasignada", () => apiFetch(`/api/meetings/${m.id}/assign`, send("POST", { leadId })))} className={iconButton}>
+                        <UserMinus className="size-4" />
+                      </button>
+                    )}
+                  </>
+                }
+              />
             ))}
           </ul>
         ) : (
@@ -164,7 +178,7 @@ export function LeadMeetings({ leadId, leadName, canWrite }: { leadId: string; l
                     {team(m)}
                     {reportButton(m)}
                     {canWrite && (
-                      <button type="button" aria-label={`Asignar ${m.title} a ${leadName}`} title="Asignar a este lead" onClick={() => void run(() => apiFetch(`/api/meetings/${m.id}/assign`, send("POST", { leadId })), `Reunión asignada a ${leadName}`)} className="inline-flex size-9 items-center justify-center rounded-[10px] bg-primary text-primary-foreground hover:brightness-110">
+                      <button type="button" aria-label={`Asignar ${m.title} a ${leadName}`} title="Asignar a este lead" onClick={() => void run(() => apiFetch(`/api/meetings/${m.id}/assign`, send("POST", { leadId })), `Reunión asignada a ${leadName}`, () => apiFetch(`/api/sales/leads/${leadId}/meetings/${m.id}/unassign`, send("POST")))} className="inline-flex size-9 items-center justify-center rounded-[10px] bg-primary text-primary-foreground hover:brightness-110">
                         <UserPlus className="size-4" />
                       </button>
                     )}

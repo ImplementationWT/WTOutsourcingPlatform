@@ -161,3 +161,19 @@ describe("cotizaciones con líneas", () => {
     expect((await ana("GET", "/api/proposals")).status).toBe(403);
   });
 });
+
+describe("reuniones del lead", () => {
+  it("desasignar deja la reunión sin lead (vuelve a «Sin asignar»); solo la del propio lead y solo Comercial o boss", async () => {
+    const { as, store } = await world();
+    const marta = await as("marta");
+    const lead = (await marta("POST", "/api/sales/leads", { company: "Manpersa" })).body.lead;
+    const other = (await marta("POST", "/api/sales/leads", { company: "Otra" })).body.lead;
+    const at = new Date();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- reunión mínima para la prueba
+    await store.meetings.insertOne({ _id: "m-1", title: "Demo de plataforma", heldAt: at, leadId: lead.id, projectId: null, teamId: null, createdAt: at, updatedAt: at } as any);
+    expect((await marta("POST", `/api/sales/leads/${other.id}/meetings/m-1/unassign`)).status).toBe(404);
+    expect((await (await as("fede"))("POST", `/api/sales/leads/${lead.id}/meetings/m-1/unassign`)).status).toBe(403);
+    expect((await marta("POST", `/api/sales/leads/${lead.id}/meetings/m-1/unassign`)).status).toBe(200);
+    expect((await store.meetings.findOne({ _id: "m-1" }))?.leadId).toBeNull();
+  });
+});

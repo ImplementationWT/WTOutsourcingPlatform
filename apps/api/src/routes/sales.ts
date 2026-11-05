@@ -328,6 +328,23 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
     return reply.code(201).send({ lead: view(lead, true) });
   });
 
+  /**
+   * Desasignar una reunión del lead (pestaña Reuniones): solo deja de estar ligada a él y vuelve a
+   * «Sin asignar» en Meetings. El webhook y el procesamiento de Read.ai no cambian; para volver a
+   * ligarla se usa la asignación de siempre (POST /api/meetings/:id/assign).
+   */
+  app.post("/api/sales/leads/:id/meetings/:meetingId/unassign", { preHandler: requireSales }, async (request, reply) => {
+    const params = z.object({ id: z.string().uuid(), meetingId: z.string().min(1).max(100) }).safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "Id inválido." });
+    const lead = await store.leads.findOne({ _id: params.data.id });
+    if (!lead) return reply.code(404).send({ error: "Lead no encontrado." });
+    const meeting = await store.meetings.findOne({ _id: params.data.meetingId, leadId: lead._id }, { projection: { title: 1 } });
+    if (!meeting) return reply.code(404).send({ error: "La reunión no está asignada a este lead." });
+    await store.meetings.updateOne({ _id: meeting._id }, { $set: { leadId: null, updatedAt: new Date() } });
+    await auditSales(request.user!, lead, "sales.meeting_unassigned", { meeting: meeting.title });
+    return { ok: true };
+  });
+
   app.get("/api/sales/leads/:id", { preHandler: requireSalesRead }, async (request, reply) => {
     const params = idParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "Id inválido." });

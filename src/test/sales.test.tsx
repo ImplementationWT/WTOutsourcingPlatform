@@ -247,6 +247,19 @@ describe("leads", () => {
     expect(JSON.parse(String(calls.find((c) => c.init?.method === "POST" && c.url === "/api/contacts")!.init?.body))).toMatchObject({ name: "Lucía Pérez", company: "Manpersa SAC" });
   });
 
+  it("País es una lista de países; el teléfono tiene prefijo aparte; Empresa y Contacto no ofrecen quedar vacíos", async () => {
+    const { calls } = renderAt(`/comercial/leads/${lead.id}`, COMMERCIAL, detailRoute());
+    await screen.findByRole("heading", { name: "Manpersa SAC" });
+    expect(await optionLabels("Empresa")).not.toContain("Sin empresa");
+    expect(await optionLabels("Contacto")).not.toContain("Sin contacto");
+    await pick("País", "Perú");
+    await waitFor(() => expect(patches(calls)).toContainEqual({ country: "Perú" }));
+    const number = screen.getByLabelText("Número de teléfono");
+    fireEvent.change(number, { target: { value: "987 654 321" } });
+    fireEvent.blur(number);
+    await waitFor(() => expect(patches(calls).some((p) => typeof p.phone === "string" && p.phone.endsWith("987 654 321"))).toBe(true));
+  });
+
   it("Financiera lee el detalle sin controles", async () => {
     const FINANCE: SessionUser = { id: "u-fin", username: "fede", name: "Fede", role: "finance", teamId: null, mustChangeCredentials: false };
     renderAt(`/comercial/leads/${lead.id}`, FINANCE, detailRoute({ canWrite: false }));

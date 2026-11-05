@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { activityKeys, createUpdate, dateText, updatesQuery } from "@/features/activity/api";
 import { coreKeys, createContact, useContactOptions } from "@/features/core/api";
 import { apiFetch } from "@/lib/api-client";
+import { COUNTRIES, countryByName, joinPhone, PHONE_PREFIXES, splitPhone } from "@/lib/countries";
 import { formatDate } from "@/lib/format";
 import { errorText, toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -361,6 +362,57 @@ function NewContactDialog({ company, onClose, onSave }: { company: string; onClo
   );
 }
 
+/**
+ * Teléfono en dos casillas: prefijo (lista de países) y número. Se guarda junto («+51 987 654 321»);
+ * sin prefijo guardado, se propone el del país del lead.
+ */
+function PhoneField({ value, country, canWrite, onSave }: { value: string | null; country: string | null; canWrite: boolean; onSave: (v: string | null) => Promise<unknown> }) {
+  const saved = splitPhone(value);
+  const fallback = countryByName(country)?.dial ?? null;
+  const [dial, setDial] = useState<string | null>(saved.dial ?? fallback);
+  const current = saved.dial ?? dial;
+  // El país del lead decide entre los que comparten prefijo (+1: EE. UU., Canadá…).
+  const own = countryByName(country);
+  const option = PHONE_PREFIXES.find((p) => p.dial === current && own && p.value.startsWith(`${own.code}:`)) ?? PHONE_PREFIXES.find((p) => p.dial === current);
+  const copy = async () => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("Teléfono copiado");
+    } catch {
+      toast.error("No se pudo copiar el teléfono.");
+    }
+  };
+  return (
+    <div className="flex gap-2">
+      <div className="w-28 shrink-0">
+        <Select
+          label="Prefijo del teléfono"
+          value={option?.value ?? null}
+          placeholder="+"
+          searchable
+          options={PHONE_PREFIXES}
+          renderValue={(o) => <span className="tabular-nums">+{o ? o.value.split(":")[1] : ""}</span>}
+          disabled={!canWrite}
+          onValueChange={(v) => {
+            const next = v?.split(":")[1] ?? null;
+            setDial(next);
+            if (saved.number && next !== saved.dial) void onSave(joinPhone(next, saved.number));
+          }}
+        />
+      </div>
+      <div className="flex h-11 min-w-0 flex-1 items-center rounded-[10px] border border-border bg-muted pr-1.5">
+        <EditableText label="Número de teléfono" type="tel" className="h-11 min-w-0 flex-1 border-0 bg-transparent px-3" value={saved.number || null} placeholder="987 654 321" disabled={!canWrite} onSave={(v) => onSave(joinPhone(current, v ?? ""))} />
+        {value && (
+          <button type="button" aria-label="Copiar Teléfono" title="Copiar Teléfono" onClick={() => void copy()} className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-card hover:text-foreground">
+            <Copy className="size-4" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Página web: se guarda con https:// si se escribe sin él, y se abre en otra pestaña. */
 function WebsiteField({ value, canWrite, onSave }: { value: string | null; canWrite: boolean; onSave: (v: string | null) => Promise<unknown> }) {
   return (
@@ -439,25 +491,25 @@ function InfoTab({ data, canWrite, persist }: { data: LeadData; canWrite: boolea
           <Field label="Correo">
             <CopyField kind="email" value={lead.email} canWrite={canWrite} onSave={(v) => persist({ email: v }, "Correo guardado")} />
           </Field>
-          <Field label="Teléfono">
-            <CopyField kind="phone" value={lead.phone} canWrite={canWrite} onSave={(v) => persist({ phone: v }, "Teléfono guardado")} />
+          <Field label="Teléfono" className="lg:col-span-2">
+            <PhoneField value={lead.phone} country={lead.country} canWrite={canWrite} onSave={(v) => persist({ phone: v }, "Teléfono guardado")} />
           </Field>
           <Field label="Empresa">
             <Select
               label="Empresa"
               value={lead.company || null}
-              emptyLabel="Sin empresa"
+              placeholder="Elige una empresa"
               searchable
               options={[...companyOptions, ...(canWrite ? [{ value: NEW, label: "+ Agregar empresa nueva" }] : [])]}
               disabled={!canWrite}
-              onValueChange={(v) => (v === NEW ? setAdding("company") : v !== lead.company && void persist({ company: v ?? "" }, "Empresa guardada"))}
+              onValueChange={(v) => (v === NEW ? setAdding("company") : v && v !== lead.company && void persist({ company: v }, "Empresa guardada"))}
             />
           </Field>
           <Field label="Contacto">
             <Select
               label="Contacto"
               value={lead.contactRef?.id ?? (lead.contactName ? "__typed" : null)}
-              emptyLabel="Sin contacto"
+              placeholder="Elige un contacto"
               searchable
               options={[...contactOptions, ...(canWrite ? [{ value: NEW, label: "+ Agregar contacto nuevo" }] : [])]}
               disabled={!canWrite}
@@ -465,12 +517,12 @@ function InfoTab({ data, canWrite, persist }: { data: LeadData; canWrite: boolea
                 if (v === NEW) return setAdding("contact");
                 if (v === "__typed") return;
                 const c = contacts.find((x) => x.id === v);
-                void persist({ contactId: v, ...(c ? { contactName: c.name } : {}) }, v ? "Contacto enlazado" : "Contacto quitado");
+                if (v) void persist({ contactId: v, ...(c ? { contactName: c.name } : {}) }, "Contacto enlazado");
               }}
             />
           </Field>
-          <Field label="País" htmlFor="lead-country">
-            <EditableText id="lead-country" label="País" className={boxed} value={lead.country} placeholder="Perú" disabled={!canWrite} onSave={(v) => persist({ country: v }, "País guardado")} />
+          <Field label="País">
+            <Select label="País" value={countryByName(lead.country)?.name ?? lead.country} placeholder="Elige un país" searchable options={[...COUNTRIES.map((c) => ({ value: c.name, label: c.name })), ...(lead.country && !countryByName(lead.country) ? [{ value: lead.country, label: lead.country }] : [])]} disabled={!canWrite} onValueChange={(v) => v && v !== lead.country && void persist({ country: v }, `País: ${v}`)} />
           </Field>
           <Field label="Correo corporativo">
             <CopyField kind="email" label="Correo corporativo" value={lead.corporateEmail} canWrite={canWrite} onSave={(v) => persist({ corporateEmail: v }, "Correo corporativo guardado")} />
