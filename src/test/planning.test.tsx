@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { ConfirmProvider } from "@/components/ui/confirm-provider";
@@ -7,7 +7,6 @@ import BacklogPage from "@/features/tasks/BacklogPage";
 import MyWorkPage from "@/features/tasks/MyWorkPage";
 import type { Board, Task } from "@/features/tasks/api";
 import { myWork, sprintCapacity, workdays } from "@/features/tasks/planning";
-import { pick } from "./pick";
 import { LEAD, withSession } from "./session";
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
@@ -80,7 +79,7 @@ describe("planificación", () => {
     const overdue = await screen.findByRole("region", { name: "Vencidas" });
     expect(within(overdue).getByText("Vencida hace 2 d")).toBeTruthy();
     expect(screen.getByRole("region", { name: "Esta semana" })).toBeTruthy();
-    await pick(within(overdue).getByRole("combobox", { name: "Status de Endpoint vencido" }), "Stuck");
+    fireEvent.change(within(overdue).getByRole("combobox", { name: "Status de Endpoint vencido" }), { target: { value: "stuck" } });
     await waitFor(() => expect(calls.some((c) => c.method === "PATCH" && c.url === "/api/tasks/a" && (c.body as { status: string }).status === "stuck")).toBe(true));
   });
 

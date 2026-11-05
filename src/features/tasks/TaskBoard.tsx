@@ -6,7 +6,7 @@ import { useConfirm } from "@/components/ui/confirm-context";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { TONE_CLASS, TONE_DOT } from "@/components/ui/tones";
+import { AvatarStack, PersonAvatar } from "@/components/ui/person-avatar";
 import { formatDate } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -18,8 +18,8 @@ import {
   sprintLabel,
   sprintState,
   statusOf,
+  TASK_STATUS_COLOR,
   TASK_STATUS_LABELS,
-  TASK_STATUS_TONE,
   TASK_STATUSES,
   useBoardAction,
   type Board,
@@ -45,23 +45,30 @@ export function HoverTip({ tip, children, className, style }: { tip: string; chi
   );
 }
 
-const initials = (name: string) => {
-  const w = name.replace(/\s*\(.*\)\s*$/, "").trim().split(/\s+/);
-  return (w.length > 1 ? w[0][0] + w[1][0] : name.slice(0, 2)).toUpperCase();
-};
-const AVATAR_TONES = ["bg-ok", "bg-info", "bg-accent-2", "bg-warn", "bg-danger", "bg-primary"];
-const avatarTone = (id: string) => AVATAR_TONES[[...id].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 0) % AVATAR_TONES.length];
 
 /** Avatares apilados de los owners (con su nombre al pasar el mouse). */
 export function Owners({ ids, names }: { ids: string[]; names: Map<string, string> }) {
-  if (!ids.length) return <span className="text-sm text-muted-foreground">Sin asignar</span>;
   return (
-    <span className="flex items-center">
-      {ids.map((id, i) => (
-        <span key={id} title={names.get(id) ?? "—"} className={cn("inline-flex size-7 items-center justify-center rounded-full border-2 border-card text-[11px] font-bold text-white", avatarTone(id), i > 0 && "-ml-2")}>
-          {initials(names.get(id) ?? "?")}
-        </span>
-      ))}
+    <span className="flex h-10 w-full items-center justify-center rounded-[10px] border border-border bg-muted px-2">
+      {ids.length ? <AvatarStack people={ids.map((id) => ({ id, name: names.get(id) ?? "—" }))} size={26} /> : <span className="text-sm text-muted-foreground">Sin asignar</span>}
+    </span>
+  );
+}
+
+/** Owner editable de una tarea o subtarea: avatar + nombre en una caja blanca (prototipo). */
+function OwnerSelect({ value, people, label, onSave }: { value: string | null; people: { id: string; name: string }[]; label: string; onSave: (v: string | null) => void }) {
+  const current = people.find((p) => p.id === value);
+  return (
+    <span className="flex h-10 w-full min-w-0 items-center gap-2 rounded-[10px] border border-border bg-card pr-1 pl-2.5 hover:border-line-strong">
+      {current && <PersonAvatar person={current} size={22} />}
+      <select aria-label={label} value={value ?? ""} onChange={(e) => (e.target.value || null) !== value && onSave(e.target.value || null)} className="native-caret h-full min-w-0 flex-1 cursor-pointer truncate bg-transparent text-sm font-semibold outline-none">
+        <option value="">Sin asignar</option>
+        {people.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </select>
     </span>
   );
 }
@@ -69,13 +76,13 @@ export function Owners({ ids, names }: { ids: string[]; names: Map<string, strin
 /** Status calculado de una tarea con subtareas: barra segmentada con el conteo en el tooltip. */
 export function StatusBar({ task }: { task: Task }) {
   const total = task.subtasks.length;
-  if (!total) return <StatusBadge tone="neutral">{NO_SUBTASKS}</StatusBadge>;
+  if (!total) return <span className="flex h-10 w-full items-center rounded-[10px] px-3 text-sm font-semibold text-white" style={{ backgroundColor: TASK_STATUS_COLOR.todo }}>{NO_SUBTASKS}</span>;
   const parts = TASK_STATUSES.filter((s) => task.derived.statusCounts[s]).map((s) => ({ s, n: task.derived.statusCounts[s]! }));
   return (
-    <div role="img" className="flex h-8 w-full min-w-28 overflow-visible rounded-lg bg-muted" aria-label={`Status: ${parts.map((p) => `${TASK_STATUS_LABELS[p.s]} ${p.n}`).join(", ")}`}>
+    <div role="img" className="flex h-10 w-full min-w-28 overflow-visible rounded-[10px] bg-muted" aria-label={`Status: ${parts.map((p) => `${TASK_STATUS_LABELS[p.s]} ${p.n}`).join(", ")}`}>
       {parts.map((p, i) => (
         <HoverTip key={p.s} tip={`${TASK_STATUS_LABELS[p.s]} · ${p.n} ${p.n === 1 ? "subtarea" : "subtareas"}`} className="h-full" style={{ width: `${(p.n / total) * 100}%` }}>
-          <span className={cn("flex h-full w-full items-center justify-center overflow-hidden text-xs font-semibold whitespace-nowrap text-white transition-[filter] hover:brightness-110", TONE_DOT[TASK_STATUS_TONE[p.s]], i === 0 && "rounded-l-lg", i === parts.length - 1 && "rounded-r-lg")}>
+          <span className={cn("flex h-full w-full items-center justify-center overflow-hidden text-sm font-semibold whitespace-nowrap text-white transition-[filter] hover:brightness-110", i === 0 && "rounded-l-[10px]", i === parts.length - 1 && "rounded-r-[10px]")} style={{ backgroundColor: TASK_STATUS_COLOR[p.s] }}>
             {parts.length === 1 ? TASK_STATUS_LABELS[p.s] : ""}
           </span>
         </HoverTip>
@@ -87,15 +94,20 @@ export function StatusBar({ task }: { task: Task }) {
 /** Status editable de una subtarea, con el color de su estado. */
 export function StatusSelect({ value, disabled, onSave, label }: { value: TaskStatus; disabled?: boolean; onSave: (v: TaskStatus) => void; label: string }) {
   return (
-    <Select
-      label={label}
-      size="sm"
+    <select
+      aria-label={label}
       value={value}
       disabled={disabled}
-      options={TASK_STATUSES.map((s) => ({ value: s, label: TASK_STATUS_LABELS[s] }))}
-      renderValue={(o) => <span className={cn("rounded-md px-2 py-0.5 text-xs font-semibold", TONE_CLASS[TASK_STATUS_TONE[(o?.value as TaskStatus) ?? value]])}>{o?.label}</span>}
-      onValueChange={(v) => v && v !== value && onSave(v as TaskStatus)}
-    />
+      onChange={(e) => e.target.value !== value && onSave(e.target.value as TaskStatus)}
+      className={cn("h-10 w-full min-w-0 rounded-[10px] border-0 pl-3 text-sm font-semibold text-white outline-none", disabled ? "cursor-default appearance-none" : "native-caret cursor-pointer")}
+      style={{ backgroundColor: TASK_STATUS_COLOR[value] }}
+    >
+      {TASK_STATUSES.map((st) => (
+        <option key={st} value={st} className="bg-card text-foreground">
+          {TASK_STATUS_LABELS[st]}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -108,9 +120,9 @@ export function HoursInput({ value, label, disabled, onSave }: { value: number; 
     setDraft(null);
     if (n !== value) onSave(Math.round(n * 100) / 100);
   };
-  if (disabled) return <span className="text-sm tabular-nums">{hoursLabel(value)}</span>;
+  if (disabled) return <span className="inline-flex h-10 min-w-14 items-center justify-end rounded-[10px] bg-muted/60 px-2.5 text-sm text-muted-foreground tabular-nums">{hoursLabel(value)}</span>;
   return (
-    <span className="inline-flex h-8 items-center rounded-lg border border-input bg-card px-2 text-sm tabular-nums focus-within:border-ring dark:bg-white/[0.03]">
+    <span className="inline-flex h-10 min-w-14 items-center justify-end rounded-[10px] border border-border bg-muted px-2.5 text-sm tabular-nums focus-within:border-foreground">
       <input
         aria-label={label}
         inputMode="decimal"
@@ -138,11 +150,12 @@ const timelineText = (start: string | null, end: string | null) => {
 /** Píldora del timeline; si se puede editar abre un panel con inicio y fin. */
 export function Timeline({ start, end, status, editable, onSave, label }: { start: string | null; end: string | null; status: TaskStatus | null; editable: boolean; onSave: (p: { startDate?: string | null; dueDate?: string | null }) => void; label: string }) {
   const empty = !start && !end;
-  const pill = cn("inline-flex h-8 w-full items-center justify-center rounded-full px-3 text-xs font-semibold whitespace-nowrap", empty ? "border border-dashed border-foreground/25 text-muted-foreground" : cn(TONE_DOT[TASK_STATUS_TONE[status ?? "todo"]], "text-white"));
-  if (!editable) return <span className={pill} title={empty ? undefined : "Calculado desde las subtareas"}>{timelineText(start, end)}</span>;
+  const pill = cn("inline-flex h-10 w-full items-center justify-center rounded-full px-3 text-sm font-semibold whitespace-nowrap", empty ? "border border-dashed border-line-strong bg-muted text-muted-foreground" : "text-white");
+  const color = empty ? undefined : { backgroundColor: TASK_STATUS_COLOR[status ?? "todo"] };
+  if (!editable) return <span className={pill} style={color} title={empty ? undefined : "Calculado desde las subtareas"}>{timelineText(start, end)}</span>;
   return (
     <Popover.Root>
-      <Popover.Trigger aria-label={label} className={cn(pill, "transition-[filter] hover:brightness-110")}>
+      <Popover.Trigger aria-label={label} className={cn(pill, "transition-[filter] hover:brightness-110")} style={color}>
         {timelineText(start, end)}
       </Popover.Trigger>
       <Popover.Portal>
@@ -212,6 +225,8 @@ interface Group {
 }
 
 const cell = "px-2 py-1.5 align-middle";
+/** Columnas del panel de subtareas (prototipo): nombre, owner, status, timeline, horas y borrar. */
+const SUB_COLS = "grid grid-cols-[minmax(14rem,2.4fr)_minmax(9rem,1.1fr)_minmax(8.5rem,1fr)_minmax(10rem,1.2fr)_4.5rem_4.5rem_4.5rem_2rem] items-center gap-2";
 const head = "text-caps-label sticky top-0 z-10 bg-card px-2 py-2.5 text-left font-semibold";
 
 /**
@@ -285,7 +300,7 @@ export function TaskBoard({
 
   const columns = ["", "Tarea", ...(showProject ? ["Proyecto"] : []), "Sprint", "Owners", "Status", "Timeline", "Proj. hrs", "Invested", "Billable", ""];
   return (
-    <div className="max-h-[70vh] overflow-auto rounded-2xl border border-border bg-card">
+    <div className="proto-form max-h-[70vh] overflow-auto rounded-2xl border border-border bg-card">
       <table className="w-full min-w-[78rem] border-separate border-spacing-0 text-sm">
         <caption className="sr-only">Tareas</caption>
         <thead>
@@ -298,8 +313,7 @@ export function TaskBoard({
           </tr>
         </thead>
         <tbody>
-          {groups.map((g, gi) => {
-            const tone = gi % AVATAR_TONES.length;
+          {groups.map((g) => {
             const st = g.sprint ? sprintState(g.sprint, board.tasks, today) : null;
             const all = g.sprint ? board.tasks.filter((t) => t.sprintId === g.sprint!.id) : g.tasks;
             const done = all.filter((t) => statusOf(t) === "done").length;
@@ -308,11 +322,10 @@ export function TaskBoard({
                 <tr>
                   <td colSpan={columns.length} className="px-3 pt-5 pb-2">
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                      <span aria-hidden className={cn("h-5 w-1 rounded-full", AVATAR_TONES[tone])} />
                       {g.sprint && g.project?.canManage ? (
-                        <NameEdit className="w-80 text-base" prefix={`Sprint ${g.sprint.number}:`} value={g.sprint.name} label="Nombre del sprint" onSave={(name) => void run(() => api.updateSprint(g.sprint!.id, { name }))} />
+                        <NameEdit className="w-80 text-base text-[var(--viz-1)] [&_input]:text-[var(--viz-1)]" prefix={`Sprint ${g.sprint.number}:`} value={g.sprint.name} label="Nombre del sprint" onSave={(name) => void run(() => api.updateSprint(g.sprint!.id, { name }))} />
                       ) : (
-                        <b className="text-base">{g.label}</b>
+                        <b className={cn("text-base", g.sprint && "text-[var(--viz-1)]")}>{g.label}</b>
                       )}
                       {st && <StatusBadge tone={SPRINT_STATE[st].tone}>{SPRINT_STATE[st].label}</StatusBadge>}
                       {g.sprint && (
@@ -345,7 +358,7 @@ export function TaskBoard({
                   return (
                     <Fragment key={t.id}>
                       <tr className="group/row hover:bg-muted/40">
-                        <td className={cn(cell, "border-t border-border")}>
+                        <td className={cn(cell, "border-t border-l-[3px] border-t-border border-l-[var(--viz-1)]")}>
                           <button type="button" aria-label={`${expanded ? "Ocultar" : "Mostrar"} subtareas de ${t.title}`} aria-expanded={expanded} onClick={() => setOpen((o) => ({ ...o, [t.id]: !expanded }))} className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent">
                             <ChevronRight className={cn("size-4 transition-transform", expanded && "rotate-90")} />
                           </button>
@@ -374,7 +387,7 @@ export function TaskBoard({
                         </td>
                         <td className={cn(cell, "w-44 border-t border-border")}>
                           {!hasSubs && manage ? (
-                            <Select label={`Owner de ${t.title}`} size="sm" value={t.assigneeUserId} emptyLabel="Sin asignar" options={people.map((p) => ({ value: p.id, label: p.name }))} onValueChange={(v) => v !== t.assigneeUserId && save(t.id, { assigneeUserId: v })} />
+                            <OwnerSelect label={`Owner de ${t.title}`} value={t.assigneeUserId} people={people} onSave={(v) => save(t.id, { assigneeUserId: v })} />
                           ) : (
                             <span title={hasSubs ? "Calculado desde las subtareas" : undefined}>
                               <Owners ids={t.derived.ownerIds} names={names} />
@@ -401,54 +414,46 @@ export function TaskBoard({
                         </td>
                       </tr>
                       {expanded && (
-                        <>
-                          {t.subtasks.map((s) => {
-                            const editable = canEditOwn(project, s);
-                            return (
-                              <tr key={s.id} className="bg-muted/30">
-                                <td />
-                                <td className={cn(cell, "pl-6")} colSpan={showProject ? 3 : 2}>
-                                  {manage ? <NameEdit value={s.title} label="Nombre de la subtarea" onSave={(title) => save(s.id, { title })} /> : <span className="font-medium">{s.title}</span>}
-                                </td>
-                                <td className={cell}>
-                                  {manage ? (
-                                    <Select label={`Owner de ${s.title}`} size="sm" value={s.assigneeUserId} emptyLabel="Sin asignar" options={people.map((p) => ({ value: p.id, label: p.name }))} onValueChange={(v) => v !== s.assigneeUserId && save(s.id, { assigneeUserId: v })} />
-                                  ) : (
-                                    <Owners ids={s.assigneeUserId ? [s.assigneeUserId] : []} names={names} />
-                                  )}
-                                </td>
-                                <td className={cell}>
-                                  <StatusSelect label={`Status de ${s.title}`} value={s.status} disabled={!editable} onSave={(status) => save(s.id, { status })} />
-                                </td>
-                                <td className={cell}>
-                                  <Timeline label={`Timeline de ${s.title}`} start={s.startDate} end={s.dueDate} status={s.status} editable={manage} onSave={(p) => save(s.id, p)} />
-                                </td>
-                                {(["estimatedHours", "investedHours", "billableHours"] as const).map((k) => (
-                                  <td key={k} className={cell}>
-                                    <HoursInput label={`${k === "estimatedHours" ? "Horas proyectadas" : k === "investedHours" ? "Horas invertidas" : "Horas facturables"} de ${s.title}`} value={s[k]} disabled={k === "estimatedHours" ? !manage : !editable} onSave={(v) => save(s.id, { [k]: v })} />
-                                  </td>
+                        <tr>
+                          <td className="border-l-[3px] border-l-[var(--viz-1)]" />
+                          <td colSpan={columns.length - 1} className="px-2 pb-3">
+                            <div role="table" aria-label={`Subtareas de ${t.title}`} className="rounded-xl bg-muted/70 p-2.5">
+                              <div role="row" className={cn(SUB_COLS, "border-b border-border px-1 pb-2 text-[10.5px] font-semibold tracking-[0.06em] text-muted-foreground uppercase")}>
+                                {["Subtarea", "Owner", "Status", "Timeline", "Proj. hrs", "Invested", "Billable", ""].map((h, i) => (
+                                  <span key={i} role="columnheader">
+                                    {h}
+                                  </span>
                                 ))}
-                                <td className={cn(cell, "text-center")}>
-                                  {manage && (
-                                    <button type="button" aria-label={`Borrar ${s.title}`} title="Borrar subtarea" onClick={() => void removeSub(s)} className="inline-flex size-8 items-center justify-center rounded-lg text-destructive opacity-70 hover:bg-destructive/10 hover:opacity-100">
-                                      <Trash2 className="size-4" />
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                          {manage && (
-                            <tr className="bg-muted/30">
-                              <td />
-                              <td colSpan={columns.length - 1} className="px-6 pt-1 pb-3">
-                                <button type="button" onClick={() => void addSub(t)} className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground">
+                              </div>
+                              {t.subtasks.map((s) => {
+                                const editable = canEditOwn(project, s);
+                                return (
+                                  <div key={s.id} role="row" className={cn(SUB_COLS, "border-b border-border px-1 py-1.5 last:border-0")}>
+                                    {manage ? <NameEdit value={s.title} label="Nombre de la subtarea" onSave={(title) => save(s.id, { title })} /> : <span className="truncate px-1.5 font-medium">{s.title}</span>}
+                                    {manage ? <OwnerSelect label={`Owner de ${s.title}`} value={s.assigneeUserId} people={people} onSave={(v) => save(s.id, { assigneeUserId: v })} /> : <Owners ids={s.assigneeUserId ? [s.assigneeUserId] : []} names={names} />}
+                                    <StatusSelect label={`Status de ${s.title}`} value={s.status} disabled={!editable} onSave={(status) => save(s.id, { status })} />
+                                    <Timeline label={`Timeline de ${s.title}`} start={s.startDate} end={s.dueDate} status={s.status} editable={manage} onSave={(p) => save(s.id, p)} />
+                                    {(["estimatedHours", "investedHours", "billableHours"] as const).map((k) => (
+                                      <HoursInput key={k} label={`${k === "estimatedHours" ? "Horas proyectadas" : k === "investedHours" ? "Horas invertidas" : "Horas facturables"} de ${s.title}`} value={s[k]} disabled={k === "estimatedHours" ? !manage : !editable} onSave={(v) => save(s.id, { [k]: v })} />
+                                    ))}
+                                    {manage ? (
+                                      <button type="button" aria-label={`Borrar ${s.title}`} title="Borrar subtarea" onClick={() => void removeSub(s)} className="inline-flex size-8 items-center justify-center rounded-lg text-destructive opacity-70 hover:bg-destructive/10 hover:opacity-100">
+                                        <Trash2 className="size-4" />
+                                      </button>
+                                    ) : (
+                                      <span />
+                                    )}
+                                  </div>
+                                );
+                              })}
+                              {manage && (
+                                <button type="button" onClick={() => void addSub(t)} className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-1 text-sm font-medium text-muted-foreground hover:text-foreground">
                                   <Plus className="size-4" /> Agregar subtarea
                                 </button>
-                              </td>
-                            </tr>
-                          )}
-                        </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
                       )}
                     </Fragment>
                   );

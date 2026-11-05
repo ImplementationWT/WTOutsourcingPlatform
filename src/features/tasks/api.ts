@@ -7,6 +7,8 @@ import type { Stage } from "@/features/ops/api";
 export const TASK_STATUSES = ["todo", "in_progress", "review", "stuck", "done"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = { todo: "Pending", in_progress: "Working on it", review: "In Review", stuck: "Stuck", done: "Completed" };
+/** Color sólido de cada status (prototipo .tst*): fondo con texto blanco. */
+export const TASK_STATUS_COLOR: Record<TaskStatus, string> = { todo: "#a1a1ab", in_progress: "#e08a1e", review: "#a25ddc", stuck: "#e2445c", done: "#5bc67d" };
 export const TASK_STATUS_TONE: Record<TaskStatus, Tone> = { todo: "neutral", in_progress: "warn", review: "accent", stuck: "danger", done: "ok" };
 /** Texto de una tarea sin subtareas: su status vive en las subtareas. */
 export const NO_SUBTASKS = "Sin tareas";
