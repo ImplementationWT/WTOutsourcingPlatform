@@ -62,6 +62,17 @@ describe("Dashboards", () => {
     expect(screen.getByRole("region", { name: "Leads por temperatura" }).textContent).toMatch(/Hot.*63\.6%/);
   });
 
+  it("Comercial: Propuestas es lo publicado en el tablero Propuestas (sin archivadas ni papelera)", async () => {
+    renderWith(<CommercialDashboard />, BOSS, {
+      "/api/tableros/comercial": { leads: 1, meetings: 0, proposals: 9, byStatus: [], byTemperature: [], byFunnel: [], bySource: [] },
+      "/api/sites/config": { configured: true },
+      "/api/sites?status=live": { items: [], counts: { live: 4, archived: 2, deleted: 3 }, canWrite: true },
+    });
+    const kpi = (await screen.findByText("Publicadas")).closest("div")!.parentElement!;
+    expect(kpi.textContent).toContain("4");
+    expect(kpi.textContent).not.toContain("9");
+  });
+
   it("Operativo: KPIs de tareas y proyectos atascados", async () => {
     const task = (id: string, status: "done" | "stuck" | null) => ({ id, projectId: "p1", parentTaskId: null, sprintId: null, dealId: null, title: id, status: "todo", assigneeUserId: null, startDate: null, dueDate: null, estimatedHours: 4, investedHours: 2, billableHours: 1, details: "", updates: 0, subtasks: [], derived: { status, statusCounts: {}, ownerIds: [], startDate: null, dueDate: null, estimatedHours: 4, investedHours: 2, billableHours: 1 } });
     renderWith(<OperationalDashboard />, LEAD, {
@@ -71,5 +82,16 @@ describe("Dashboards", () => {
     expect((await screen.findByText("Tareas completadas")).closest("div")!.parentElement!.textContent).toContain("33%");
     expect(screen.getByText("Proyectos atascados").closest("div")!.parentElement!.textContent).toContain("1");
     expect(screen.getByText("Horas invertidas").closest("div")!.parentElement!.textContent).toContain("6h");
+  });
+
+  it("Operativo: los proyectos se cuentan sobre todos, no sobre la primera página de la tabla", async () => {
+    const proj = (i: number) => ({ id: `p${i}`, name: `P${i}`, stage: i % 2 ? "kickoff" : "completed", team: { id: "t-1", name: "A" }, leadUserId: null, developerUserIds: [], soldHours: 0, canManage: true, canWork: true });
+    renderWith(<OperationalDashboard />, LEAD, {
+      "/api/tasks/board": { me: "u-lead", projects: Array.from({ length: 130 }, (_, i) => proj(i)), sprints: [], people: [], tasks: [] },
+      "/api/ops/projects": { rows: [], total: 130, page: 1, pageSize: 100, facets: {}, totals: {}, stuck: [], sla: {}, canCreate: true },
+    });
+    const kpi = (await screen.findByText("Proyectos activos")).closest("div")!.parentElement!;
+    expect(kpi.textContent).toContain("65");
+    expect(kpi.textContent).toContain("130 en total");
   });
 });

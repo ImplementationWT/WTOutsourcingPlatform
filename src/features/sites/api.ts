@@ -44,11 +44,12 @@ export const sitesKeys = { all: ["sites"] as const, list: (status: SiteStatus, s
 export const useSitesConfig = () => useQuery({ queryKey: ["sites", "config"], queryFn: () => apiFetch<SitesConfig>("/api/sites/config"), staleTime: 5 * 60_000 });
 
 /** Sitios de un estado; con `leadId` o `projectId`, solo los ligados a él. */
-export function useSites(status: SiteStatus, scope: { leadId?: string; projectId?: string } = {}) {
+export function useSites(status: SiteStatus, scope: { leadId?: string; projectId?: string } = {}, enabled = true) {
   const qs = new URLSearchParams({ status, ...(scope.leadId ? { leadId: scope.leadId } : {}), ...(scope.projectId ? { projectId: scope.projectId } : {}) });
   return useQuery({
     queryKey: sitesKeys.list(status, qs.toString()),
     queryFn: () => apiFetch<{ items: Site[]; counts: Record<SiteStatus, number>; canWrite: boolean }>(`/api/sites?${qs}`),
+    enabled,
   });
 }
 

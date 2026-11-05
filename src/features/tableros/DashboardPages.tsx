@@ -12,6 +12,7 @@ import { useSession } from "@/features/auth/auth";
 import { INVOICE_STAGE_LABELS, INVOICE_STAGE_TONE, INVOICE_STAGES, MONTHS, useInvoices, type Invoice } from "@/features/finance/api";
 import { money, STAGE_LABELS, STAGES, stageAge, useOpsProjects } from "@/features/ops/api";
 import { LEAD_STATUS_LABELS, LEAD_TEMPERATURE_LABELS, type LeadStatus, type LeadTemperature } from "@/features/sales/api";
+import { useSites, useSitesConfig } from "@/features/sites/api";
 import { hoursLabel, sprintLabel, sprintState, statusOf, TASK_STATUS_LABELS, TASK_STATUS_TONE, TASK_STATUSES, useBoard } from "@/features/tasks/api";
 import { workItems } from "@/features/tasks/filters";
 import { canAccess } from "@/lib/access";
@@ -123,8 +124,19 @@ interface CommercialData {
   bySource: { key: string | null; count: number }[];
 }
 
+/** Propuestas publicadas: el mismo conteo que la pestaña «Publicadas» del tablero Propuestas. */
+function useLiveSites(enabled: boolean): number | null {
+  const { data } = useSites("live", {}, enabled);
+  return enabled ? (data?.counts.live ?? null) : null;
+}
+
 function CommercialBody() {
-  const { data, isLoading } = useQuery({ queryKey: ["tableros", "comercial"], queryFn: () => apiFetch<CommercialData>("/api/tableros/comercial") });
+  // Sin caché: los conteos deben ser los de los tableros en este momento.
+  const { data, isLoading } = useQuery({ queryKey: ["tableros", "comercial"], queryFn: () => apiFetch<CommercialData>("/api/tableros/comercial"), staleTime: 0 });
+  const role = useSession().data?.role;
+  const sitesConfig = useSitesConfig();
+  const sitesOn = canAccess(role, "proposals") && sitesConfig.data?.configured === true;
+  const sites = useLiveSites(sitesOn);
   if (isLoading || !data) return <Skeleton className="h-64 w-full" />;
   const status = data.byStatus.map((r) => ({ label: r.key ? LEAD_STATUS_LABELS[r.key] : "Sin estado", values: { n: r.count } }));
   const temps: (LeadTemperature | null)[] = ["hot", "warm", "nurturing", null];
@@ -139,7 +151,7 @@ function CommercialBody() {
       <KpiRow label="Indicadores">
         <Kpi label="Leads" value={data.leads} sub={`${hot} en Hot`} />
         <Kpi label="Reuniones" value={data.meetings} sub="Registradas" />
-        <Kpi label="Propuestas" value={data.proposals} sub="De Comercial" />
+        <Kpi label="Propuestas" value={sites ?? "—"} sub={sites === null ? "Sin conexión con Propuestas" : "Publicadas"} />
       </KpiRow>
       <div className="grid gap-4 xl:grid-cols-3 [&>*]:min-w-0">
         <ChartCard className="xl:col-span-2" title="Leads por estado" sub="Embudo comercial actual" table={{ columns: ["Estado", "Leads"], rows: status.map((c) => [c.label, c.values.n]) }}>
@@ -187,6 +199,8 @@ export function OperationalDashboard() {
         const projected = items.reduce((n, x) => n + x.p, 0);
         const invested = items.reduce((n, x) => n + x.i, 0);
         const activeSprints = board.sprints.filter((s) => sprintState(s, tasks) === "active").length;
+        // Conteos sobre todos los proyectos visibles (los del tablero de Tasks), no solo la primera página.
+        const all = board.projects;
         const rows = projects.rows;
         const statusParts = TASK_STATUSES.map((s) => ({ label: TASK_STATUS_LABELS[s], color: TONE_VAR[TASK_STATUS_TONE[s]], value: tasks.filter((t) => statusOf(t) === s).length }));
         const noSubs = tasks.filter((t) => !statusOf(t)).length;
@@ -195,7 +209,7 @@ export function OperationalDashboard() {
           .filter((p) => p.stage !== "completed")
           .map((p) => ({ p, age: stageAge(p.stageSince, projects.sla?.[p.stage] ?? null) }))
           .sort((a, b) => b.age.over - a.age.over);
-        const stageCols = STAGES.map((st) => ({ label: STAGE_LABELS[st], values: { n: rows.filter((p) => p.stage === st).length } }));
+        const stageCols = STAGES.map((st) => ({ label: STAGE_LABELS[st], values: { n: all.filter((p) => p.stage === st).length } }));
         const sprints = board.sprints.filter((s) => !sprintProject || s.projectId === sprintProject);
         const sprintRows = sprints.map((s) => {
           const all = tasks.filter((t) => t.sprintId === s.id);
@@ -206,7 +220,7 @@ export function OperationalDashboard() {
         return (
           <>
             <KpiRow label="Indicadores">
-              <Kpi label="Proyectos activos" value={rows.filter((p) => p.stage !== "completed").length} sub={`${rows.length} en total`} />
+              <Kpi label="Proyectos activos" value={all.filter((p) => p.stage !== "completed").length} sub={`${all.length} en total`} />
               <Kpi label="Tareas completadas" value={`${tasks.length ? Math.round((done / tasks.length) * 100) : 0}%`} sub={`${done} de ${tasks.length}`} />
               <Kpi label="Tareas bloqueadas" value={tasks.filter((t) => statusOf(t) === "stuck").length} sub="Status Stuck" />
               <Kpi label="Horas invertidas" value={hoursLabel(Math.round(invested * 10) / 10)} sub={`de ${hoursLabel(Math.round(projected * 10) / 10)} proyectadas`} />
