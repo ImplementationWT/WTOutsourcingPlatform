@@ -60,7 +60,7 @@ function SiteCard({ site, canWrite, showLinks, onUpdate, onStats, onCustomize }:
       </span>
       <div className="min-w-0 flex-1">
         <p className="flex min-w-0 items-center gap-2">
-          <a href={site.url} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); void openSite(site); }} className="truncate font-bold hover:underline">
+          <a href={site.url} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); void openSite(site); }} className="truncate text-sm hover:underline">
             {host}
           </a>
           {site.access.mode === "password" && <Lock className="size-3.5 shrink-0 text-muted-foreground" aria-label="Con contraseña" />}
