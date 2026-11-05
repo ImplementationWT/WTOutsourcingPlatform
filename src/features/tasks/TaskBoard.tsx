@@ -76,10 +76,10 @@ function OwnerSelect({ value, people, label, onSave }: { value: string | null; p
 /** Status calculado de una tarea con subtareas: barra segmentada con el conteo en el tooltip. */
 export function StatusBar({ task }: { task: Task }) {
   const total = task.subtasks.length;
-  if (!total) return <span className="flex h-10 w-full items-center rounded-[10px] px-3 text-sm font-semibold text-white" style={{ backgroundColor: TASK_STATUS_COLOR.todo }}>{NO_SUBTASKS}</span>;
+  if (!total) return <span className="flex h-10 w-full min-w-32 items-center justify-center rounded-[10px] px-3 text-sm font-semibold whitespace-nowrap text-white" style={{ backgroundColor: TASK_STATUS_COLOR.todo }}>{NO_SUBTASKS}</span>;
   const parts = TASK_STATUSES.filter((s) => task.derived.statusCounts[s]).map((s) => ({ s, n: task.derived.statusCounts[s]! }));
   return (
-    <div role="img" className="flex h-10 w-full min-w-28 overflow-visible rounded-[10px] bg-muted" aria-label={`Status: ${parts.map((p) => `${TASK_STATUS_LABELS[p.s]} ${p.n}`).join(", ")}`}>
+    <div role="img" className="flex h-10 w-full min-w-32 overflow-visible rounded-[10px] bg-muted" aria-label={`Status: ${parts.map((p) => `${TASK_STATUS_LABELS[p.s]} ${p.n}`).join(", ")}`}>
       {parts.map((p, i) => (
         <HoverTip key={p.s} tip={`${TASK_STATUS_LABELS[p.s]} · ${p.n} ${p.n === 1 ? "subtarea" : "subtareas"}`} className="h-full" style={{ width: `${(p.n / total) * 100}%` }}>
           <span className={cn("flex h-full w-full items-center justify-center overflow-hidden text-sm font-semibold whitespace-nowrap text-white transition-[filter] hover:brightness-110", i === 0 && "rounded-l-[10px]", i === parts.length - 1 && "rounded-r-[10px]")} style={{ backgroundColor: TASK_STATUS_COLOR[p.s] }}>
@@ -228,7 +228,7 @@ const cell = "px-2 py-1.5 align-middle";
 const FILL = "__fill";
 /** Columnas del panel de subtareas (prototipo): nombre, owner, status, timeline, horas y borrar. */
 const SUB_COLS = "grid grid-cols-[minmax(14rem,2.4fr)_minmax(9rem,1.1fr)_minmax(8.5rem,1fr)_minmax(10rem,1.2fr)_4.5rem_4.5rem_4.5rem_2rem] items-center gap-2";
-const head = "text-caps-label sticky top-0 z-10 bg-card px-2 py-2.5 text-left font-semibold";
+const head = "text-caps-label sticky top-0 z-10 bg-card px-2 py-2.5 text-left font-semibold whitespace-nowrap";
 
 /**
  * Tabla de tareas estilo Monday: agrupada por sprint o por proyecto, con subtareas desplegables.

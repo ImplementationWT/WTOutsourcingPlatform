@@ -183,7 +183,8 @@ export const setMeetingTeam = (id: string, teamId: string | null) => apiFetch<{ 
 export const discardMeeting = (id: string) => apiFetch<{ ok: true }>(`/api/meetings/${id}`, send("DELETE"));
 
 export const processMeeting = (base: string, meetingId: string) => apiFetch<{ meeting: Meeting }>(`${base}/meetings/${meetingId}/process`, send("POST"));
-export const createUpdate = (base: string, body: string) => apiFetch<{ update: ActivityUpdate }>(`${base}/updates`, send("POST", { body }));
+/** `mentions`: ids de quienes se mencionan con «@» (solo los leads los avisan). */
+export const createUpdate = (base: string, body: string, mentions?: string[]) => apiFetch<{ update: ActivityUpdate }>(`${base}/updates`, send("POST", mentions?.length ? { body, mentions } : { body }));
 
 /** Fecha y hora con el formato único del panel. */
 export const dateText = (iso: string) => formatDateTime(iso);

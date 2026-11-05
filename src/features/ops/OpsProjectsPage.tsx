@@ -219,13 +219,39 @@ export default function OpsProjectsPage() {
         </span>
       ),
     },
-    { id: "lead", header: "Lead", card: false, cell: (p) => (p.lead ? <PersonAvatar person={p.lead} /> : <span className="text-muted-foreground">—</span>) },
-    { id: "developers", header: "Developers", card: false, cell: (p) => <AvatarStack people={p.developers} /> },
+    {
+      id: "lead",
+      header: "Lead",
+      card: false,
+      className: "min-w-44",
+      cell: (p) =>
+        p.lead ? (
+          <span className="flex min-w-0 items-center gap-2">
+            <PersonAvatar person={p.lead} />
+            <span className="truncate font-medium">{p.lead.name}</span>
+          </span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    {
+      id: "developers",
+      header: "Developers",
+      card: false,
+      className: "min-w-52",
+      cell: (p) => (
+        <span className="flex min-w-0 items-center gap-2">
+          <AvatarStack people={p.developers} />
+          {p.developers.length > 0 && <span className="truncate text-sm text-muted-foreground">{p.developers.map((d) => d.name?.split(" ")[0]).join(", ")}</span>}
+        </span>
+      ),
+    },
     {
       id: "stage",
       header: "Etapa",
       sortKey: "stage",
       card: "badge",
+      className: "w-40 whitespace-nowrap",
       cardCell: (p) => <StageBadge value={p.stage} />,
       cell: (p) => <InlineSelect label={`Etapa de ${p.name}`} value={p.stage} options={STAGES} labels={STAGE_LABELS} disabled={!p.canManage} display={<StageBadge value={p.stage} />} onSave={(v) => save(p, { stage: v ?? p.stage })} />,
     },

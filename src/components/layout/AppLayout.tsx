@@ -10,6 +10,7 @@ import AppSidebar, { SearchTrigger, SidebarNav } from "./AppSidebar";
 import { CommandPalette } from "./CommandPalette";
 import { CrumbsContext, type Crumb, type CrumbsApi } from "./crumbs";
 import { isActive, isPaletteShortcut, locate, type NavItem } from "./nav";
+import { NotificationsBell } from "./NotificationsBell";
 import UserMenu from "./UserMenu";
 
 const iconButton =
@@ -105,6 +106,7 @@ export default function AppLayout() {
               <button type="button" className={cn(iconButton, "lg:hidden")} aria-label="Buscar" onClick={() => setPaletteOpen(true)}>
                 <Search className="size-5" />
               </button>
+              <NotificationsBell />
               <span className="skin-legacy contents">
                 <UserMenu />
               </span>

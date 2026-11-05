@@ -27,6 +27,7 @@ import { runTableQuery, tableQuerySchema } from "../lib/table-query.js";
 import { createProposalSchema, PROPOSAL_LABELS, proposalView, statusDates, updateProposalSchema } from "../sales/proposals.js";
 import type { AdminStore } from "../store/admin-store.js";
 import { projectFromWonLead } from "../sales/win-lead.js";
+import { leadPeople, links, mentionedUsers, notify } from "../core/notifications.js";
 
 /** Contexto de una reunión comercial para el modelo. */
 export const leadMeetingContext = (lead: Pick<LeadDoc, "company" | "contactName" | "status">) =>
@@ -108,7 +109,7 @@ const updateDemoSchema = z
   .strict()
   .refine((patch) => Object.keys(patch).length > 0, "No hay nada que cambiar.");
 
-const updateNoteSchema = z.object({ body: text(4000).min(1) }).strict();
+const updateNoteSchema = z.object({ body: text(4000).min(1), /** Personas mencionadas con «@» (las elige el panel al escribir). */ mentions: z.array(z.string().uuid()).max(20).optional() }).strict();
 
 /** Tabla de leads: vista activos / fríos / ganados y filtros; paginada en el servidor. */
 const listQuery = tableQuerySchema.extend({
@@ -323,6 +324,9 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
       updatedAt: at
     };
     await store.leads.insertOne(lead);
+    // Aviso a quien queda como Setter o Closer del lead nuevo (si no es quien lo crea).
+    if (lead.setterUserId) await notify(store, [lead.setterUserId], { id: user.id, name: user.name }, { kind: "assignment", title: `Eres Setter de ${leadTitle(lead)}`, link: links.lead(lead._id) });
+    if (lead.closerUserId) await notify(store, [lead.closerUserId], { id: user.id, name: user.name }, { kind: "assignment", title: `Eres Closer de ${leadTitle(lead)}`, link: links.lead(lead._id) });
     await note(user, lead._id, "Lead creado a mano.");
     await auditSales(user, lead, "sales.lead_created");
     const view = await leadViews([lead]);
@@ -397,6 +401,12 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
     }
     // Ganado: nace el proyecto con lo que coincide del lead (solo la primera vez).
     const project = patch.status === "won" && lead.status !== "won" ? await projectFromWonLead(store, user, { ...lead, ...rest }) : null;
+    // Avisos: a quien queda como Setter o Closer, y al Team Leader del proyecto nuevo.
+    const actor = { id: user.id, name: user.name };
+    const title = leadTitle({ ...lead, ...rest });
+    if (patch.setterUserId && patch.setterUserId !== lead.setterUserId) await notify(store, [patch.setterUserId], actor, { kind: "assignment", title: `Eres Setter de ${title}`, link: links.lead(lead._id) });
+    if (patch.closerUserId && patch.closerUserId !== closerOf(lead)) await notify(store, [patch.closerUserId], actor, { kind: "assignment", title: `Eres Closer de ${title}`, link: links.lead(lead._id) });
+    if (project) await notify(store, [project.leadUserId], actor, { kind: "project", title: `Proyecto nuevo: ${project.name}`, body: `Se creó al ganar el lead ${title}.`, link: links.project(project._id) });
     const fresh = (await store.leads.findOne({ _id: lead._id }))!;
     const view = await leadViews([fresh]);
     return { lead: view(fresh, true), ...(project ? { project: { id: project._id, name: project.name } } : {}) };
@@ -565,6 +575,12 @@ export async function registerSalesRoutes(app: FastifyInstance, { store, meeting
     await store.leadUpdates.insertOne(doc);
     // Primer contacto registrado: el lead deja de ser nuevo.
     await touch(lead._id, { status: advanceTo(lead.status, "contacted") });
+    // Avisos: a quien se menciona con «@» y, del resto, al Setter y al Closer del lead.
+    const mentioned = await mentionedUsers(store, doc.body, body.data.mentions);
+    const actor = { id: user.id, name: user.name };
+    const title = leadTitle(lead);
+    await notify(store, mentioned, actor, { kind: "mention", title: `${user.name} te mencionó en ${title}`, body: doc.body, link: links.lead(lead._id) });
+    await notify(store, leadPeople(lead).filter((id) => !mentioned.includes(id ?? "")), actor, { kind: "update", title: `Nuevo update en ${title}`, body: doc.body, link: links.lead(lead._id) });
     return reply.code(201).send({ update: { id: doc._id, kind: doc.kind, body: doc.body, authorName: doc.authorName, createdAt: doc.createdAt } });
   });
 

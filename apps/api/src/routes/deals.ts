@@ -18,6 +18,8 @@ import {
   SALES_STAGES
 } from "../ops/models.js";
 import type { AdminStore } from "../store/admin-store.js";
+import { leadPeople, links as navLinks, notify, projectPeople } from "../core/notifications.js";
+import { leadTitle } from "../sales/models.js";
 
 const idParams = z.object({ id: z.string().uuid() });
 const idsParams = z.object({ id: z.string().uuid(), childId: z.string().uuid() });
@@ -299,6 +301,15 @@ export async function registerDealRoutes(app: FastifyInstance, { store }: { stor
       ...(status === "paid" ? { paidAt: at } : {})
     };
     await store.deals.insertOne(deal);
+    // Aviso: deal nuevo para la gente del proyecto (o del lead) y su responsable.
+    const dealActor = { id: user.id, name: user.name };
+    if (deal.projectId) {
+      const project = await store.opsProjects.findOne({ _id: deal.projectId });
+      if (project) await notify(store, [...projectPeople(project), deal.ownerUserId], dealActor, { kind: "deal", title: `Deal nuevo en ${project.name}`, body: `${deal.dealCode} · ${deal.title}`, link: navLinks.project(project._id) });
+    } else if (deal.leadId) {
+      const lead = await store.leads.findOne({ _id: deal.leadId });
+      if (lead) await notify(store, [...leadPeople(lead), deal.ownerUserId], dealActor, { kind: "deal", title: `Deal nuevo en ${leadTitle(lead)}`, body: `${deal.dealCode} · ${deal.title}`, link: navLinks.lead(lead._id) });
+    }
     await audit(user, deal, "created", { hours: deal.hours });
     await note(user, deal, `Nuevo deal ${deal.dealCode}: «${deal.title}».`);
     const view = await relations([deal]);

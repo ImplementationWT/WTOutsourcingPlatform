@@ -8,6 +8,7 @@ import type { SessionUser } from "../auth/users.js";
 import { open, seal } from "../lib/server-cipher.js";
 import { registerSecret } from "../lib/redact.js";
 import { canManageProject, canWorkOnProject, forbidden, projectScope, readableProject } from "../ops/access.js";
+import { links, notify, projectPeople } from "../core/notifications.js";
 import { runTableQuery, tableQuerySchema } from "../lib/table-query.js";
 import {
   ACCOUNT_KINDS,
@@ -470,6 +471,7 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
     await store.opsProjects.insertOne(project);
     await auditOps(user, project, "ops.project_created");
     await note(user, project._id, "Proyecto creado.");
+    await notify(store, projectPeople(project), { id: user.id, name: user.name }, { kind: "assignment", title: `Te asignaron al proyecto ${project.name}`, link: links.project(project._id) });
     const present = await people([project]);
     return reply.code(201).send({ project: present(project) });
   });
@@ -582,6 +584,9 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
       await note(user, project._id, changes.join("\n"));
       await auditOps(user, project, "ops.project_updated", { changes: changes.length });
     }
+    // Avisos: a quien entra al proyecto como Team Leader o developer.
+    const joined = [...(patch.leadUserId && patch.leadUserId !== project.leadUserId ? [patch.leadUserId] : []), ...(developerUserIds ?? []).filter((id) => !developersOf(project).includes(id))];
+    await notify(store, joined, { id: user.id, name: user.name }, { kind: "assignment", title: `Te asignaron al proyecto ${project.name}`, link: links.project(project._id) });
     const fresh = (await store.opsProjects.findOne({ _id: project._id }))!;
     const present = await people([fresh]);
     return { project: present(fresh) };
@@ -822,6 +827,7 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
     const doc = { _id: randomUUID(), projectId: project._id, kind: "manual" as const, body: body.data.body, authorUsername: user.username, authorName: user.name, createdAt: new Date() };
     await store.projectUpdates.insertOne(doc);
     await store.opsProjects.updateOne({ _id: project._id }, { $set: { updatedAt: doc.createdAt } });
+    await notify(store, projectPeople(project), { id: user.id, name: user.name }, { kind: "update", title: `Nuevo update en ${project.name}`, body: doc.body, link: links.project(project._id) });
     return reply.code(201).send({ update: { id: doc._id, kind: doc.kind, body: doc.body, authorName: doc.authorName, createdAt: doc.createdAt } });
   });
 

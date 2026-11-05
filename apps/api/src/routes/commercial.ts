@@ -20,6 +20,7 @@ import {
 } from "../sales/models.js";
 import { PROPOSAL_LABELS, proposalView, statusDates } from "../sales/proposals.js";
 import type { AdminStore } from "../store/admin-store.js";
+import { leadPeople, links, notify } from "../core/notifications.js";
 import { SALES_READ_ROLES, SALES_ROLES } from "./sales.js";
 
 const idParams = z.object({ id: z.string().uuid() });
@@ -229,6 +230,9 @@ export async function registerCommercialRoutes(app: FastifyInstance, { store }: 
     };
     if (activity.startedAt && activity.startedAt > (activity.completedAt ?? new Date(at.getTime() + 60_000))) return reply.code(400).send({ error: "El inicio no puede ser posterior al fin." });
     await store.activities.insertOne(activity);
+    // Aviso: actividad nueva para su responsable y el Setter/Closer del lead.
+    const lead = activity.leadId ? await store.leads.findOne({ _id: activity.leadId }) : null;
+    await notify(store, [activity.ownerUserId, ...(lead ? leadPeople(lead) : [])], { id: user.id, name: user.name }, { kind: "activity", title: `Actividad nueva${lead ? ` en ${leadTitle(lead)}` : ""}: ${activity.title}`, link: lead ? links.lead(lead._id) : "/comercial/actividades" });
     await audit(user, "sales.activity_created", `sales:activity:${activity._id}`, activity.title);
     const view = await activityViews([activity]);
     return reply.code(201).send({ activity: view(activity) });

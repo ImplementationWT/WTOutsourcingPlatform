@@ -6,6 +6,7 @@ import type { SessionUser } from "../auth/users.js";
 import { canReadProject, canWorkOnProject, forbidden, projectScope } from "../ops/access.js";
 import { ACTIVE_LEAD_STATUSES, leadTitle } from "../sales/models.js";
 import type { AdminStore } from "../store/admin-store.js";
+import { leadPeople, links, notify, projectPeople } from "../core/notifications.js";
 import { SALES_READ_ROLES, SALES_ROLES } from "./sales.js";
 
 export const COMMUNICATION_KINDS = ["email", "whatsapp", "slack", "call", "other"] as const;
@@ -216,6 +217,16 @@ export async function registerCommunicationRoutes(app: FastifyInstance, { store 
     };
     await comms.insertOne(doc);
     await store.audit({ actor: user.username, action: "communications.created", clientId: doc.projectId ? `ops:${doc.projectId}` : `lead:${doc.leadId}`, target: doc.subject || doc.kind });
+    // Aviso a la gente del proyecto o del lead (y al responsable, si es otro).
+    const actor = { id: user.id, name: user.name };
+    const what = `${doc.subject || "Comunicación"}${doc.contactName ? ` · ${doc.contactName}` : ""}`;
+    if (doc.projectId) {
+      const project = await store.opsProjects.findOne({ _id: doc.projectId });
+      if (project) await notify(store, [...projectPeople(project), doc.ownerUserId], actor, { kind: "communication", title: `Nueva comunicación en ${project.name}`, body: what, link: links.project(project._id, "comms") });
+    } else if (doc.leadId) {
+      const lead = await store.leads.findOne({ _id: doc.leadId });
+      if (lead) await notify(store, [...leadPeople(lead), doc.ownerUserId], actor, { kind: "communication", title: `Nueva comunicación en ${leadTitle(lead)}`, body: what, link: links.lead(lead._id) });
+    }
     return reply.code(201).send({ communication: (await view([doc]))[0] });
   });
 

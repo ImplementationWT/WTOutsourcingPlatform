@@ -7,6 +7,7 @@ import { canManageProject, canWorkOnProject, forbidden, projectScope } from "../
 import { type OpsProjectDoc, type OpsTaskDoc, SOLD_DEAL_STATUSES, type SprintDoc, TASK_STATUSES } from "../ops/models.js";
 import { DERIVED_FIELDS, deriveTask, subtasksByParent } from "../ops/tasks.js";
 import type { AdminStore } from "../store/admin-store.js";
+import { links, notify } from "../core/notifications.js";
 
 const idParams = z.object({ id: z.string().uuid() });
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Usa el formato AAAA-MM-DD.");
@@ -196,6 +197,7 @@ export async function registerTaskRoutes(app: FastifyInstance, { store }: { stor
     };
     await store.opsTasks.insertOne(task);
     await audit(user, project._id, parent ? "tasks.subtask_created" : "tasks.task_created", task.title);
+    await notify(store, [task.assigneeUserId], { id: user.id, name: user.name }, { kind: "assignment", title: `Te asignaron ${parent ? "la subtarea" : "la tarea"} «${task.title}»`, body: project.name, link: links.tasks(project._id) });
     return reply.code(201).send({ task: taskView(task) });
   });
 
@@ -245,6 +247,9 @@ export async function registerTaskRoutes(app: FastifyInstance, { store }: { stor
     }
     await store.opsTasks.updateOne({ _id: task._id }, { $set: set, ...(patch.status && patch.status !== "done" && task.status === "done" ? { $unset: { completedAt: "" } } : {}) });
     if (patch.status && patch.status !== task.status) await audit(user, target._id, "tasks.status_changed", `${task.title}: ${task.status} → ${patch.status}`);
+    if (patch.assigneeUserId && patch.assigneeUserId !== task.assigneeUserId) {
+      await notify(store, [patch.assigneeUserId], { id: user.id, name: user.name }, { kind: "assignment", title: `Te asignaron ${task.parentTaskId ? "la subtarea" : "la tarea"} «${patch.title ?? task.title}»`, body: target.name, link: links.tasks(target._id) });
+    }
     return { task: taskView((await store.opsTasks.findOne({ _id: task._id }))!) };
   });
 

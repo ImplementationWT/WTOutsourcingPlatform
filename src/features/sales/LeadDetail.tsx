@@ -8,7 +8,8 @@ import { useCrumbs } from "@/components/layout/crumbs";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { EditableText } from "@/components/ui/editable";
-import { Input, Textarea } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
+import { MentionTextarea, mentionsIn, usePeople, WithMentions } from "@/components/ui/mention-textarea";
 import { Modal } from "@/components/ui/dialog";
 import { Flag } from "@/components/ui/flag";
 import { Select } from "@/components/ui/select";
@@ -180,11 +181,13 @@ function UpdatesColumn({ base, canWrite, onPosted }: { base: string; canWrite: b
   const updates = all?.filter((u) => u.kind === "manual");
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
+  const people = usePeople().data ?? [];
   const publish = async () => {
     if (!body.trim()) return;
     setBusy(true);
     try {
-      await createUpdate(base, body.trim());
+      // Las personas mencionadas con «@» reciben una notificación.
+      await createUpdate(base, body.trim(), mentionsIn(body, people));
       setBody("");
       await queryClient.invalidateQueries({ queryKey: activityKeys.updates(base) });
       await onPosted();
@@ -202,21 +205,7 @@ function UpdatesColumn({ base, canWrite, onPosted }: { base: string; canWrite: b
       </div>
       {canWrite && (
         <div className="border-b border-border p-4">
-          <Textarea
-            aria-label="Nuevo update"
-            rows={3}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            // Enter publica; Shift+Enter hace un salto de línea.
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                void publish();
-              }
-            }}
-            placeholder="Escribe un update…"
-            className="rounded-[10px] bg-muted dark:bg-muted"
-          />
+          <MentionTextarea label="Nuevo update" value={body} onChange={setBody} onSubmit={() => void publish()} placeholder="Escribe un update… (usa @ para mencionar)" className="rounded-[10px] bg-muted dark:bg-muted" />
         </div>
       )}
       <div className="flex-1 p-4 lg:min-h-0 lg:overflow-y-auto">
@@ -235,7 +224,9 @@ function UpdatesColumn({ base, canWrite, onPosted }: { base: string; canWrite: b
                   <span className="font-semibold text-foreground">{u.authorName}</span>
                   <span className="ml-auto">{dateText(u.createdAt)}</span>
                 </div>
-                <p className="mt-1 text-sm whitespace-pre-wrap">{u.body}</p>
+                <p className="mt-1 text-sm whitespace-pre-wrap">
+                  <WithMentions text={u.body} people={people} />
+                </p>
               </li>
             ))}
           </ol>

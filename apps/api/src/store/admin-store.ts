@@ -203,6 +203,9 @@ export class AdminStore {
       this.db.collection("core_communications").createIndex({ followUpDate: 1, followUpDone: 1 }),
       this.db.collection("fin_invoices").createIndex({ number: 1 }, { unique: true }),
       this.db.collection("core_files").createIndex({ owner: 1 }, { unique: true }),
+      this.db.collection("core_notifications").createIndex({ userId: 1, createdAt: -1 }),
+      // Los avisos se borran solos a los 90 días.
+      this.db.collection("core_notifications").createIndex({ createdAt: 1 }, { expireAfterSeconds: 90 * 86_400 }),
       this.db.collection("fin_invoices").createIndex({ projectId: 1, month: -1 }),
       this.db.collection("fin_payouts").createIndex({ userId: 1, month: 1 }, { unique: true }),
       // Los ids de envío solo sirven unos días (Read.ai reintenta durante minutos).
