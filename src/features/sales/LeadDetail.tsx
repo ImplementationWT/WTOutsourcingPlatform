@@ -384,7 +384,7 @@ function PhoneField({ value, country, canWrite, onSave }: { value: string | null
     }
   };
   return (
-    <div className="flex gap-2">
+    <div className="flex max-w-[23rem] gap-2">
       <div className="w-28 shrink-0">
         <Select
           label="Prefijo del teléfono"
