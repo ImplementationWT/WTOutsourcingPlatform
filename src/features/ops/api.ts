@@ -153,7 +153,7 @@ export interface OpsProject {
   paymentType: PaymentType | null;
   nextAction: NextAction | null;
   /** Campos calculados en el servidor. */
-  summary: { deals: number; amountCents: number; soldHours: number; billableHours: number; billableVsSold: number; tasks: number; tasksDone: number; progress: number };
+  summary: { deals: number; amountCents: number; soldHours: number; /** Horas de los deals Ganados (Total Hours Approved). */ wonHours?: number; billableHours: number; billableVsSold: number; tasks: number; tasksDone: number; progress: number };
   createdAt: string;
   updatedAt: string;
 }

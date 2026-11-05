@@ -281,7 +281,14 @@ export default function OpsProjectsPage() {
 
       {creating && <NewProjectForm onClose={() => setCreating(false)} />}
 
-      <SavedViews screen="projects" />
+      <SavedViews
+        screen="projects"
+        builtIn={[
+          { id: "builtin:stage", name: "Por etapa", query: "" },
+          ...teams.map((t) => ({ id: `builtin:team:${t.id}`, name: t.name, query: new URLSearchParams({ teamId: t.id }).toString() })),
+          { id: "builtin:table", name: "Tabla principal", query: "group=0" },
+        ]}
+      />
 
       <StuckBanner projects={data?.stuck ?? []} />
 

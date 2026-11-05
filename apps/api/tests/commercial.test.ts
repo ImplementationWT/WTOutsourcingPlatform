@@ -187,6 +187,10 @@ describe("detalle del proyecto (prototipo)", () => {
     expect((await ana("GET", `/api/ops/projects/${project.id}`)).body.project.hourlyRateCents).toBe(5000);
     const deal = (await ana("POST", "/api/deals", { title: "Warranty Services Apps", projectId: project.id, hours: 180 })).body.deal;
     expect(deal).toMatchObject({ rateCents: 5000, amountCents: 900_000 });
+    // Total Hours Approved: solo las horas de los deals en estado de venta Ganado.
+    expect((await ana("GET", `/api/ops/projects/${project.id}`)).body.project.summary.wonHours).toBe(0);
+    await ana("PATCH", `/api/deals/${deal.id}`, { salesStage: "won" });
+    expect((await ana("GET", `/api/ops/projects/${project.id}`)).body.project.summary.wonHours).toBe(180);
     const at = new Date();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- reunión mínima para la prueba
     await store.meetings.insertOne({ _id: "m-2", title: "Kick off", heldAt: at, leadId: null, projectId: project.id, teamId: null, createdAt: at, updatedAt: at } as any);

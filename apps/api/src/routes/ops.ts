@@ -209,13 +209,15 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
       teamIds.length ? store.teams.find({ _id: { $in: teamIds } }, { projection: { name: 1 } }).toArray() : [],
       projectIds.length
         ? store.deals
-            .aggregate<{ _id: string; deals: number; soldHours: number; amountCents: number }>([
+            .aggregate<{ _id: string; deals: number; soldHours: number; wonHours: number; amountCents: number }>([
               { $match: { projectId: { $in: projectIds }, status: { $ne: "cancelled" } } },
               {
                 $group: {
                   _id: "$projectId",
                   deals: { $sum: 1 },
                   soldHours: { $sum: { $cond: [{ $in: ["$status", [...SOLD_DEAL_STATUSES]] }, "$hours", 0] } },
+                  // «Total Hours Approved» del detalle: solo los deals en estado de venta Ganado.
+                  wonHours: { $sum: { $cond: [{ $eq: ["$salesStage", "won"] }, "$hours", 0] } },
                   amountCents: { $sum: { $cond: [{ $in: ["$status", [...SOLD_DEAL_STATUSES]] }, "$amountCents", 0] } }
                 }
               }
@@ -275,6 +277,7 @@ export async function registerOpsRoutes(app: FastifyInstance, { store, vaultKey,
           deals: d?.deals ?? 0,
           amountCents: d?.amountCents ?? 0,
           soldHours,
+          wonHours: d?.wonHours ?? 0,
           billableHours,
           billableVsSold: billableHours - soldHours,
           tasks: t?.tasks ?? 0,

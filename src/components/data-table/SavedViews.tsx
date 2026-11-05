@@ -51,11 +51,13 @@ function NameInput({ initial, onDone }: { initial: string; onDone: (name: string
  * Vistas guardadas de una tabla (por persona): cada una guarda filtros, orden y agrupación de la
  * URL. Se renombran, se actualizan con los filtros actuales o se eliminan desde su menú.
  */
-export function SavedViews({ screen }: { screen: ViewScreen }) {
+export function SavedViews({ screen, builtIn = [] }: { screen: ViewScreen; /** Vistas fijas antes de las guardadas (p. ej. «Por etapa», una por team). No se editan. */ builtIn?: SavedView[] }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [params, setParams] = useSearchParams();
-  const views = useQuery({ queryKey: key(screen), queryFn: async () => (await apiFetch<{ views: SavedView[] }>(`/api/views?screen=${screen}`)).views }).data ?? [];
+  const saved = useQuery({ queryKey: key(screen), queryFn: async () => (await apiFetch<{ views: SavedView[] }>(`/api/views?screen=${screen}`)).views }).data ?? [];
+  const fixed = new Set(builtIn.map((v) => v.id));
+  const views = [...builtIn, ...saved];
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const current = viewQuery(params);
@@ -114,7 +116,7 @@ export function SavedViews({ screen }: { screen: ViewScreen }) {
                 {view.name}
               </button>
             )}
-            {on && editing !== view.id && (
+            {on && editing !== view.id && !fixed.has(view.id) && (
               <DropdownMenu>
                 <DropdownMenuTrigger aria-label={`Opciones de la vista ${view.name}`} className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground">
                   <MoreHorizontal className="size-4" />
@@ -140,7 +142,7 @@ export function SavedViews({ screen }: { screen: ViewScreen }) {
           Nueva vista
         </button>
       )}
-      {dirty && active && (
+      {dirty && active && !fixed.has(active.id) && (
         <Button size="sm" variant="outline" className="ml-auto" onClick={() => saveCurrent(active)}>
           Guardar cambios en la vista
         </Button>

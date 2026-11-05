@@ -46,7 +46,7 @@ import {
 } from "./api";
 import { useProjectDeals } from "@/features/core/api";
 import { HealthBadge, PriorityBadge, StageBadge, StageStepper } from "./OpsBadges";
-import { AccountsTab, MeetingsTab } from "./OpsTabs";
+import { AccountsTab } from "./OpsTabs";
 import { FileField } from "@/components/ui/file-field";
 import { removeFile, uploadFile } from "@/features/core/api";
 import { useTeams } from "@/features/admin/api";
@@ -523,7 +523,7 @@ export function ProjectDetailModal({ id, onClose }: { id: string; onClose: () =>
         <KpiRow label="Indicadores del proyecto">
           {permissions.manage ? <RateKpi projectId={project.id} cents={rate} /> : <Kpi label="Hourly rate" value={rate === null ? "—" : moneyShort(rate)} unit={rate === null ? undefined : "/h"} />}
           <Kpi label="Total closed deals" value={moneyShort(s.amountCents)} />
-          <Kpi label="Total hours approved" value={s.soldHours.toLocaleString("en-US")} unit="h" />
+          <Kpi label="Total hours approved" value={(s.wonHours ?? 0).toLocaleString("en-US")} unit="h" sub="Deals ganados" />
           {finance && (
             <>
               <Kpi label="Hours paid" value={finance.paidHours.toLocaleString("en-US")} unit="h" />
@@ -564,18 +564,7 @@ export function ProjectDetailModal({ id, onClose }: { id: string; onClose: () =>
             {tab === "deals" && <ProjectDeals key={newDeal} projectId={project.id} teamId={project.team.id} startCreating={newDeal > 0} hideCreate={permissions.manage} />}
             {tab === "tasks" && <ProjectTasksPanel projectId={project.id} />}
             {tab === "accounts" && permissions.work && <AccountsTab projectId={project.id} canManage={permissions.manage} />}
-            {tab === "meetings" && (
-              <div className="space-y-6">
-                <MeetingsBoard target={{ kind: "project", id: project.id, name: project.name }} canWrite={permissions.manage} />
-                {/* El procesamiento con Claude (action items → tareas o change orders) sigue aquí. */}
-                <details className="rounded-xl border border-border">
-                  <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Action items de las reuniones (Claude)</summary>
-                  <div className="border-t border-border p-4">
-                    <MeetingsTab projectId={project.id} canWork={permissions.work} />
-                  </div>
-                </details>
-              </div>
-            )}
+            {tab === "meetings" && <MeetingsBoard target={{ kind: "project", id: project.id, name: project.name }} canWrite={permissions.manage} />}
             {tab === "stages" && <StagesTab project={project} sla={sla} />}
             {tab === "comms" && <CommsTab scope={{ projectId: project.id }} defaultContact={project.client?.name ?? ""} />}
           </div>

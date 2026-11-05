@@ -225,6 +225,7 @@ interface Group {
 }
 
 const cell = "px-2 py-1.5 align-middle";
+const FILL = "__fill";
 /** Columnas del panel de subtareas (prototipo): nombre, owner, status, timeline, horas y borrar. */
 const SUB_COLS = "grid grid-cols-[minmax(14rem,2.4fr)_minmax(9rem,1.1fr)_minmax(8.5rem,1fr)_minmax(10rem,1.2fr)_4.5rem_4.5rem_4.5rem_2rem] items-center gap-2";
 const head = "text-caps-label sticky top-0 z-10 bg-card px-2 py-2.5 text-left font-semibold";
@@ -298,7 +299,9 @@ export function TaskBoard({
     groups = board.projects.map((p) => ({ key: p.id, label: p.name, meta: `${p.team.name ?? "Sin equipo"}`, project: p, tasks: tasks.filter((t) => t.projectId === p.id) })).filter((g) => g.tasks.length);
   }
 
-  const columns = ["", "Tarea", ...(showProject ? ["Proyecto"] : []), "Sprint", "Owners", "Status", "Timeline", "Proj. hrs", "Invested", "Billable", ""];
+  // La última columna vacía se queda con el ancho que sobra: así el nombre de la tarea queda junto a
+  // sus columnas en lugar de estirarse.
+  const columns = ["", "Tarea", ...(showProject ? ["Proyecto"] : []), "Sprint", "Owners", "Status", "Timeline", "Proj. hrs", "Invested", "Billable", "", FILL];
   return (
     <div className="proto-form max-h-[70vh] overflow-auto rounded-2xl border border-border bg-card">
       <table className="w-full min-w-[78rem] border-separate border-spacing-0 text-sm">
@@ -306,8 +309,8 @@ export function TaskBoard({
         <thead>
           <tr>
             {columns.map((c, i) => (
-              <th key={i} scope="col" className={cn(head, "border-b border-border", c === "" && "w-10")}>
-                {c}
+              <th key={i} scope="col" aria-hidden={c === FILL || undefined} className={cn(head, "border-b border-border", c === "" && "w-10", c === "Tarea" && "w-[20rem] min-w-[16rem]", c === FILL && "w-full p-0")}>
+                {c === FILL ? null : c}
               </th>
             ))}
           </tr>
@@ -412,6 +415,7 @@ export function TaskBoard({
                             </button>
                           )}
                         </td>
+                        <td aria-hidden className="border-t border-border" />
                       </tr>
                       {expanded && (
                         <tr>

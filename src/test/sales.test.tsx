@@ -331,33 +331,14 @@ describe("reuniones procesadas en Operativa", () => {
     return json({ members: [], rows: [], tasks: [], updates: [] });
   };
 
-  it("muestra lo que propone Claude (sentimiento, tipo, action items tipados) y el Team Leader los convierte; el Health no cambia", async () => {
+  it("la pestaña Reuniones del proyecto es el tablero de Meetings del proyecto, sin la sección de action items de Claude", async () => {
     const holder: Call[] = [];
-    const { calls } = renderAt(`/operativa/${project.id}`, LEAD, route(holder));
+    renderAt(`/operativa/${project.id}`, LEAD, (url, init) =>
+      url.startsWith("/api/meetings?") ? json({ rows: [{ id: "m1", title: "Revisión semanal", heldAt: "2026-11-02T15:00:00Z", durationMinutes: 30, source: "read_ai", status: "processed", engagement: null, team: null, lead: null, project: { id: project.id, name: project.name } }], total: 1, page: 1, pageSize: 100, facets: {}, totals: {} }) : route(holder)(url, init),
+    );
     fireEvent.click(await screen.findByRole("tab", { name: /^Reuniones/ }));
-    expect(await screen.findByText("Quieren reportes semanales.")).toBeTruthy();
-    expect(screen.getByText("Bien")).toBeTruthy();
-    expect(screen.getByText(/Asistentes: Lucía Pérez/)).toBeTruthy();
-    expect(screen.getByRole("link", { name: /Read.ai/ }).getAttribute("href")).toBe("https://app.read.ai/analytics/meetings/S1");
-    expect(screen.getByText(/Trabajo interno · Ana · 6 h/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Aplicar al proyecto" })).toBeNull();
-
-    fireEvent.click(screen.getAllByRole("button", { name: /Crear tarea/ })[0]);
-    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/action-items/a1/convert"))).toBe(true));
-    expect(JSON.parse(String(calls.find((c) => c.url.endsWith("/a1/convert"))!.init?.body))).toEqual({ to: "task" });
-
-    // Sin deal en la reunión, el change order pide elegirlo.
-    const changeOrder = screen.getAllByRole("button", { name: /Crear change order/ })[1];
-    expect((changeOrder as HTMLButtonElement).disabled).toBe(true);
-    await waitFor(() => expect(screen.getAllByRole("combobox", { name: /Deal del change order/ }).length).toBe(2));
-    await pick(screen.getAllByRole("combobox", { name: /Deal del change order/ })[1], /DL-0001/);
-    fireEvent.click(changeOrder);
-    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/action-items/a2/convert"))).toBe(true));
-    expect(JSON.parse(String(calls.find((c) => c.url.endsWith("/a2/convert"))!.init?.body))).toEqual({ to: "change_order", dealId: "d1" });
-
-    await pick("Estado de proceso de «Revisión semanal»", "Revisada");
-    await waitFor(() => expect(calls.some((c) => c.init?.method === "PATCH" && c.url.endsWith("/meetings/m1"))).toBe(true));
-    expect(JSON.parse(String(calls.find((c) => c.init?.method === "PATCH")!.init?.body))).toEqual({ reviewStatus: "reviewed" });
-    expect(calls.some((c) => c.init?.method === "PATCH" && c.url === `/api/ops/projects/${project.id}`)).toBe(false);
+    expect(await screen.findByText(/Reuniones de este proyecto/)).toBeTruthy();
+    expect(screen.getByText("Revisión semanal")).toBeTruthy();
+    expect(screen.queryByText(/Action items de las reuniones/)).toBeNull();
   });
 });
