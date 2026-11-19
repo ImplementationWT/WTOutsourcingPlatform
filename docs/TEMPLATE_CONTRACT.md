@@ -241,6 +241,7 @@ Environments). Nombres exactos, sensibles a mayúsculas:
 | `INITIAL_ADMIN_PASSWORD` | No, **muy recomendado** | Contraseña inicial del `admin` (≥ 10 caracteres). Entregarla al cliente por un canal seguro |
 | `MONDAY_API_TOKEN` | No | Token de la API de Monday.com del cliente. Hereda los permisos de su dueño: la app solo ve los tableros que esa persona ve. Mejor un usuario de servicio con acceso de solo lectura a los tableros que deban mostrarse |
 | `ANTHROPIC_API_KEY` | No | Clave de la API de Anthropic del proyecto (una por proyecto, para separar el gasto). Activa Will Doo (desde 1.7.0) |
+| `FEEDBACK_N8N_WEBHOOK_URL` | No | URL del webhook de n8n que recibe el feedback de la app. Es secreto: quien la tenga puede disparar el flujo. Opcional y propia de cada app; el template no la usa |
 
 ### Variables del entorno `production`
 
@@ -349,14 +350,15 @@ ese comando, y el comando sabe por su argumento a qué cliente corresponde.
     "APP_DISPLAY_NAME": "…",
     "MONDAY_API_TOKEN": "…",
     "ANTHROPIC_API_KEY": "…",
-    "WILL_DOO_MODE": "claude"
+    "WILL_DOO_MODE": "claude",
+    "FEEDBACK_N8N_WEBHOOK_URL": "…"
   },
   "registryToken": "<GITHUB_TOKEN del job>"
 }
 ```
 
 - `env` contiene **solo las variables definidas**: `INITIAL_ADMIN_PASSWORD`,
-  `APP_DISPLAY_NAME`, `MONDAY_API_TOKEN`, `ANTHROPIC_API_KEY` y `WILL_DOO_MODE` no aparecen si no existen. El JSON se construye con `jq`
+  `APP_DISPLAY_NAME`, `MONDAY_API_TOKEN`, `ANTHROPIC_API_KEY`, `WILL_DOO_MODE` y `FEEDBACK_N8N_WEBHOOK_URL` no aparecen si no existen. El JSON se construye con `jq`
   leyendo el entorno (los secretos no pasan por argumentos) y cada valor se
   enmascara con `::add-mask::` antes de usarse; nunca se imprime.
 - `registryToken` caduca cuando termina el job: el servidor debe hacer
@@ -369,7 +371,8 @@ ese comando, y el comando sabe por su argumento a qué cliente corresponde.
    `env`. Lista de claves aceptadas: `MONGODB_URI`, `MONGODB_DB`,
    `SESSION_SECRET`, `INITIAL_ADMIN_PASSWORD`, `APP_DISPLAY_NAME` y
    **`MONDAY_API_TOKEN`** (desde 1.4.0), **`ANTHROPIC_API_KEY`** y
-   **`WILL_DOO_MODE`** (desde 1.7.0).
+   **`WILL_DOO_MODE`** (desde 1.7.0), y **`FEEDBACK_N8N_WEBHOOK_URL`** (feedback a
+   n8n; opcional, la usa la app que lo implemente, no el template).
 2. Validar `image` contra `^ghcr\.io/<owner>/<repo>@sha256:[a-f0-9]{64}$`
    (el repo de **ese** cliente) y `env.MONGODB_DB` contra `^client_[a-z0-9_]+$`.
 3. Escribir `env` en un archivo de entorno con permisos `0600` (más
