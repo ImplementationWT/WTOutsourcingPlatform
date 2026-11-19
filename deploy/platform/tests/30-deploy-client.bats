@@ -82,6 +82,14 @@ port_of_client() { awk -v s="$1" '$1 == s { print $2 }' /srv/customer-apps/.port
   [ "$(stat -c '%a' /srv/customer-apps/acme/.env)" = "600" ]
 }
 
+@test "acepta FEEDBACK_N8N_WEBHOOK_URL (feedback a n8n) y la deja en el .env 0600" {
+  deploy acme "$(payload "$GOOD_IMAGE_ACME" '{"FEEDBACK_N8N_WEBHOOK_URL": "https://n8n.example.com/webhook/feedback-123"}')"
+  [ "$status" -eq 0 ]
+  [ "$output" = "DEPLOY_OK" ]
+  grep -qx 'FEEDBACK_N8N_WEBHOOK_URL=https://n8n.example.com/webhook/feedback-123' /srv/customer-apps/acme/.env
+  [ "$(stat -c '%a' /srv/customer-apps/acme/.env)" = "600" ]
+}
+
 @test "el compose fija NODE_ENV, TRUST_PROXY_HOPS, PORT y HOST, y endurece el contenedor" {
   port=$(port_of_client acme)
   runtime=$(curl -s "http://127.0.0.1:$port/runtime")

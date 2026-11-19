@@ -87,10 +87,11 @@ Para revocar de inmediato (el cliente deja de poder desplegar):
 
 ## Actualizar el servidor con la lista de variables permitida
 
-`deploy-client` acepta exactamente las 8 variables del contrato (`MONGODB_URI`,
+`deploy-client` acepta exactamente las 9 variables del contrato (`MONGODB_URI`,
 `MONGODB_DB`, `SESSION_SECRET`, `INITIAL_ADMIN_PASSWORD`, `APP_DISPLAY_NAME`,
 `MONDAY_API_TOKEN` desde el template 1.4.0, y `ANTHROPIC_API_KEY` y `WILL_DOO_MODE` de
-Will Doo desde el 1.7.0) y rechaza cualquier otra. Para instalar la
+Will Doo desde el 1.7.0, y `FEEDBACK_N8N_WEBHOOK_URL` para el feedback a n8n) y rechaza
+cualquier otra. Para instalar la
 versión nueva de los scripts:
 
 ```bash
